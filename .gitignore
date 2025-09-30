@@ -264,3 +264,4 @@ config.json
 # Claude Code文件
 CLAUDE.md
 .claude
+.clinerules
