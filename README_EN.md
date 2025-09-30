@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Intelligent ReAct (Reasoning + Acting) Agent Based on Multiple LLM APIs**
+**Intelligent Code Agent Based on Multiple LLM APIs**
 
 [![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -15,9 +15,13 @@
 
 If you're just starting to learn about AI Agents and don't know where to begin, start with this project to learn or develop your own Agent applications.
 
-This project provides all new AI Agent developers with an extremely low learning curve yet fully functional **ReAct (Reasoning + Acting) Agent**, supporting multiple large language models (DeepSeek, OpenAI, Claude, Gemini) for reasoning and local tool execution to complete various tasks. The agent can:
+This project provides all new AI Agent developers with an extremely low learning curve yet powerful **Code Agent**, based on the ReAct (Reasoning + Acting) architecture, supporting multiple large language models (DeepSeek, OpenAI, Claude, Gemini) for reasoning, and focused on software development and code-related tasks. The agent can:
 
-- 📁 **File Operations** - Create, read, and list files and directories
+- 📝 **Code Editing** - Precisely edit specific file lines with insert/replace/delete ⭐ New
+- 🔍 **Code Search** - Regex search with context display ⭐ New
+- 🧪 **Test Execution** - Run pytest/unittest test suites ⭐ New
+- ✨ **Code Linting** - Run pylint/flake8/mypy/black linting tools ⭐ New
+- 📁 **File Operations** - Create, read (with line ranges), list files and directories (with recursive filtering)
 - 🐍 **Python Execution** - Run Python code and scripts
 - 💻 **Shell Commands** - Execute system commands
 - 🎯 **Task Completion** - Intelligently mark task completion status
@@ -38,13 +42,24 @@ This project provides all new AI Agent developers with an extremely low learning
 - **Colorful Output** - Clear and beautiful interface (supports colorama)
 - **Tool List Viewer** - View all available tools with one click
 
-### 🛠️ Powerful Toolset
-- `list_directory` - List directory contents
-- `read_file` - Read text files
+### 🛠️ Powerful Code Agent Toolset
+**Code Editing Tools** ⭐ New
+- `edit_file` - Precisely edit specific file lines (insert/replace/delete)
+- `search_in_file` - Regex search with context display
+
+**Testing and Linting Tools** ⭐ New
+- `run_tests` - Run pytest/unittest test suites
+- `run_linter` - Run pylint/flake8/mypy/black code linters
+
+**File Operation Tools** ⭐ Enhanced
+- `list_directory` - List directory contents (with recursive and type filtering)
+- `read_file` - Read text files (with line number ranges)
 - `create_file` - Create or overwrite files
+
+**Code Execution Tools**
 - `run_python` - Execute Python code
 - `run_shell` - Execute Shell commands
-- `task_complete` - Mark task as complete ⭐ New
+- `task_complete` - Mark task as complete
 
 ### 🎯 Flexible Usage
 - **Interactive Mode** - Menu-based operation, suitable for continuous tasks
@@ -176,31 +191,61 @@ python main.py "Your task" --max-steps 50 --temperature 0.5
 
 ## 📚 Usage Examples
 
-### Example 1: File Operations
-
+### Example 1: Code Editing ⭐ New Feature
 ```bash
+# Insert code at a specific line
+python main.py "Insert a print statement at line 10 in test.py"
+
+# Replace code in a line range
+python main.py "Replace lines 5-8 in main.py with a new function implementation"
+
+# Search and modify code
+python main.py "Search for all code containing 'TODO' in the project and list them"
+```
+
+### Example 2: Testing and Code Linting ⭐ New Feature
+```bash
+# Run tests
+python main.py "Run all test cases in the tests directory"
+
+# Code linting
+python main.py "Check code quality in the src directory with flake8"
+
+# Format checking
+python main.py "Check if main.py conforms to black code style"
+```
+
+### Example 3: File Operations (Enhanced)
+```bash
+# Read specific line range
+python main.py "Read lines 10-20 of config.py"
+
+# Recursively list Python files
+python main.py "List all .py files in the project"
+
+# Create file
 python main.py "Create a file named notes.txt with today's date"
 ```
 
-### Example 2: Math Calculation
+### Example 4: Math Calculation
 
 ```bash
 python main.py "Calculate the result of (100 + 200) * 3" --show-steps
 ```
 
-### Example 3: Code Execution
+### Example 5: Code Execution
 
 ```bash
 python main.py "Use Python to generate 10 random numbers and save them to random.txt"
 ```
 
-### Example 4: Complex Task
+### Example 6: Complex Task
 
 ```bash
 python main.py "Create a sort folder with 10 sorting algorithm implementations in both C++ and Python"
 ```
 
-### Example 5: Multi-turn Conversation ⭐ New
+### Example 7: Multi-turn Conversation ⭐ New
 
 ```bash
 python main.py

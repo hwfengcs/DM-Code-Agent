@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**基于多种 LLM API 的智能 ReAct（推理 + 行动）智能体**
+**基于多种 LLM API 的智能 Code Agent（代码智能体）**
 
 [![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -14,9 +14,13 @@
 ## 📖 项目简介
 如果你刚刚开始学习AI Agent却无从入手，请从我的这个项目开始学习或者开发你自己Agent应用。
 
-本项目为所有新学习AI Agent的开发者提供了一个上手学习难度极低，但是功能良好的 **ReAct（Reasoning + Acting）智能体**，支持多种大语言模型（DeepSeek、OpenAI、Claude、Gemini）进行推理，并通过调用本地工具来完成各种任务。智能体可以：
+本项目为所有新学习AI Agent的开发者提供了一个上手学习难度极低，但是功能强大的 **Code Agent（代码智能体）**，基于 ReAct（Reasoning + Acting）架构，支持多种大语言模型（DeepSeek、OpenAI、Claude、Gemini）进行推理，专注于软件开发和代码相关任务。智能体可以：
 
-- 📁 **文件操作** - 创建、读取、列出文件和目录
+- 📝 **代码编辑** - 精确编辑文件指定行，支持插入/替换/删除 ⭐ 新增
+- 🔍 **代码搜索** - 正则表达式搜索，带上下文显示 ⭐ 新增
+- 🧪 **测试执行** - 运行 pytest/unittest 测试套件 ⭐ 新增
+- ✨ **代码检查** - 运行 pylint/flake8/mypy/black 检查工具 ⭐ 新增
+- 📁 **文件操作** - 创建、读取（支持行范围）、列出文件和目录（支持递归过滤）
 - 🐍 **Python 执行** - 运行 Python 代码和脚本
 - 💻 **Shell 命令** - 执行系统命令
 - 🎯 **任务完成** - 智能标记任务完成状态
@@ -37,13 +41,24 @@
 - **彩色输出** - 清晰美观的界面（支持 colorama）
 - **工具列表查看** - 一键查看所有可用工具
 
-### 🛠️ 强大的工具集
-- `list_directory` - 列出目录内容
-- `read_file` - 读取文本文件
+### 🛠️ 强大的 Code Agent 工具集
+**代码编辑工具** ⭐ 新增
+- `edit_file` - 精确编辑文件指定行（插入/替换/删除）
+- `search_in_file` - 正则表达式搜索，带上下文显示
+
+**测试和检查工具** ⭐ 新增
+- `run_tests` - 运行 pytest/unittest 测试套件
+- `run_linter` - 运行 pylint/flake8/mypy/black 代码检查
+
+**文件操作工具** ⭐ 已增强
+- `list_directory` - 列出目录内容（支持递归和类型过滤）
+- `read_file` - 读取文本文件（支持行号范围）
 - `create_file` - 创建或覆盖文件
+
+**代码执行工具**
 - `run_python` - 执行 Python 代码
 - `run_shell` - 执行 Shell 命令
-- `task_complete` - 标记任务完成 ⭐ 新增
+- `task_complete` - 标记任务完成
 
 ### 🎯 灵活的使用方式
 - **交互模式** - 菜单式操作，适合连续任务
@@ -175,31 +190,61 @@ python main.py "你的任务" --max-steps 50 --temperature 0.5
 
 ## 📚 使用示例
 
-### 示例 1: 文件操作
-
+### 示例 1: 代码编辑 ⭐ 新功能
 ```bash
+# 在指定行插入代码
+python main.py "在 test.py 的第 10 行插入一个打印语句"
+
+# 替换指定行范围的代码
+python main.py "替换 main.py 的第 5-8 行为新的函数实现"
+
+# 搜索并修改代码
+python main.py "在项目中搜索所有包含 'TODO' 的代码并列出"
+```
+
+### 示例 2: 测试和代码检查 ⭐ 新功能
+```bash
+# 运行测试
+python main.py "运行 tests 目录下的所有测试用例"
+
+# 代码检查
+python main.py "用 flake8 检查 src 目录下的代码质量"
+
+# 格式化检查
+python main.py "检查 main.py 是否符合 black 代码风格"
+```
+
+### 示例 3: 文件操作（增强功能）
+```bash
+# 读取指定行范围
+python main.py "读取 config.py 的第 10-20 行"
+
+# 递归列出 Python 文件
+python main.py "列出项目中所有的 .py 文件"
+
+# 创建文件
 python main.py "创建一个名为 notes.txt 的文件，内容为今天的日期"
 ```
 
-### 示例 2: 数学计算
+### 示例 4: 数学计算
 
 ```bash
 python main.py "计算 (100 + 200) * 3 的结果" --show-steps
 ```
 
-### 示例 3: 代码执行
+### 示例 5: 代码执行
 
 ```bash
 python main.py "使用 Python 生成 10 个随机数并保存到 random.txt"
 ```
 
-### 示例 4: 复杂任务
+### 示例 6: 复杂任务
 
 ```bash
 python main.py "帮我创建一个 sort 文件夹，里面写 10 种排序算法的 cpp 代码和 py 代码"
 ```
 
-### 示例 5: 多轮对话 ⭐ 新增
+### 示例 7: 多轮对话 ⭐ 新增
 
 ```bash
 python main.py
