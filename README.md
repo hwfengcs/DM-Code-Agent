@@ -7,10 +7,12 @@
 [![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+**中文** | [English](README_EN.md)
+
 </div>
 
 ## 📖 项目简介
-如果你是一个学习AI Agent的新手，请从我的这个项目开始开发。
+如果你刚刚开始学习AI Agent却无从入手，请从我的这个项目开始学习或者开发你自己Agent应用。
 
 本项目为所有新学习AI Agent的开发者提供了一个上手学习难度极低，但是功能良好的 **ReAct（Reasoning + Acting）智能体**，使用 DeepSeek 大语言模型进行推理，并通过调用本地工具来完成各种任务。智能体可以：
 
