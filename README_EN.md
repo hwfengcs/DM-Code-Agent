@@ -83,7 +83,7 @@ This project provides all new AI Agent developers with an extremely low learning
 
 ```bash
 git clone <repository-url>
-cd deepseek-react-agent
+cd dm-agent
 ```
 
 ### 2. Install Dependencies
@@ -151,9 +151,9 @@ You will see:
 
 ```
 ======================================================================
-              DeepSeek ReAct Agent
+              DM-Agent System
 ======================================================================
-Welcome to the DeepSeek-powered ReAct Agent System!
+Welcome to the Multi-Model ReAct Agent System!
 
 Main Menu:
   1. Execute New Task
@@ -395,19 +395,36 @@ A: The task is too complex and requires more steps. You can increase the maximum
 ## 🔄 Project Structure
 
 ```
-deepseek-react-agent/
-├── main.py                 # Main program entry (Interactive CLI)
-├── deepseek_agent/         # Core agent package
-│   ├── __init__.py        # Package initialization
-│   ├── agent.py           # ReactAgent implementation
-│   ├── client.py          # DeepSeek API client
-│   └── tools.py           # Toolset definitions
-├── requirements.txt        # Python dependencies
-├── .env.example            # Environment variable configuration template
-├── .env                    # Your private configuration (create yourself, not committed)
-├── config.json.example     # Configuration file example
-├── .gitignore             # Git ignore rules
-└── README.md              # Project documentation
+dm-agent/
+├── main.py                     # Main program entry (Interactive CLI)
+├── dm_agent/                   # Core agent package
+│   ├── __init__.py            # Package initialization and public API
+│   ├── core/                  # Core Agent implementation
+│   │   ├── __init__.py
+│   │   └── agent.py          # ReactAgent core logic
+│   ├── clients/               # LLM clients
+│   │   ├── __init__.py
+│   │   ├── base_client.py    # Base client class
+│   │   ├── deepseek_client.py # DeepSeek client
+│   │   ├── openai_client.py   # OpenAI client
+│   │   ├── claude_client.py   # Claude client
+│   │   ├── gemini_client.py   # Gemini client
+│   │   └── llm_factory.py     # Client factory
+│   ├── tools/                 # Toolset
+│   │   ├── __init__.py
+│   │   ├── base.py           # Tool base class
+│   │   ├── file_tools.py     # File operation tools
+│   │   └── execution_tools.py # Code execution tools
+│   └── prompts/               # Prompt management
+│       ├── __init__.py
+│       ├── system_prompts.py  # Prompt building functions
+│       └── code_agent_prompt.md # Prompt template
+├── requirements.txt            # Python dependencies
+├── .env.example                # Environment variable configuration template
+├── .env                        # Your private configuration (create yourself, not committed)
+├── config.json.example         # Configuration file example
+├── .gitignore                 # Git ignore rules
+└── README.md                  # Project documentation
 ```
 
 ## 🤝 Contributing

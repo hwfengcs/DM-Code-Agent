@@ -11,14 +11,13 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
-from deepseek_agent import (
-    PROVIDER_DEFAULTS,
-    DeepSeekError,
+from dm_agent import (
     LLMError,
     ReactAgent,
     Tool,
     create_llm_client,
     default_tools,
+    PROVIDER_DEFAULTS,
 )
 
 # 尝试导入 colorama 用于彩色输出
