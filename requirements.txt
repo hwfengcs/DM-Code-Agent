@@ -1,0 +1,11 @@
+# DeepSeek ReAct 智能体 - Python 依赖包
+
+# HTTP 请求库 - 用于调用 DeepSeek API
+requests>=2.31.0,<3.0.0
+
+# 环境变量管理 - 用于加载 .env 文件中的配置
+python-dotenv>=1.0.0,<2.0.0
+
+# 彩色终端输出（可选但推荐）- 用于美化 CLI 界面
+colorama>=0.4.6,<1.0.0
+

@@ -39,7 +39,7 @@ class Config:
     """运行时配置"""
     api_key: str
     model: str = "deepseek-chat"
-    max_steps: int = 8
+    max_steps: int = 50
     temperature: float = 0.0
     show_steps: bool = False
 
@@ -61,8 +61,8 @@ def parse_args(argv: Any) -> argparse.Namespace:
     parser.add_argument(
         "--max-steps",
         type=int,
-        default=8,
-        help="放弃前的最大推理/工具步骤数（默认：8）。",
+        default=50,
+        help="放弃前的最大推理/工具步骤数（默认：50）。",
     )
     parser.add_argument(
         "--temperature",
