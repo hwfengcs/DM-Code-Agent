@@ -11,6 +11,12 @@ from .file_tools import (
     search_in_file,
 )
 from .execution_tools import run_linter, run_python, run_shell, run_tests
+from .code_analysis_tools import (
+    parse_ast,
+    get_function_signature,
+    find_dependencies,
+    get_code_metrics,
+)
 
 
 def task_complete(arguments: Dict[str, Any]) -> str:
@@ -88,6 +94,34 @@ def default_tools() -> List[Tool]:
                 "\"tool\": optional \"pylint\"|\"flake8\"|\"mypy\"|\"black\" (default 'flake8')}."
             ),
             runner=run_linter,
+        ),
+        Tool(
+            name="parse_ast",
+            description=(
+                "Parse Python file AST to extract structure (functions, classes, imports). Arguments: {\"path\": string}."
+            ),
+            runner=parse_ast,
+        ),
+        Tool(
+            name="get_function_signature",
+            description=(
+                "Get function signature with type hints. Arguments: {\"path\": string, \"function_name\": string}."
+            ),
+            runner=get_function_signature,
+        ),
+        Tool(
+            name="find_dependencies",
+            description=(
+                "Analyze file dependencies (imports). Arguments: {\"path\": string}."
+            ),
+            runner=find_dependencies,
+        ),
+        Tool(
+            name="get_code_metrics",
+            description=(
+                "Get code metrics (lines, functions, classes count). Arguments: {\"path\": string}."
+            ),
+            runner=get_code_metrics,
         ),
         Tool(
             name="task_complete",

@@ -174,8 +174,8 @@ def print_header(text: str) -> None:
 def print_welcome() -> None:
     """打印欢迎界面"""
     print("\n")
-    print_header("DeepSeek ReAct 智能体")
-    print(f"{Fore.YELLOW}欢迎使用 DeepSeek 驱动的 ReAct 智能体系统！{Style.RESET_ALL}")
+    print_header("DM-Code-Agent")
+    print(f"{Fore.YELLOW}欢迎使用 LLM 驱动的 DM-Code-Agent 智能体系统！{Style.RESET_ALL}")
 
     # 显示配置文件状态
     if os.path.exists(CONFIG_FILE):
@@ -417,9 +417,6 @@ def multi_turn_conversation(config: Config, tools: List[Tool]) -> None:
                 print()
                 print_separator("-")
 
-            except DeepSeekError as e:
-                print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
-                print_separator("-")
             except LLMError as e:
                 print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
                 print_separator("-")
@@ -479,9 +476,6 @@ def execute_task(config: Config, tools: List[Tool]) -> None:
         print()
         print_separator("-")
 
-    except DeepSeekError as e:
-        print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
-        print_separator("-")
     except LLMError as e:
         print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
         print_separator("-")
@@ -573,9 +567,6 @@ def run_single_task(config: Config, task: str) -> int:
 
         return 0
 
-    except DeepSeekError as e:
-        print(f"{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}", file=sys.stderr)
-        return 1
     except LLMError as e:
         print(f"{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}", file=sys.stderr)
         return 1
