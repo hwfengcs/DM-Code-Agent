@@ -44,8 +44,9 @@ class ReactAgent:
     def _build_default_system_prompt(self, tools: List[Tool]) -> str:
         tool_lines = "\n".join(f"- {tool.name}: {tool.description}" for tool in tools)
         return (
-            "你是一个谨慎的 AI 工程师，使用 ReAct 模式。\n"
-            "在选择行动之前，你必须明确地进行推理。\n"
+            "你是一个谨慎的 AI 助手，使用 ReAct 模式。\n"
+            "你首先需要判别用户的问题是否需要开启推理模式，如果不需要则直接回答"
+            "在选择开始行动之前，你必须明确地进行推理。\n"
             "可用工具：\n"
             f"{tool_lines}\n\n"
             "当你回应时，输出一个包含 'thought'、'action' 和 'action_input' 键的 JSON 对象。\n"
