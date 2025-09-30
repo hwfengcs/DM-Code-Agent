@@ -72,12 +72,20 @@ pip install -r requirements.txt
 
 ### 3. 配置 API 密钥
 
-创建 `.env` 文件并添加你的 API 密钥：
+复制 `.env.example` 文件并重命名为 `.env`，然后添加你的真实 API 密钥：
 
 ```bash
-# .env 文件
-DEEPSEEK_API_KEY=your_api_key_here
+# 复制示例文件
+cp .env.example .env
+
+# 编辑 .env 文件，将 your_api_key_here 替换为你的真实密钥
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
+**⚠️ 安全提醒**：
+- `.env` 文件包含你的私密 API 密钥，已在 `.gitignore` 中配置，不会被提交到 Git
+- 请勿将 `.env` 文件分享给他人或上传到公共仓库
+- 只有 `.env.example` 文件会被提交到仓库作为配置模板
 
 或者在命令行中设置环境变量：
 
@@ -294,7 +302,9 @@ deepseek-react-agent/
 │   ├── client.py          # DeepSeek API 客户端
 │   └── tools.py           # 工具集定义
 ├── requirements.txt        # Python 依赖
-├── .env                    # 环境变量配置（需自行创建）
+├── .env.example            # 环境变量配置模板
+├── .env                    # 你的私密配置（需自行创建，不会被提交）
+├── config.json.example     # 配置文件示例
 ├── .gitignore             # Git 忽略规则
 └── README.md              # 项目说明文档
 ```
