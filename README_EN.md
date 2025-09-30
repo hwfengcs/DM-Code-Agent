@@ -78,9 +78,10 @@ pip install -r requirements.txt
 ```
 
 **Dependencies**:
-- `requests` - HTTP request library for calling DeepSeek API
+- `requests` - HTTP request library for calling LLM API
 - `python-dotenv` - Environment variable management
 - `colorama` - Colorful terminal output (optional but recommended)
+- `google-generativeai` - Google Gemini official SDK
 
 ### 3. Configure API Key
 
@@ -90,8 +91,18 @@ Copy the `.env.example` file and rename it to `.env`, then add your real API key
 # Copy the example file
 cp .env.example .env
 
-# Edit the .env file, replace your_api_key_here with your actual key
+# Edit the .env file, configure the corresponding key based on the model you're using
+# DeepSeek (default)
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+
+# OpenAI (optional)
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+
+# Claude (optional)
+CLAUDE_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx
+
+# Gemini (optional)
+GEMINI_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 **⚠️ Security Notice**:
@@ -144,8 +155,17 @@ Please select an option (1-5):
 Execute tasks directly from the command line:
 
 ```bash
-# Basic usage
+# Basic usage (using default DeepSeek)
 python main.py "Create a hello.py file that prints hello world"
+
+# Use OpenAI
+python main.py "Your task" --provider openai --model gpt-4
+
+# Use Claude
+python main.py "Your task" --provider claude --model claude-3-5-sonnet-20241022
+
+# Use Gemini
+python main.py "Your task" --provider gemini --model gemini-1.5-flash
 
 # Show detailed steps
 python main.py "Calculate 123 + 456" --show-steps
@@ -201,10 +221,12 @@ Positional Arguments:
 
 Optional Arguments:
   -h, --help           Show help message
-  --api-key KEY        DeepSeek API key
-  --model MODEL        Model name (default: deepseek-chat)
-  --max-steps N        Maximum steps (default: 100) ⭐ Updated
-  --temperature T      Temperature 0.0-2.0 (default: 0.7) ⭐ Updated
+  --api-key KEY        API key
+  --provider PROVIDER  LLM provider (deepseek/openai/claude/gemini, default: deepseek) ⭐ New
+  --model MODEL        Model name (default based on provider)
+  --base-url URL       API base URL (optional, uses provider default) ⭐ New
+  --max-steps N        Maximum steps (default: 100)
+  --temperature T      Temperature 0.0-2.0 (default: 0.7)
   --show-steps         Show execution steps
   --interactive        Force interactive mode
 ```
@@ -227,6 +249,9 @@ View all available tools and their function descriptions.
 
 ### 4️⃣ Configuration Settings ⭐ Enhanced
 Dynamically adjust runtime parameters and optionally save permanently:
+- **LLM Provider** (provider): deepseek/openai/claude/gemini ⭐ New
+- **Model Name** (model): Choose based on provider
+- **Base URL** (base_url): API base URL ⭐ New
 - **Max Steps** (max_steps): 1-200 (default: 100)
 - **Temperature** (temperature): 0.0-2.0 (default: 0.7)
 - **Show Steps** (show_steps): Yes/No
@@ -239,25 +264,34 @@ Safely exit the application.
 ## ⚙️ Configuration Management
 
 ### Default Configuration
+- **LLM Provider**: deepseek
+- **Model**: deepseek-chat
+- **Base URL**: https://api.deepseek.com
 - **Max Steps**: 100
 - **Temperature**: 0.7
 - **Show Steps**: No
 
 ### Persistent Configuration
 1. Start the program and select "Configuration Settings"
-2. Modify parameters as prompted
+2. Modify parameters as prompted (including switching model providers)
 3. Choose `y` to save as permanent configuration
 4. Configuration is saved in the `config.json` file
 
 Configuration file example (`config.json.example`):
 ```json
 {
+  "provider": "deepseek",
   "model": "deepseek-chat",
+  "base_url": "https://api.deepseek.com",
   "max_steps": 100,
   "temperature": 0.7,
   "show_steps": false
 }
 ```
+
+**Note**:
+- Gemini uses the official Google SDK and doesn't need `base_url` configuration
+- Other providers can customize `base_url` as needed (e.g., using a proxy)
 
 **Tip**: `config.json` is added to `.gitignore` and will not be committed to git
 
@@ -288,11 +322,21 @@ The program gracefully handles various errors:
 
 ## ❓ FAQ
 
-**Q: How do I get a DeepSeek API key?**
-A: Visit [DeepSeek Platform](https://platform.deepseek.com/) to register and obtain an API key.
+**Q: How do I get an API key?**
+A: Visit the corresponding platform based on your chosen provider:
+- [DeepSeek Platform](https://platform.deepseek.com/)
+- [OpenAI Platform](https://platform.openai.com/)
+- [Claude Console](https://console.anthropic.com/)
+- [Gemini API Console](https://makersuite.google.com/)
+
+**Q: How do I switch between different models?**
+A: There are three ways:
+1. Command line: `python main.py "task" --provider openai --model gpt-4`
+2. Interactive mode: Select "Configuration Settings" to modify provider and model
+3. Config file: Edit `config.json` to permanently change
 
 **Q: How do I exit interactive mode?**
-A: Select menu option 4, or press Ctrl+C.
+A: Select menu option 5, or press Ctrl+C.
 
 **Q: Are configurations saved?**
 A: Yes! You can now save configurations permanently. Select "Configuration Settings" in the menu, modify parameters, and choose to save. The settings will persist across restarts.
