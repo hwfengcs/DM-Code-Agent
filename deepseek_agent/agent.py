@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .client import DeepSeekClient
 from .tools import Tool
@@ -32,6 +32,7 @@ class ReactAgent:
         max_steps: int = 200,
         temperature: float = 0.0,
         system_prompt: Optional[str] = None,
+        step_callback: Optional[Callable[[int, Step], None]] = None,
     ) -> None:
         if not tools:
             raise ValueError("必须为 ReactAgent 提供至少一个工具。")
@@ -40,6 +41,9 @@ class ReactAgent:
         self.max_steps = max_steps
         self.temperature = temperature
         self.system_prompt = system_prompt or self._build_default_system_prompt(tools)
+        self.step_callback = step_callback
+        # 多轮对话历史记录
+        self.conversation_history: List[Dict[str, str]] = []
 
     def _build_default_system_prompt(self, tools: List[Tool]) -> str:
         tool_lines = "\n".join(f"- {tool.name}: {tool.description}" for tool in tools)
@@ -64,27 +68,36 @@ class ReactAgent:
         steps: List[Step] = []
         limit = max_steps or self.max_steps
 
-        for _ in range(1, limit + 1):
-            prompt = self._build_user_prompt(task, steps)
-            messages = [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt},
-            ]
+        # 添加新任务到对话历史
+        task_prompt = self._build_user_prompt(task, steps)
+        self.conversation_history.append({"role": "user", "content": task_prompt})
+
+        for step_num in range(1, limit + 1):
+            # 构建包含完整对话历史的消息
+            messages = [{"role": "system", "content": self.system_prompt}] + self.conversation_history
 
             raw = self.client.respond(messages, temperature=self.temperature)
+
+            # 将 AI 响应添加到历史记录
+            self.conversation_history.append({"role": "assistant", "content": raw})
             try:
                 parsed = self._parse_agent_response(raw)
             except ValueError as exc:
                 observation = f"解析智能体响应失败：{exc}"
-                steps.append(
-                    Step(
-                        thought="",
-                        action="error",
-                        action_input={},
-                        observation=observation,
-                        raw=raw,
-                    )
+                step = Step(
+                    thought="",
+                    action="error",
+                    action_input={},
+                    observation=observation,
+                    raw=raw,
                 )
+                steps.append(step)
+
+                # 将错误观察添加到历史记录
+                self.conversation_history.append({"role": "user", "content": f"观察：{observation}"})
+
+                if self.step_callback:
+                    self.step_callback(step_num, step)
                 continue
 
             action = parsed.get("action", "").strip()
@@ -93,29 +106,39 @@ class ReactAgent:
 
             if action == "finish":
                 final = self._format_final_answer(action_input)
-                steps.append(
-                    Step(
-                        thought=thought,
-                        action=action,
-                        action_input=action_input,
-                        observation="<finished>",
-                        raw=raw,
-                    )
+                step = Step(
+                    thought=thought,
+                    action=action,
+                    action_input=action_input,
+                    observation="<finished>",
+                    raw=raw,
                 )
+                steps.append(step)
+
+                # 添加完成标记到历史记录
+                self.conversation_history.append({"role": "user", "content": f"任务完成：{final}"})
+
+                if self.step_callback:
+                    self.step_callback(step_num, step)
                 return {"final_answer": final, "steps": [step.__dict__ for step in steps]}
 
             tool = self.tools.get(action)
             if tool is None:
                 observation = f"未知工具 '{action}'。"
-                steps.append(
-                    Step(
-                        thought=thought,
-                        action=action,
-                        action_input=action_input,
-                        observation=observation,
-                        raw=raw,
-                    )
+                step = Step(
+                    thought=thought,
+                    action=action,
+                    action_input=action_input,
+                    observation=observation,
+                    raw=raw,
                 )
+                steps.append(step)
+
+                # 将观察结果添加到历史记录
+                self.conversation_history.append({"role": "user", "content": f"观察：{observation}"})
+
+                if self.step_callback:
+                    self.step_callback(step_num, step)
                 continue
 
             # task_complete 工具可以接受字符串或空参数
@@ -140,19 +163,25 @@ class ReactAgent:
                 except Exception as exc:  # noqa: BLE001 - 将工具错误传递给 LLM
                     observation = f"工具执行失败：{exc}"
 
-            steps.append(
-                Step(
-                    thought=thought,
-                    action=action,
-                    action_input=action_input,
-                    observation=observation,
-                    raw=raw,
-                )
+            step = Step(
+                thought=thought,
+                action=action,
+                action_input=action_input,
+                observation=observation,
+                raw=raw,
             )
+            steps.append(step)
+
+            # 将工具执行结果添加到历史记录
+            tool_info = f"执行工具 {action}，输入：{json.dumps(action_input, ensure_ascii=False)}\n观察：{observation}"
+            self.conversation_history.append({"role": "user", "content": tool_info})
+
+            # 调用回调函数实时输出步骤
+            if self.step_callback:
+                self.step_callback(step_num, step)
 
             # 检查是否调用了 task_complete 工具
             if action == "task_complete" and not observation.startswith("工具执行失败"):
-                print(f"\n调用 {action} 工具，任务全部完成\n")
                 return {
                     "final_answer": observation,
                     "steps": [step.__dict__ for step in steps],
@@ -193,6 +222,14 @@ class ReactAgent:
         if not isinstance(parsed, dict):
             raise ValueError("智能体响应的 JSON 必须是对象。")
         return parsed
+
+    def reset_conversation(self) -> None:
+        """重置对话历史"""
+        self.conversation_history = []
+
+    def get_conversation_history(self) -> List[Dict[str, str]]:
+        """获取对话历史"""
+        return self.conversation_history.copy()
 
     @staticmethod
     def _format_final_answer(action_input: Any) -> str:

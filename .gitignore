@@ -258,5 +258,9 @@ random*.txt
 
 # 配置文件（如果包含敏感信息）
 # config.ini
-# config.json
+config.json
 
+
+# Claude Code文件
+CLAUDE.md
+.claude

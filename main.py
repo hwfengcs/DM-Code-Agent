@@ -39,12 +39,46 @@ class Config:
     """运行时配置"""
     api_key: str
     model: str = "deepseek-chat"
-    max_steps: int = 50
-    temperature: float = 0.0
+    max_steps: int = 100
+    temperature: float = 0.7
     show_steps: bool = False
 
 
+# 配置文件路径
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+
+
+def load_config_from_file() -> Dict[str, Any]:
+    """从配置文件加载设置"""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"{Fore.YELLOW}⚠ 配置文件加载失败：{e}，使用默认设置{Style.RESET_ALL}")
+    return {}
+
+
+def save_config_to_file(config: Config) -> None:
+    """保存配置到文件"""
+    try:
+        config_data = {
+            "model": config.model,
+            "max_steps": config.max_steps,
+            "temperature": config.temperature,
+            "show_steps": config.show_steps,
+        }
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=2, ensure_ascii=False)
+        print(f"{Fore.GREEN}✓ 配置已保存{Style.RESET_ALL}")
+    except Exception as e:
+        print(f"{Fore.RED}✗ 配置保存失败：{e}{Style.RESET_ALL}")
+
+
 def parse_args(argv: Any) -> argparse.Namespace:
+    # 先加载配置文件中的默认值
+    saved_config = load_config_from_file()
+
     parser = argparse.ArgumentParser(description="运行基于 DeepSeek 的 ReAct 智能体来完成任务描述。")
     parser.add_argument("task", nargs="?", help="智能体要完成的自然语言任务。")
     parser.add_argument(
@@ -55,24 +89,25 @@ def parse_args(argv: Any) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default="deepseek-chat",
+        default=saved_config.get("model", "deepseek-chat"),
         help="DeepSeek 模型标识符（默认：deepseek-chat）。",
     )
     parser.add_argument(
         "--max-steps",
         type=int,
-        default=50,
-        help="放弃前的最大推理/工具步骤数（默认：50）。",
+        default=saved_config.get("max_steps", 100),
+        help="放弃前的最大推理/工具步骤数（默认：100）。",
     )
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.0,
-        help="模型的采样温度（默认：0.0）。",
+        default=saved_config.get("temperature", 0.7),
+        help="模型的采样温度（默认：0.7）。",
     )
     parser.add_argument(
         "--show-steps",
         action="store_true",
+        default=saved_config.get("show_steps", False),
         help="打印智能体执行的中间 ReAct 步骤。",
     )
     parser.add_argument(
@@ -100,6 +135,12 @@ def print_welcome() -> None:
     print("\n")
     print_header("DeepSeek ReAct 智能体")
     print(f"{Fore.YELLOW}欢迎使用 DeepSeek 驱动的 ReAct 智能体系统！{Style.RESET_ALL}")
+
+    # 显示配置文件状态
+    if os.path.exists(CONFIG_FILE):
+        print(f"{Fore.GREEN}✓ 已加载配置文件: config.json{Style.RESET_ALL}")
+    else:
+        print(f"{Fore.CYAN}ℹ 使用默认配置 (max_steps=100, temperature=0.7){Style.RESET_ALL}")
     print()
 
 
@@ -107,9 +148,10 @@ def print_menu() -> None:
     """打印主菜单"""
     print(f"\n{Fore.CYAN}{Style.BRIGHT}主菜单：{Style.RESET_ALL}")
     print(f"{Fore.GREEN}  1.{Style.RESET_ALL} 执行新任务")
-    print(f"{Fore.GREEN}  2.{Style.RESET_ALL} 查看可用工具列表")
-    print(f"{Fore.GREEN}  3.{Style.RESET_ALL} 配置设置")
-    print(f"{Fore.GREEN}  4.{Style.RESET_ALL} 退出程序")
+    print(f"{Fore.GREEN}  2.{Style.RESET_ALL} 多轮对话模式")
+    print(f"{Fore.GREEN}  3.{Style.RESET_ALL} 查看可用工具列表")
+    print(f"{Fore.GREEN}  4.{Style.RESET_ALL} 配置设置")
+    print(f"{Fore.GREEN}  5.{Style.RESET_ALL} 退出程序")
     print()
 
 
@@ -138,6 +180,8 @@ def configure_settings(config: Config) -> None:
 
     print(f"{Fore.CYAN}选择要修改的设置（直接回车跳过）：{Style.RESET_ALL}\n")
 
+    config_changed = False
+
     # 修改最大步骤数
     try:
         max_steps_input = input(f"最大步骤数 [{config.max_steps}]: ").strip()
@@ -145,6 +189,7 @@ def configure_settings(config: Config) -> None:
             new_max_steps = int(max_steps_input)
             if new_max_steps > 0:
                 config.max_steps = new_max_steps
+                config_changed = True
                 print(f"{Fore.GREEN}✓ 已更新最大步骤数为 {new_max_steps}{Style.RESET_ALL}")
             else:
                 print(f"{Fore.RED}✗ 最大步骤数必须大于 0{Style.RESET_ALL}")
@@ -158,6 +203,7 @@ def configure_settings(config: Config) -> None:
             new_temp = float(temp_input)
             if 0.0 <= new_temp <= 2.0:
                 config.temperature = new_temp
+                config_changed = True
                 print(f"{Fore.GREEN}✓ 已更新温度为 {new_temp}{Style.RESET_ALL}")
             else:
                 print(f"{Fore.RED}✗ 温度必须在 0.0 到 2.0 之间{Style.RESET_ALL}")
@@ -167,11 +213,22 @@ def configure_settings(config: Config) -> None:
     # 修改显示步骤
     show_steps_input = input(f"显示步骤 (y/n) [{'y' if config.show_steps else 'n'}]: ").strip().lower()
     if show_steps_input in ['y', 'yes', '是']:
-        config.show_steps = True
+        if not config.show_steps:
+            config.show_steps = True
+            config_changed = True
         print(f"{Fore.GREEN}✓ 已启用显示步骤{Style.RESET_ALL}")
     elif show_steps_input in ['n', 'no', '否']:
-        config.show_steps = False
+        if config.show_steps:
+            config.show_steps = False
+            config_changed = True
         print(f"{Fore.GREEN}✓ 已禁用显示步骤{Style.RESET_ALL}")
+
+    # 保存配置
+    if config_changed:
+        print()
+        save_choice = input(f"{Fore.CYAN}是否保存为永久配置？(y/n) [y]: {Style.RESET_ALL}").strip().lower()
+        if save_choice in ['', 'y', 'yes', '是']:
+            save_config_to_file(config)
 
     print_separator("-")
 
@@ -199,6 +256,99 @@ def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
     print_separator("-")
 
 
+def create_step_callback(show_steps: bool):
+    """创建步骤回调函数，用于实时打印 agent 执行状态"""
+    def callback(step_num: int, step: Any) -> None:
+        if show_steps:
+            print(f"\n{Fore.MAGENTA}{Style.BRIGHT}[步骤 {step_num}]{Style.RESET_ALL}")
+            print(f"  {Fore.YELLOW}思考：{Style.RESET_ALL}{step.thought}")
+            print(f"  {Fore.YELLOW}动作：{Style.RESET_ALL}{step.action}")
+            if step.action_input:
+                print(f"  {Fore.YELLOW}输入：{Style.RESET_ALL}{json.dumps(step.action_input, ensure_ascii=False)}")
+            print(f"  {Fore.YELLOW}观察：{Style.RESET_ALL}{step.observation}")
+        else:
+            # 即使不显示详细步骤，也显示简要进度
+            print(f"{Fore.CYAN}[步骤 {step_num}] {step.action}{Style.RESET_ALL}", end=" ", flush=True)
+            if step.action == "finish" or step.action == "task_complete":
+                print(f"{Fore.GREEN}✓{Style.RESET_ALL}")
+            elif step.action == "error":
+                print(f"{Fore.RED}✗{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.GREEN}✓{Style.RESET_ALL}")
+
+    return callback
+
+
+def multi_turn_conversation(config: Config, tools: List[Tool]) -> None:
+    """多轮对话模式"""
+    print_separator("-")
+    print(f"{Fore.CYAN}{Style.BRIGHT}多轮对话模式{Style.RESET_ALL}\n")
+    print(f"{Fore.YELLOW}进入多轮对话模式，智能体会记住之前的所有对话内容{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}输入 'exit' 退出对话模式，输入 'reset' 重置对话历史{Style.RESET_ALL}\n")
+    print_separator("-")
+
+    try:
+        # 创建客户端和智能体
+        client = DeepSeekClient(api_key=config.api_key, model=config.model)
+        step_callback = create_step_callback(config.show_steps)
+
+        agent = ReactAgent(
+            client,
+            tools,
+            max_steps=config.max_steps,
+            temperature=config.temperature,
+            step_callback=step_callback,
+        )
+
+        conversation_count = 0
+
+        while True:
+            print(f"\n{Fore.CYAN}[对话 {conversation_count + 1}]{Style.RESET_ALL}")
+            task = input(f"{Fore.YELLOW}请输入任务（exit 退出，reset 重置历史）：{Style.RESET_ALL}\n> ").strip()
+
+            if not task:
+                print(f"{Fore.RED}✗ 任务描述不能为空{Style.RESET_ALL}")
+                continue
+
+            if task.lower() == "exit":
+                print(f"\n{Fore.YELLOW}退出多轮对话模式{Style.RESET_ALL}")
+                break
+
+            if task.lower() == "reset":
+                agent.reset_conversation()
+                conversation_count = 0
+                print(f"{Fore.GREEN}✓ 对话历史已重置{Style.RESET_ALL}")
+                continue
+
+            try:
+                print(f"\n{Fore.CYAN}正在执行任务...{Style.RESET_ALL}\n")
+                print_separator("-")
+
+                # 执行任务
+                result = agent.run(task)
+                conversation_count += 1
+
+                # 显示最终结果
+                print(f"\n{Fore.GREEN}{Style.BRIGHT}最终答案：{Style.RESET_ALL}\n")
+                print(result.get("final_answer", ""))
+                print()
+                print_separator("-")
+
+            except DeepSeekError as e:
+                print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
+                print_separator("-")
+            except KeyboardInterrupt:
+                print(f"\n\n{Fore.YELLOW}退出多轮对话模式{Style.RESET_ALL}")
+                break
+            except Exception as e:
+                print(f"\n{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}")
+                print_separator("-")
+
+    except Exception as e:
+        print(f"\n{Fore.RED}{Style.BRIGHT}✗ 初始化错误：{Style.RESET_ALL}{e}")
+        print_separator("-")
+
+
 def execute_task(config: Config, tools: List[Tool]) -> None:
     """执行任务"""
     print_separator("-")
@@ -214,11 +364,16 @@ def execute_task(config: Config, tools: List[Tool]) -> None:
     try:
         # 创建客户端和智能体
         client = DeepSeekClient(api_key=config.api_key, model=config.model)
+
+        # 创建步骤回调函数
+        step_callback = create_step_callback(config.show_steps)
+
         agent = ReactAgent(
             client,
             tools,
             max_steps=config.max_steps,
             temperature=config.temperature,
+            step_callback=step_callback,
         )
 
         print(f"\n{Fore.CYAN}正在执行任务...{Style.RESET_ALL}\n")
@@ -227,8 +382,11 @@ def execute_task(config: Config, tools: List[Tool]) -> None:
         # 执行任务
         result = agent.run(task)
 
-        # 显示结果
-        display_result(result, config.show_steps)
+        # 显示最终结果
+        print(f"\n{Fore.GREEN}{Style.BRIGHT}最终答案：{Style.RESET_ALL}\n")
+        print(result.get("final_answer", ""))
+        print()
+        print_separator("-")
 
     except DeepSeekError as e:
         print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
@@ -250,27 +408,31 @@ def interactive_mode(config: Config) -> int:
     while True:
         try:
             print_menu()
-            choice = input(f"{Fore.CYAN}请选择操作 (1-4): {Style.RESET_ALL}").strip()
+            choice = input(f"{Fore.CYAN}请选择操作 (1-5): {Style.RESET_ALL}").strip()
 
             if choice == "1":
                 # 执行新任务
                 execute_task(config, tools)
 
             elif choice == "2":
+                # 多轮对话模式
+                multi_turn_conversation(config, tools)
+
+            elif choice == "3":
                 # 查看工具列表
                 show_tools(tools)
 
-            elif choice == "3":
+            elif choice == "4":
                 # 配置设置
                 configure_settings(config)
 
-            elif choice == "4":
+            elif choice == "5":
                 # 退出程序
                 print(f"\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
                 return 0
 
             else:
-                print(f"{Fore.RED}✗ 无效的选择，请输入 1-4{Style.RESET_ALL}")
+                print(f"{Fore.RED}✗ 无效的选择，请输入 1-5{Style.RESET_ALL}")
 
         except KeyboardInterrupt:
             print(f"\n\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
@@ -287,11 +449,16 @@ def run_single_task(config: Config, task: str) -> int:
     try:
         client = DeepSeekClient(api_key=config.api_key, model=config.model)
         tools = default_tools()
+
+        # 创建步骤回调函数
+        step_callback = create_step_callback(config.show_steps)
+
         agent = ReactAgent(
             client,
             tools,
             max_steps=config.max_steps,
             temperature=config.temperature,
+            step_callback=step_callback,
         )
 
         print(f"\n{Fore.CYAN}正在执行任务：{Style.RESET_ALL}{task}\n")
@@ -299,7 +466,11 @@ def run_single_task(config: Config, task: str) -> int:
 
         result = agent.run(task)
 
-        display_result(result, config.show_steps)
+        # 显示最终结果
+        print(f"\n{Fore.GREEN}{Style.BRIGHT}最终答案：{Style.RESET_ALL}\n")
+        print(result.get("final_answer", ""))
+        print()
+        print_separator()
 
         return 0
 
