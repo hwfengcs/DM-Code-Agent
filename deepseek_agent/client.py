@@ -6,12 +6,14 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from .base_client import BaseLLMClient, LLMError
 
-class DeepSeekError(RuntimeError):
+
+class DeepSeekError(LLMError):
     """当 DeepSeek API 请求失败时抛出。"""
 
 
-class DeepSeekClient:
+class DeepSeekClient(BaseLLMClient):
     """DeepSeek 聊天补全 API 的轻量级封装。"""
 
     def __init__(
@@ -23,13 +25,8 @@ class DeepSeekClient:
         endpoint: str = "/v1/chat/completions",
         timeout: int = 600,
     ) -> None:
-        if not api_key:
-            raise ValueError("DeepSeekClient 需要 API 密钥。")
-        self.api_key = api_key
-        self.model = model
-        self.base_url = base_url.rstrip("/")
+        super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
         self.endpoint = endpoint
-        self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -67,14 +64,7 @@ class DeepSeekClient:
             raise DeepSeekError(message)
         return response.json()
 
-    def respond(self, messages: List[Dict[str, str]], **extra: Any) -> str:
-        """返回补全响应的文本部分。"""
-
-        data = self.complete(messages, **extra)
-        return self.extract_text(data)
-
-    @staticmethod
-    def extract_text(data: Dict[str, Any]) -> str:
+    def extract_text(self, data: Dict[str, Any]) -> str:
         """从各种响应格式中提取助手文本内容。"""
 
         if not isinstance(data, dict):

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Intelligent ReAct (Reasoning + Acting) Agent Based on DeepSeek API**
+**Intelligent ReAct (Reasoning + Acting) Agent Based on Multiple LLM APIs**
 
 [![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -15,7 +15,7 @@
 
 If you're just starting to learn about AI Agents and don't know where to begin, start with this project to learn or develop your own Agent applications.
 
-This project provides all new AI Agent developers with an extremely low learning curve yet fully functional **ReAct (Reasoning + Acting) Agent**, powered by DeepSeek's large language model for reasoning and local tool execution to complete various tasks. The agent can:
+This project provides all new AI Agent developers with an extremely low learning curve yet fully functional **ReAct (Reasoning + Acting) Agent**, supporting multiple large language models (DeepSeek, OpenAI, Claude, Gemini) for reasoning and local tool execution to complete various tasks. The agent can:
 
 - 📁 **File Operations** - Create, read, and list files and directories
 - 🐍 **Python Execution** - Run Python code and scripts
@@ -24,6 +24,13 @@ This project provides all new AI Agent developers with an extremely low learning
 - 🎨 **Interactive Interface** - User-friendly menu-based operation experience
 
 ## ✨ Key Features
+
+### 🤖 Multi-Model Support ⭐ New
+- **DeepSeek** - Default model, cost-effective
+- **OpenAI** - GPT-3.5/GPT-4 series models
+- **Claude** - Anthropic Claude 3.5 series
+- **Gemini** - Google Gemini series
+- Support for custom Base URL and model parameters
 
 ### 🚀 Interactive CLI Interface
 - **Friendly Menu System** - No need to memorize complex commands
@@ -49,7 +56,11 @@ This project provides all new AI Agent developers with an extremely low learning
 ## 📋 Prerequisites
 
 - **Python 3.7+** (Recommended 3.9 or higher)
-- **DeepSeek API Key** - [Get API Key](https://platform.deepseek.com/)
+- **LLM API Key** - Choose based on model:
+  - [DeepSeek API Key](https://platform.deepseek.com/) (default)
+  - [OpenAI API Key](https://platform.openai.com/)
+  - [Claude API Key](https://console.anthropic.com/)
+  - [Gemini API Key](https://makersuite.google.com/app/apikey)
 
 ## 🔧 Installation
 

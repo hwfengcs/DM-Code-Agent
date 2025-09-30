@@ -1,4 +1,4 @@
-﻿"""DeepSeek 驱动的 ReAct 智能体的 CLI 入口点。"""
+﻿"""LLM 驱动的 ReAct 智能体的 CLI 入口点。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,15 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
-from deepseek_agent import DeepSeekClient, DeepSeekError, ReactAgent, Tool, default_tools
+from deepseek_agent import (
+    PROVIDER_DEFAULTS,
+    DeepSeekError,
+    LLMError,
+    ReactAgent,
+    Tool,
+    create_llm_client,
+    default_tools,
+)
 
 # 尝试导入 colorama 用于彩色输出
 try:
@@ -38,7 +46,9 @@ except ImportError:
 class Config:
     """运行时配置"""
     api_key: str
+    provider: str = "deepseek"
     model: str = "deepseek-chat"
+    base_url: str = "https://api.deepseek.com"
     max_steps: int = 100
     temperature: float = 0.7
     show_steps: bool = False
@@ -63,7 +73,9 @@ def save_config_to_file(config: Config) -> None:
     """保存配置到文件"""
     try:
         config_data = {
+            "provider": config.provider,
             "model": config.model,
+            "base_url": config.base_url,
             "max_steps": config.max_steps,
             "temperature": config.temperature,
             "show_steps": config.show_steps,
@@ -75,22 +87,52 @@ def save_config_to_file(config: Config) -> None:
         print(f"{Fore.RED}✗ 配置保存失败：{e}{Style.RESET_ALL}")
 
 
+def get_api_key_for_provider(provider: str) -> str | None:
+    """根据提供商获取对应的 API 密钥"""
+    provider_env_map = {
+        "deepseek": "DEEPSEEK_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "claude": "CLAUDE_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+    }
+    env_var = provider_env_map.get(provider.lower())
+    return os.getenv(env_var) if env_var else None
+
+
 def parse_args(argv: Any) -> argparse.Namespace:
     # 先加载配置文件中的默认值
     saved_config = load_config_from_file()
 
-    parser = argparse.ArgumentParser(description="运行基于 DeepSeek 的 ReAct 智能体来完成任务描述。")
+    parser = argparse.ArgumentParser(description="运行基于 LLM 的 ReAct 智能体来完成任务描述。")
     parser.add_argument("task", nargs="?", help="智能体要完成的自然语言任务。")
+
+    # 获取配置中的提供商或默认值
+    default_provider = saved_config.get("provider", "deepseek")
+
+    # 根据提供商获取对应的 API 密钥
+    default_api_key = get_api_key_for_provider(default_provider)
+
     parser.add_argument(
         "--api-key",
         dest="api_key",
-        default=os.getenv("DEEPSEEK_API_KEY"),
-        help="DeepSeek API 密钥（默认使用环境变量 DEEPSEEK_API_KEY）。",
+        default=default_api_key,
+        help="API 密钥（默认使用环境变量）。",
+    )
+    parser.add_argument(
+        "--provider",
+        default=saved_config.get("provider", "deepseek"),
+        help="LLM 提供商 (deepseek/openai/claude/gemini，默认：deepseek)。",
     )
     parser.add_argument(
         "--model",
         default=saved_config.get("model", "deepseek-chat"),
-        help="DeepSeek 模型标识符（默认：deepseek-chat）。",
+        help="模型标识符（默认根据提供商选择）。",
+    )
+    parser.add_argument(
+        "--base-url",
+        dest="base_url",
+        default=saved_config.get("base_url"),
+        help="API 基础 URL（可选，使用提供商默认值）。",
     )
     parser.add_argument(
         "--max-steps",
@@ -172,7 +214,9 @@ def configure_settings(config: Config) -> None:
     """配置设置"""
     print_separator("-")
     print(f"{Fore.CYAN}{Style.BRIGHT}当前配置：{Style.RESET_ALL}\n")
+    print(f"  提供商：{Fore.YELLOW}{config.provider}{Style.RESET_ALL}")
     print(f"  模型：{Fore.YELLOW}{config.model}{Style.RESET_ALL}")
+    print(f"  Base URL：{Fore.YELLOW}{config.base_url}{Style.RESET_ALL}")
     print(f"  最大步骤数：{Fore.YELLOW}{config.max_steps}{Style.RESET_ALL}")
     print(f"  温度：{Fore.YELLOW}{config.temperature}{Style.RESET_ALL}")
     print(f"  显示步骤：{Fore.YELLOW}{'是' if config.show_steps else '否'}{Style.RESET_ALL}")
@@ -181,6 +225,41 @@ def configure_settings(config: Config) -> None:
     print(f"{Fore.CYAN}选择要修改的设置（直接回车跳过）：{Style.RESET_ALL}\n")
 
     config_changed = False
+
+    # 修改提供商
+    provider_input = input(f"LLM 提供商 (deepseek/openai/claude/gemini) [{config.provider}]: ").strip().lower()
+    if provider_input and provider_input in ["deepseek", "openai", "claude", "gemini"]:
+        if provider_input != config.provider:
+            # 尝试获取新提供商的 API 密钥
+            new_api_key = get_api_key_for_provider(provider_input)
+            if not new_api_key:
+                print(f"{Fore.RED}✗ 未找到 {provider_input.upper()}_API_KEY 环境变量{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}请在 .env 文件中配置 {provider_input.upper()}_API_KEY{Style.RESET_ALL}")
+            else:
+                config.provider = provider_input
+                config.api_key = new_api_key  # 更新 API 密钥
+                # 自动更新默认模型和 base_url
+                defaults = PROVIDER_DEFAULTS.get(provider_input, {})
+                config.model = defaults.get("model", config.model)
+                config.base_url = defaults.get("base_url", config.base_url)
+                config_changed = True
+                print(f"{Fore.GREEN}✓ 已更新提供商为 {provider_input}，模型和 URL 已自动调整{Style.RESET_ALL}")
+    elif provider_input and provider_input not in ["deepseek", "openai", "claude", "gemini"]:
+        print(f"{Fore.RED}✗ 无效的提供商{Style.RESET_ALL}")
+
+    # 修改模型
+    model_input = input(f"模型名称 [{config.model}]: ").strip()
+    if model_input:
+        config.model = model_input
+        config_changed = True
+        print(f"{Fore.GREEN}✓ 已更新模型为 {model_input}{Style.RESET_ALL}")
+
+    # 修改 Base URL
+    base_url_input = input(f"Base URL [{config.base_url}]: ").strip()
+    if base_url_input:
+        config.base_url = base_url_input
+        config_changed = True
+        print(f"{Fore.GREEN}✓ 已更新 Base URL 为 {base_url_input}{Style.RESET_ALL}")
 
     # 修改最大步骤数
     try:
@@ -289,7 +368,12 @@ def multi_turn_conversation(config: Config, tools: List[Tool]) -> None:
 
     try:
         # 创建客户端和智能体
-        client = DeepSeekClient(api_key=config.api_key, model=config.model)
+        client = create_llm_client(
+            provider=config.provider,
+            api_key=config.api_key,
+            model=config.model,
+            base_url=config.base_url,
+        )
         step_callback = create_step_callback(config.show_steps)
 
         agent = ReactAgent(
@@ -337,6 +421,9 @@ def multi_turn_conversation(config: Config, tools: List[Tool]) -> None:
             except DeepSeekError as e:
                 print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
                 print_separator("-")
+            except LLMError as e:
+                print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
+                print_separator("-")
             except KeyboardInterrupt:
                 print(f"\n\n{Fore.YELLOW}退出多轮对话模式{Style.RESET_ALL}")
                 break
@@ -363,7 +450,12 @@ def execute_task(config: Config, tools: List[Tool]) -> None:
 
     try:
         # 创建客户端和智能体
-        client = DeepSeekClient(api_key=config.api_key, model=config.model)
+        client = create_llm_client(
+            provider=config.provider,
+            api_key=config.api_key,
+            model=config.model,
+            base_url=config.base_url,
+        )
 
         # 创建步骤回调函数
         step_callback = create_step_callback(config.show_steps)
@@ -389,6 +481,9 @@ def execute_task(config: Config, tools: List[Tool]) -> None:
         print_separator("-")
 
     except DeepSeekError as e:
+        print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
+        print_separator("-")
+    except LLMError as e:
         print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
         print_separator("-")
     except KeyboardInterrupt:
@@ -447,7 +542,12 @@ def interactive_mode(config: Config) -> int:
 def run_single_task(config: Config, task: str) -> int:
     """运行单个任务（命令行模式）"""
     try:
-        client = DeepSeekClient(api_key=config.api_key, model=config.model)
+        client = create_llm_client(
+            provider=config.provider,
+            api_key=config.api_key,
+            model=config.model,
+            base_url=config.base_url,
+        )
         tools = default_tools()
 
         # 创建步骤回调函数
@@ -477,6 +577,9 @@ def run_single_task(config: Config, task: str) -> int:
     except DeepSeekError as e:
         print(f"{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}", file=sys.stderr)
         return 1
+    except LLMError as e:
+        print(f"{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}", file=sys.stderr)
         return 1
@@ -487,16 +590,33 @@ def main(argv: Any = None) -> int:
     load_dotenv()
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
+    # 如果没有提供 API 密钥，尝试根据提供商获取
+    if not args.api_key:
+        args.api_key = get_api_key_for_provider(args.provider)
+
     # 检查 API 密钥
     if not args.api_key:
-        print(f"{Fore.RED}✗ 缺少 DeepSeek API 密钥。{Style.RESET_ALL}", file=sys.stderr)
-        print("请提供 --api-key 或设置 DEEPSEEK_API_KEY 环境变量。", file=sys.stderr)
+        print(f"{Fore.RED}✗ 缺少 API 密钥。{Style.RESET_ALL}", file=sys.stderr)
+        print(f"请提供 --api-key 或设置环境变量 {args.provider.upper()}_API_KEY。", file=sys.stderr)
         return 2
+
+    # 获取提供商的默认配置
+    provider_defaults = PROVIDER_DEFAULTS.get(args.provider, {})
+
+    # 如果没有指定 base_url，使用提供商默认值
+    if not args.base_url:
+        args.base_url = provider_defaults.get("base_url", "https://api.deepseek.com")
+
+    # 如果模型是默认的 deepseek-chat 但提供商不是 deepseek，更新模型
+    if args.model == "deepseek-chat" and args.provider != "deepseek":
+        args.model = provider_defaults.get("model", args.model)
 
     # 创建配置
     config = Config(
         api_key=args.api_key,
+        provider=args.provider,
         model=args.model,
+        base_url=args.base_url,
         max_steps=args.max_steps,
         temperature=args.temperature,
         show_steps=args.show_steps,

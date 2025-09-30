@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**基于 DeepSeek API 的智能 ReAct（推理 + 行动）智能体**
+**基于多种 LLM API 的智能 ReAct（推理 + 行动）智能体**
 
 [![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -14,7 +14,7 @@
 ## 📖 项目简介
 如果你刚刚开始学习AI Agent却无从入手，请从我的这个项目开始学习或者开发你自己Agent应用。
 
-本项目为所有新学习AI Agent的开发者提供了一个上手学习难度极低，但是功能良好的 **ReAct（Reasoning + Acting）智能体**，使用 DeepSeek 大语言模型进行推理，并通过调用本地工具来完成各种任务。智能体可以：
+本项目为所有新学习AI Agent的开发者提供了一个上手学习难度极低，但是功能良好的 **ReAct（Reasoning + Acting）智能体**，支持多种大语言模型（DeepSeek、OpenAI、Claude、Gemini）进行推理，并通过调用本地工具来完成各种任务。智能体可以：
 
 - 📁 **文件操作** - 创建、读取、列出文件和目录
 - 🐍 **Python 执行** - 运行 Python 代码和脚本
@@ -23,6 +23,13 @@
 - 🎨 **交互式界面** - 友好的菜单式操作体验
 
 ## ✨ 主要特性
+
+### 🤖 多模型支持 ⭐ 新增
+- **DeepSeek** - 默认模型，性价比高
+- **OpenAI** - GPT-3.5/GPT-4 系列模型
+- **Claude** - Anthropic Claude 3.5 系列
+- **Gemini** - Google Gemini 系列
+- 支持自定义 Base URL 和模型参数
 
 ### 🚀 交互式 CLI 界面
 - **友好的菜单系统** - 无需记忆复杂命令
@@ -48,7 +55,11 @@
 ## 📋 前置要求
 
 - **Python 3.7+** （推荐 3.9 或更高版本）
-- **DeepSeek API 密钥** - [获取 API 密钥](https://platform.deepseek.com/)
+- **LLM API 密钥** - 根据使用的模型选择：
+  - [DeepSeek API 密钥](https://platform.deepseek.com/)（默认）
+  - [OpenAI API 密钥](https://platform.openai.com/)
+  - [Claude API 密钥](https://console.anthropic.com/)
+  - [Gemini API 密钥](https://makersuite.google.com/app/apikey)
 
 ## 🔧 安装步骤
 
@@ -66,9 +77,10 @@ pip install -r requirements.txt
 ```
 
 **依赖包说明**：
-- `requests` - HTTP 请求库，用于调用 DeepSeek API
+- `requests` - HTTP 请求库，用于调用 LLM API
 - `python-dotenv` - 环境变量管理
 - `colorama` - 彩色终端输出（可选但推荐）
+- `google-generativeai` - Google Gemini 官方 SDK
 
 ### 3. 配置 API 密钥
 
@@ -78,8 +90,18 @@ pip install -r requirements.txt
 # 复制示例文件
 cp .env.example .env
 
-# 编辑 .env 文件，将 your_api_key_here 替换为你的真实密钥
+# 编辑 .env 文件，根据使用的模型配置对应的密钥
+# DeepSeek（默认）
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+
+# OpenAI（可选）
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+
+# Claude（可选）
+CLAUDE_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx
+
+# Gemini（可选）
+GEMINI_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 **⚠️ 安全提醒**：
@@ -132,8 +154,17 @@ python main.py
 直接在命令行中执行任务：
 
 ```bash
-# 基本用法
+# 基本用法（使用默认的 DeepSeek）
 python main.py "创建一个打印 hello world 的 hello.py 文件"
+
+# 使用 OpenAI
+python main.py "你的任务" --provider openai --model gpt-4
+
+# 使用 Claude
+python main.py "你的任务" --provider claude --model claude-3-5-sonnet-20241022
+
+# 使用 Gemini
+python main.py "你的任务" --provider gemini --model gemini-1.5-flash
 
 # 显示详细步骤
 python main.py "计算 123 + 456" --show-steps
@@ -189,15 +220,26 @@ python main.py [任务] [选项]
 
 可选参数:
   -h, --help           显示帮助信息
-  --api-key KEY        DeepSeek API 密钥
-  --model MODEL        模型名称（默认: deepseek-chat）
-  --max-steps N        最大步骤数（默认: 100）⭐ 已更新
-  --temperature T      温度 0.0-2.0（默认: 0.7）⭐ 已更新
+  --api-key KEY        API 密钥
+  --provider PROVIDER  LLM 提供商（deepseek/openai/claude/gemini，默认：deepseek）⭐ 新增
+  --model MODEL        模型名称（默认根据提供商自动选择）
+  --base-url URL       API 基础 URL（可选，使用提供商默认值）⭐ 新增
+  --max-steps N        最大步骤数（默认: 100）
+  --temperature T      温度 0.0-2.0（默认: 0.7）
   --show-steps         显示执行步骤
   --interactive        强制进入交互模式
 ```
 
 **注意**: 默认值可通过 `config.json` 永久修改
+
+## 🎯 支持的模型
+
+| 提供商 | 默认模型 | Base URL | 获取密钥 |
+|--------|----------|----------|----------|
+| **DeepSeek** | deepseek-chat | https://api.deepseek.com | [获取](https://platform.deepseek.com/) |
+| **OpenAI** | gpt-3.5-turbo | https://api.openai.com | [获取](https://platform.openai.com/) |
+| **Claude** | claude-3-5-sonnet-20241022 | https://api.anthropic.com | [获取](https://console.anthropic.com/) |
+| **Gemini** | gemini-2.0-flash-exp | 使用官方 SDK | [获取](https://makersuite.google.com/) |
 
 ## 🎨 交互式菜单功能
 
@@ -215,6 +257,9 @@ python main.py [任务] [选项]
 
 ### 4️⃣ 配置设置 ⭐ 已增强
 动态调整运行参数并可选择永久保存：
+- **LLM 提供商** (provider): deepseek/openai/claude/gemini ⭐ 新增
+- **模型名称** (model): 根据提供商选择
+- **Base URL** (base_url): API 基础 URL ⭐ 新增
 - **最大步骤数** (max_steps): 1-200（默认：100）
 - **温度** (temperature): 0.0-2.0（默认：0.7）
 - **显示步骤** (show_steps): 是/否
@@ -227,25 +272,34 @@ python main.py [任务] [选项]
 ## ⚙️ 配置管理
 
 ### 默认配置
+- **LLM 提供商**: deepseek
+- **模型**: deepseek-chat
+- **Base URL**: https://api.deepseek.com
 - **最大步骤数**: 100
 - **温度**: 0.7
 - **显示步骤**: 否
 
 ### 持久化配置
 1. 启动程序并选择"配置设置"
-2. 按提示修改参数
+2. 按提示修改参数（包括切换模型提供商）
 3. 选择 `y` 保存为永久配置
 4. 配置保存在 `config.json` 文件中
 
 配置文件示例 (`config.json.example`)：
 ```json
 {
+  "provider": "deepseek",
   "model": "deepseek-chat",
+  "base_url": "https://api.deepseek.com",
   "max_steps": 100,
   "temperature": 0.7,
   "show_steps": false
 }
 ```
+
+**注意**：
+- Gemini 使用官方 Google SDK，不需要配置 `base_url`
+- 其他提供商可以根据需要自定义 `base_url`（例如使用代理）
 
 **提示**: `config.json` 已添加到 `.gitignore`，不会被提交到 git
 
@@ -276,8 +330,18 @@ python main.py [任务] [选项]
 
 ## ❓ 常见问题
 
-**Q: 如何获取 DeepSeek API 密钥？**
-A: 访问 [DeepSeek 平台](https://platform.deepseek.com/) 注册并获取 API 密钥。
+**Q: 如何获取 API 密钥？**
+A: 根据你选择的提供商访问对应平台：
+- [DeepSeek 平台](https://platform.deepseek.com/)
+- [OpenAI 平台](https://platform.openai.com/)
+- [Claude 控制台](https://console.anthropic.com/)
+- [Gemini API 控制台](https://makersuite.google.com/)
+
+**Q: 如何切换不同的模型？**
+A: 有三种方式：
+1. 命令行：`python main.py "任务" --provider openai --model gpt-4`
+2. 交互模式：选择"配置设置"修改提供商和模型
+3. 配置文件：编辑 `config.json` 永久更改
 
 **Q: 如何退出交互模式？**
 A: 选择菜单选项 4，或按 Ctrl+C。
@@ -324,4 +388,4 @@ deepseek-react-agent/
 
 ---
 
-**学习AI Agent吧！** 🚀
+**一起学习AI Agent吧！** 🚀

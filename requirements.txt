@@ -9,3 +9,11 @@ python-dotenv>=1.0.0,<2.0.0
 # 彩色终端输出（可选但推荐）- 用于美化 CLI 界面
 colorama>=0.4.6,<1.0.0
 
+# OpenAI 官方 SDK - 用于调用 OpenAI API
+openai>=1.0.0
+
+# Anthropic 官方 SDK - 用于调用 Claude API
+anthropic>=0.18.0
+
+# Google Generative AI SDK - 用于调用 Gemini API
+google-genai
