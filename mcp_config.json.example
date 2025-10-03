@@ -1,0 +1,49 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ],
+      "enabled": true
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "env": {
+        "UPSTASH_API_KEY": "your_upstash_api_key_here"
+      },
+      "enabled": true
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem@latest"
+      ],
+      "enabled": false
+    },
+    "sqlite": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite@latest"
+      ],
+      "enabled": false
+    },
+    "example-server": {
+      "command": "node",
+      "args": [
+        "/path/to/your/mcp-server.js"
+      ],
+      "env": {
+        "API_KEY": "your_api_key_here",
+        "DEBUG": "true"
+      },
+      "enabled": false
+    }
+  }
+}

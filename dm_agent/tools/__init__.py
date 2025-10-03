@@ -1,6 +1,6 @@
 """工具模块 - 提供智能体可用的各类工具"""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .base import Tool
 from .file_tools import (
@@ -27,9 +27,17 @@ def task_complete(arguments: Dict[str, Any]) -> str:
     return "任务已完成。"
 
 
-def default_tools() -> List[Tool]:
-    """返回默认工具集"""
-    return [
+def default_tools(include_mcp: bool = True, mcp_tools: Optional[List[Tool]] = None) -> List[Tool]:
+    """返回默认工具集
+
+    Args:
+        include_mcp: 是否包含 MCP 工具
+        mcp_tools: MCP 工具列表（可选）
+
+    Returns:
+        工具列表
+    """
+    tools = [
         Tool(
             name="list_directory",
             description=(
@@ -129,6 +137,12 @@ def default_tools() -> List[Tool]:
             runner=task_complete,
         ),
     ]
+
+    # 添加 MCP 工具
+    if include_mcp and mcp_tools:
+        tools.extend(mcp_tools)
+
+    return tools
 
 
 __all__ = [

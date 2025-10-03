@@ -19,6 +19,7 @@ from dm_agent import (
     default_tools,
     PROVIDER_DEFAULTS,
 )
+from dm_agent.mcp import MCPManager, load_mcp_config
 
 # 尝试导入 colorama 用于彩色输出
 try:
@@ -491,57 +492,93 @@ def interactive_mode(config: Config) -> int:
     """交互式菜单模式"""
     print_welcome()
 
-    tools = default_tools()
+    # 初始化 MCP 管理器
+    mcp_config = load_mcp_config()
+    mcp_manager = MCPManager(mcp_config)
 
-    while True:
-        try:
-            print_menu()
-            choice = input(f"{Fore.CYAN}请选择操作 (1-5): {Style.RESET_ALL}").strip()
+    # 启动所有启用的 MCP 服务器
+    print(f"{Fore.CYAN}正在加载 MCP 服务器...{Style.RESET_ALL}")
+    started_count = mcp_manager.start_all()
+    if started_count > 0:
+        print(f"{Fore.GREEN}✓ 成功启动 {started_count} 个 MCP 服务器{Style.RESET_ALL}")
+    else:
+        print(f"{Fore.YELLOW}ℹ 未启用 MCP 服务器{Style.RESET_ALL}")
 
-            if choice == "1":
-                # 执行新任务
-                execute_task(config, tools)
+    # 获取包含 MCP 工具的工具列表
+    mcp_tools = mcp_manager.get_tools()
+    tools = default_tools(include_mcp=True, mcp_tools=mcp_tools)
 
-            elif choice == "2":
-                # 多轮对话模式
-                multi_turn_conversation(config, tools)
+    if mcp_tools:
+        print(f"{Fore.GREEN}✓ 加载了 {len(mcp_tools)} 个 MCP 工具{Style.RESET_ALL}")
 
-            elif choice == "3":
-                # 查看工具列表
-                show_tools(tools)
+    try:
+        while True:
+            try:
+                print_menu()
+                choice = input(f"{Fore.CYAN}请选择操作 (1-5): {Style.RESET_ALL}").strip()
 
-            elif choice == "4":
-                # 配置设置
-                configure_settings(config)
+                if choice == "1":
+                    # 执行新任务
+                    execute_task(config, tools)
 
-            elif choice == "5":
-                # 退出程序
-                print(f"\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
+                elif choice == "2":
+                    # 多轮对话模式
+                    multi_turn_conversation(config, tools)
+
+                elif choice == "3":
+                    # 查看工具列表
+                    show_tools(tools)
+
+                elif choice == "4":
+                    # 配置设置
+                    configure_settings(config)
+
+                elif choice == "5":
+                    # 退出程序
+                    print(f"\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
+                    return 0
+
+                else:
+                    print(f"{Fore.RED}✗ 无效的选择，请输入 1-5{Style.RESET_ALL}")
+
+            except KeyboardInterrupt:
+                print(f"\n\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
                 return 0
+            except EOFError:
+                print(f"\n\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
+                return 0
+            except Exception as e:
+                print(f"\n{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}\n")
 
-            else:
-                print(f"{Fore.RED}✗ 无效的选择，请输入 1-5{Style.RESET_ALL}")
-
-        except KeyboardInterrupt:
-            print(f"\n\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
-            return 0
-        except EOFError:
-            print(f"\n\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
-            return 0
-        except Exception as e:
-            print(f"\n{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}\n")
+    finally:
+        # 清理 MCP 资源
+        print(f"{Fore.CYAN}正在关闭 MCP 服务器...{Style.RESET_ALL}")
+        mcp_manager.stop_all()
+        print(f"{Fore.GREEN}✓ MCP 服务器已关闭{Style.RESET_ALL}")
 
 
 def run_single_task(config: Config, task: str) -> int:
     """运行单个任务（命令行模式）"""
+    # 初始化 MCP
+    mcp_config = load_mcp_config()
+    mcp_manager = MCPManager(mcp_config)
+
     try:
+        # 启动 MCP 服务器
+        started_count = mcp_manager.start_all()
+        if started_count > 0:
+            print(f"{Fore.GREEN}✓ 启动了 {started_count} 个 MCP 服务器{Style.RESET_ALL}")
+
+        # 获取工具
+        mcp_tools = mcp_manager.get_tools()
+        tools = default_tools(include_mcp=True, mcp_tools=mcp_tools)
+
         client = create_llm_client(
             provider=config.provider,
             api_key=config.api_key,
             model=config.model,
             base_url=config.base_url,
         )
-        tools = default_tools()
 
         # 创建步骤回调函数
         step_callback = create_step_callback(config.show_steps)
@@ -573,6 +610,9 @@ def run_single_task(config: Config, task: str) -> int:
     except Exception as e:
         print(f"{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}", file=sys.stderr)
         return 1
+    finally:
+        # 清理 MCP 资源
+        mcp_manager.stop_all()
 
 
 def main(argv: Any = None) -> int:

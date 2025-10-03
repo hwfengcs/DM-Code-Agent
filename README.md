@@ -16,10 +16,11 @@
 
 本项目为所有新学习AI Agent的开发者提供了一个上手学习难度极低，但是功能强大的 **Code Agent（代码智能体）**，基于 ReAct（Reasoning + Acting）架构，支持多种大语言模型（DeepSeek、OpenAI、Claude、Gemini）进行推理，专注于软件开发和代码相关任务。智能体可以：
 
-### 🎯 核心能力 ⭐ v1.1.0 新增
-- 📋 **任务规划** - 执行前生成结构化计划，减少无效操作 30-50% ⭐ 新增
-- 🧠 **代码分析** - 解析 AST、提取函数签名、分析依赖关系 ⭐ 新增
-- 🗜️ **上下文压缩** - 自动压缩对话历史，支持长对话不超限 ⭐ 新增
+### 🎯 核心能力
+- 📋 **任务规划** - 执行前生成结构化计划，减少无效操作 30-50% (v1.1.0)
+- 🧠 **代码分析** - 解析 AST、提取函数签名、分析依赖关系 (v1.1.0)
+- 🗜️ **上下文压缩** - 自动压缩对话历史，支持长对话不超限 (v1.1.0)
+- 🔌 **MCP 协议支持** - 接入任意 MCP 工具，无限扩展能力 (v1.2.0) ⭐ 新增
 
 ### 🛠️ 工具能力
 - 📝 **代码编辑** - 精确编辑文件指定行，支持插入/替换/删除
@@ -53,6 +54,15 @@
 - **节省 Token** - 减少 20-30% token 消耗，支持更长的对话
 - **无缝集成** - 全自动，无需手动干预
 
+#### 🔌 MCP 协议集成（Model Context Protocol）⭐ v1.2.0 新增
+- **零代码扩展** - 通过配置文件接入任意 MCP 工具，无需修改代码
+- **预置 Playwright** - 内置浏览器自动化能力（导航、截图、点击、填表）
+- **预置 Context7** - 智能上下文管理和语义搜索
+- **统一工具接口** - MCP 工具自动包装为标准 Tool 对象
+- **生命周期管理** - 自动启动和停止 MCP 服务器进程
+- **常见 MCP 支持** - Playwright、Context7、Filesystem、SQLite 等
+- **详细文档** - 参见 [MCP_GUIDE.md](MCP_GUIDE.md) 获取完整接入指南
+
 ### 🤖 多模型支持
 - **DeepSeek** - 默认模型，性价比高
 - **OpenAI** - GPT-3.5/GPT-4 系列模型
@@ -68,7 +78,12 @@
 
 ### 🛠️ 强大的 Code Agent 工具集
 
-**代码分析工具** ⭐ v1.1.0 新增
+**MCP 工具** ⭐ v1.2.0 新增
+- `mcp_playwright_*` - 浏览器自动化工具（导航、截图、点击、表单）
+- `mcp_context7_*` - 智能上下文管理工具（存储、检索、搜索）
+- 支持动态加载任意 MCP 工具
+
+**代码分析工具** (v1.1.0)
 - `parse_ast` - 解析 Python 文件 AST 结构
 - `get_function_signature` - 提取函数签名和类型
 - `find_dependencies` - 分析文件依赖关系
@@ -262,6 +277,40 @@ python main.py "统计 src 目录下所有 Python 文件的代码行数"
 🗜️ 压缩对话历史以节省 token...
    压缩率：62.5%，节省 10 条消息
 ```
+
+### 示例 0.5: MCP 工具使用 ⭐ v1.2.0
+
+#### Playwright MCP 示例（浏览器自动化）
+```bash
+# 打开网页并截图
+python main.py "打开 https://www.example.com 并截图保存为 example.png"
+
+# 自动化表单填写
+python main.py "打开 https://example.com/login，在用户名框输入 'testuser'，密码框输入 'password123'，然后点击登录"
+
+# 网页数据提取
+python main.py "访问 https://news.ycombinator.com 并提取前 10 条新闻标题"
+```
+
+#### Context7 MCP 示例（上下文管理）
+```bash
+# 存储上下文
+python main.py "将当前项目的架构信息存储到 Context7"
+
+# 语义搜索
+python main.py "在 Context7 中搜索与数据库相关的上下文"
+
+# 关联上下文
+python main.py "获取与当前任务相关的历史上下文"
+```
+
+#### 接入新的 MCP 工具
+只需 3 步，无需代码：
+1. 编辑 `mcp_config.json` 添加配置
+2. 重启系统
+3. 工具自动可用
+
+详见：[MCP_GUIDE.md](MCP_GUIDE.md)
 
 ### 示例 1: 代码编辑
 ```bash

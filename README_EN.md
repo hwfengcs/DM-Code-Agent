@@ -17,10 +17,11 @@ If you're just starting to learn about AI Agents and don't know where to begin, 
 
 This project provides all new AI Agent developers with an extremely low learning curve yet powerful **Code Agent**, based on the ReAct (Reasoning + Acting) architecture, supporting multiple large language models (DeepSeek, OpenAI, Claude, Gemini) for reasoning, and focused on software development and code-related tasks. The agent can:
 
-### 🎯 Core Capabilities ⭐ v1.1.0 New
-- 📋 **Task Planning** - Generate structured plans before execution, reduce ineffective operations by 30-50% ⭐ New
-- 🧠 **Code Analysis** - Parse AST, extract function signatures, analyze dependencies ⭐ New
-- 🗜️ **Context Compression** - Auto-compress conversation history, support long conversations without token overflow ⭐ New
+### 🎯 Core Capabilities ⭐ v1.2.0 New
+- 📋 **Task Planning** - Generate structured plans before execution, reduce ineffective operations by 30-50% (v1.1.0)
+- 🧠 **Code Analysis** - Parse AST, extract function signatures, analyze dependencies (v1.1.0)
+- 🗜️ **Context Compression** - Auto-compress conversation history, support long conversations without token overflow (v1.1.0)
+- 🔌 **MCP Protocol Support** - Integrate any MCP tools, unlimited extensibility (v1.2.0) ⭐ New
 
 ### 🛠️ Tool Capabilities
 - 📝 **Code Editing** - Precisely edit specific file lines with insert/replace/delete
@@ -54,6 +55,15 @@ This project provides all new AI Agent developers with an extremely low learning
 - **Save Tokens** - Reduce 20-30% token consumption, support longer conversations
 - **Seamless Integration** - Fully automatic, no manual intervention needed
 
+#### 🔌 MCP Protocol Integration (Model Context Protocol) ⭐ v1.2.0 New
+- **Zero-Code Extension** - Integrate any MCP tools via config file, no code changes needed
+- **Pre-installed Playwright** - Built-in browser automation (navigate, screenshot, click, fill forms)
+- **Pre-installed Context7** - Intelligent context management and semantic search
+- **Unified Tool Interface** - MCP tools auto-wrapped as standard Tool objects
+- **Lifecycle Management** - Auto-start and stop MCP server processes
+- **Common MCP Support** - Playwright, Context7, Filesystem, SQLite, etc.
+- **Detailed Documentation** - See [MCP_GUIDE.md](MCP_GUIDE.md) for complete integration guide
+
 ### 🤖 Multi-Model Support
 - **DeepSeek** - Default model, cost-effective
 - **OpenAI** - GPT-3.5/GPT-4 series models
@@ -69,7 +79,12 @@ This project provides all new AI Agent developers with an extremely low learning
 
 ### 🛠️ Powerful Code Agent Toolset
 
-**Code Analysis Tools** ⭐ v1.1.0 New
+**MCP Tools** ⭐ v1.2.0 New
+- `mcp_playwright_*` - Browser automation tools (navigate, screenshot, click, forms)
+- `mcp_context7_*` - Intelligent context management tools (store, retrieve, search)
+- Support dynamic loading of any MCP tools
+
+**Code Analysis Tools** (v1.1.0)
 - `parse_ast` - Parse Python file AST structure
 - `get_function_signature` - Extract function signature and types
 - `find_dependencies` - Analyze file dependencies
@@ -263,6 +278,40 @@ In multi-turn conversation mode, auto-compress every 5 turns:
 🗜️ Compressing conversation history to save tokens...
    Compression ratio: 62.5%, saved 10 messages
 ```
+
+### Example 0.5: MCP Tools Usage ⭐ v1.2.0
+
+#### Playwright MCP Example (Browser Automation)
+```bash
+# Open webpage and take screenshot
+python main.py "Open https://www.example.com and save screenshot as example.png"
+
+# Automate form filling
+python main.py "Open https://example.com/login, enter 'testuser' in username field, 'password123' in password field, then click login"
+
+# Extract webpage data
+python main.py "Visit https://news.ycombinator.com and extract the top 10 news headlines"
+```
+
+#### Context7 MCP Example (Context Management)
+```bash
+# Store context
+python main.py "Store the current project architecture information in Context7"
+
+# Semantic search
+python main.py "Search for database-related contexts in Context7"
+
+# Related context
+python main.py "Get historical contexts related to the current task"
+```
+
+#### Integrate New MCP Tools
+Only 3 steps, no code needed:
+1. Edit `mcp_config.json` to add configuration
+2. Restart the system
+3. Tools automatically available
+
+See: [MCP_GUIDE.md](MCP_GUIDE.md)
 
 ### Example 1: Code Editing
 ```bash
