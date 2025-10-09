@@ -570,12 +570,5 @@ Issues and Pull Requests are welcome!
 
 This project is licensed under the MIT License.
 
-## 🙏 Acknowledgments
-
-- [DeepSeek](https://www.deepseek.com/) - Providing powerful AI models
-- [Colorama](https://github.com/tartley/colorama) - Cross-platform colorful terminal output
-
----
-
 **Start Learning AI Agents!** 🚀
 

@@ -578,11 +578,4 @@ dm-code-agent/
 
 本项目采用 MIT 许可证。
 
-## 🙏 致谢
-
-- [DeepSeek](https://www.deepseek.com/) - 提供强大的 AI 模型
-- [Colorama](https://github.com/tartley/colorama) - 跨平台彩色终端输出
-
----
-
 **一起学习AI Agent吧！** 🚀
