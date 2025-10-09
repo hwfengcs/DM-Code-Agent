@@ -517,36 +517,49 @@ A: The task is too complex and requires more steps. You can increase the maximum
 ## 🔄 Project Structure
 
 ```
-dm-agent/
-├── main.py                     # Main program entry (Interactive CLI)
-├── dm_agent/                   # Core agent package
-│   ├── __init__.py            # Package initialization and public API
-│   ├── core/                  # Core Agent implementation
+dm-code-agent/
+├── main.py                         # Main program entry (Interactive CLI)
+├── check_mcp_env.py                # MCP environment check tool (v1.2.0)
+├── dm_agent/                       # Core agent package
+│   ├── __init__.py                # Package initialization and public API
+│   ├── core/                      # Core Agent implementation
 │   │   ├── __init__.py
-│   │   └── agent.py          # ReactAgent core logic
-│   ├── clients/               # LLM clients
+│   │   ├── agent.py              # ReactAgent core logic
+│   │   └── planner.py            # Task planner (v1.1.0)
+│   ├── clients/                   # LLM clients
 │   │   ├── __init__.py
-│   │   ├── base_client.py    # Base client class
-│   │   ├── deepseek_client.py # DeepSeek client
-│   │   ├── openai_client.py   # OpenAI client
-│   │   ├── claude_client.py   # Claude client
-│   │   ├── gemini_client.py   # Gemini client
-│   │   └── llm_factory.py     # Client factory
-│   ├── tools/                 # Toolset
+│   │   ├── base_client.py        # Base client class
+│   │   ├── deepseek_client.py    # DeepSeek client
+│   │   ├── openai_client.py      # OpenAI client
+│   │   ├── claude_client.py      # Claude client
+│   │   ├── gemini_client.py      # Gemini client
+│   │   └── llm_factory.py        # Client factory
+│   ├── mcp/                       # MCP integration (v1.2.0)
 │   │   ├── __init__.py
-│   │   ├── base.py           # Tool base class
-│   │   ├── file_tools.py     # File operation tools
-│   │   └── execution_tools.py # Code execution tools
-│   └── prompts/               # Prompt management
+│   │   ├── client.py             # MCP client
+│   │   ├── config.py             # MCP configuration management
+│   │   └── manager.py            # MCP manager
+│   ├── memory/                    # Memory and context management (v1.1.0)
+│   │   ├── __init__.py
+│   │   └── context_compressor.py # Context compressor
+│   ├── tools/                     # Toolset
+│   │   ├── __init__.py
+│   │   ├── base.py               # Tool base class
+│   │   ├── file_tools.py         # File operation tools
+│   │   ├── code_analysis_tools.py # Code analysis tools (v1.1.0)
+│   │   └── execution_tools.py    # Code execution tools
+│   └── prompts/                   # Prompt management
 │       ├── __init__.py
-│       ├── system_prompts.py  # Prompt building functions
-│       └── code_agent_prompt.md # Prompt template
-├── requirements.txt            # Python dependencies
-├── .env.example                # Environment variable configuration template
-├── .env                        # Your private configuration (create yourself, not committed)
-├── config.json.example         # Configuration file example
-├── .gitignore                 # Git ignore rules
-└── README.md                  # Project documentation
+│       ├── system_prompts.py     # Prompt building functions
+│       └── code_agent_prompt.md  # Prompt template
+├── requirements.txt               # Python dependencies
+├── .env.example                   # Environment variable configuration template
+├── config.json.example            # Configuration file example
+├── mcp_config.json.example        # MCP configuration example (v1.2.0)
+├── .gitignore                     # Git ignore rules
+├── MCP_GUIDE.md                   # MCP integration guide (v1.2.0)
+├── README.md                      # Chinese documentation
+└── README_EN.md                   # English documentation
 ```
 
 ## 🤝 Contributing
