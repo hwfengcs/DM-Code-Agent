@@ -17,3 +17,18 @@ anthropic>=0.18.0
 
 # Google Generative AI SDK - 用于调用 Gemini API
 google-genai
+
+# Flask Web 框架 - 用于提供 Web API (v1.2.0 新增)
+Flask>=3.0.0,<4.0.0
+
+# Flask CORS - 用于跨域资源共享
+flask-cors>=4.0.0,<5.0.0
+
+# Flask-SocketIO - 用于 WebSocket 实时通信
+flask-socketio>=5.3.0,<6.0.0
+
+# Python-SocketIO - WebSocket 底层支持
+python-socketio>=5.11.0,<6.0.0
+
+# EventLet - 用于异步 WebSocket 支持 (可选)
+eventlet>=0.35.0,<1.0.0

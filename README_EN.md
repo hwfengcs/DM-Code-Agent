@@ -186,6 +186,45 @@ export DEEPSEEK_API_KEY="your_api_key_here"
 
 ## 🚀 Quick Start
 
+### 🌐 Web UI Mode (Recommended) ⭐ v1.3.0+
+
+The modern web interface delivers real-time conversations, visual settings, and tool management.
+
+#### Install frontend dependencies (first time only)
+
+```bash
+# enter the frontend folder
+cd frontend
+
+# requires Node.js 16+
+npm install
+```
+
+#### Launch the system
+
+**1. Start the backend (project root):**
+```bash
+python app.py
+```
+
+**2. Start the frontend (new terminal, `frontend/` directory):**
+```bash
+cd frontend
+npm run dev
+```
+
+**3. Open the interface:**
+Visit **http://localhost:3000** in your browser.
+
+
+#### 🖥️ UI Highlights (actively refined)
+- **Wide two-column layout** – scales up to 1920px+ so prompts/plans live on the left and live status/logs on the right.
+- **Scroll-inside cards** – execution plan, status, and logs keep fixed heights and scroll internally, keeping the page calm even for long tasks.
+- **Collapsible long replies** – messages longer than ~600 characters or 12 lines collapse automatically; click “Expand all / Collapse” to toggle readability.
+- **Gradients & breathing cues** – subtle gradients and animated status pills make it easy to spot the agent’s progress at a glance.
+
+---
+
 ### Interactive Mode (Recommended)
 
 Run the program directly to enter the friendly menu interface:
@@ -237,8 +276,6 @@ python main.py "Your task" --max-steps 50 --temperature 0.5
 ```
 
 ## 📚 Usage Examples
-
-### Example 0: New Features Demo ⭐ v1.1.0
 
 #### Task Planner Example
 ```bash
@@ -462,23 +499,6 @@ Configuration file example (`config.json.example`):
 
 **Tip**: `config.json` is added to `.gitignore` and will not be committed to git
 
-## 🛡️ Error Handling
-
-The program gracefully handles various errors:
-
-- ✅ Missing API Key - Clear error messages
-- ✅ API Call Failures - Display error details
-- ✅ Invalid Input - Input validation and prompts
-- ✅ Keyboard Interrupt - Exit anytime with Ctrl+C
-- ✅ File Operation Errors - Friendly error messages
-
-## 📖 More Documentation
-
-- **[README_CLI.md](README_CLI.md)** - Complete Interactive CLI Guide
-- **[CLI_USAGE_EXAMPLES.md](CLI_USAGE_EXAMPLES.md)** - Detailed Usage Examples
-- **[CHANGELOG.md](CHANGELOG.md)** - Version Changelog
-- **[INSTALL_COLORAMA.md](INSTALL_COLORAMA.md)** - Colorama Installation Guide
-
 ## 💡 Tips and Tricks
 
 1. **Continuous Tasks** - Use interactive mode to avoid repeatedly starting the program
@@ -487,32 +507,6 @@ The program gracefully handles various errors:
 4. **Complex Tasks** - Increase max-steps to allow more reasoning steps (default is 100)
 5. **Quick Testing** - Command-line mode is suitable for scripts and automation
 
-## ❓ FAQ
-
-**Q: How do I get an API key?**
-A: Visit the corresponding platform based on your chosen provider:
-- [DeepSeek Platform](https://platform.deepseek.com/)
-- [OpenAI Platform](https://platform.openai.com/)
-- [Claude Console](https://console.anthropic.com/)
-- [Gemini API Console](https://makersuite.google.com/)
-
-**Q: How do I switch between different models?**
-A: There are three ways:
-1. Command line: `python main.py "task" --provider openai --model gpt-4`
-2. Interactive mode: Select "Configuration Settings" to modify provider and model
-3. Config file: Edit `config.json` to permanently change
-
-**Q: How do I exit interactive mode?**
-A: Select menu option 5, or press Ctrl+C.
-
-**Q: Are configurations saved?**
-A: Yes! You can now save configurations permanently. Select "Configuration Settings" in the menu, modify parameters, and choose to save. The settings will persist across restarts.
-
-**Q: Is colorama required?**
-A: No, the program works without it, just without colorful output.
-
-**Q: Why does the task show "Reached step limit but not completed"?**
-A: The task is too complex and requires more steps. You can increase the maximum steps via the `--max-steps` parameter or in the configuration settings in interactive mode (default is now 100).
 
 ## 🔄 Project Structure
 
@@ -571,4 +565,3 @@ Issues and Pull Requests are welcome!
 This project is licensed under the MIT License.
 
 **Start Learning AI Agents!** 🚀
-
