@@ -9,17 +9,40 @@ from threading import Thread, Lock
 from queue import Queue, Empty
 
 
-class MCPClient:
-    """MCP 客户端，负责与单个 MCP 服务器进程通信"""
+class MCPClient: 
+    """
+    MCP客户端负责与单个MCP服务器进程进行通信，通过标准输入/输出与外部MCP服务器交互，
+    实现工具列表获取和工具调用等功能。该客户端使用多线程处理服务器响应，并通过
+    JSON-RPC协议与服务器通信。
+    
+    Attributes:
+        name (str): MCP服务器名称
+        command (str): 启动命令
+        args (List[str]): 命令参数列表
+        env (Optional[Dict[str, str]]): 环境变量
+        process (Optional[subprocess.Popen]): 服务器进程对象
+        tools (List[Dict[str, Any]]): 服务器提供的工具列表
+        _lock (Lock): 线程锁，用于保护消息发送过程
+        _message_id (int): 消息ID计数器，确保请求与响应匹配
+        _stdout_queue (Queue): 标准输出消息队列
+        _running (bool): 客户端运行状态标志
+        _stdout_thread (Thread): 读取标准输出的后台线程
+    """
 
     def __init__(self, name: str, command: str, args: List[str], env: Optional[Dict[str, str]] = None):
-        """初始化 MCP 客户端
-
+        """
+        初始化 MCP 客户端
+        
         Args:
-            name: MCP 服务器名称
-            command: 启动命令（如 'npx'）
-            args: 命令参数列表（如 ['@playwright/mcp@latest']）
-            env: 环境变量（可选）
+            name (str): MCP 服务器名称，用作唯一标识符
+            command (str): 启动命令（如 'npx'、'python' 等）
+            args (List[str]): 命令参数列表（如 ['@playwright/mcp@latest']）
+            env (Optional[Dict[str, str]], optional): 环境变量字典，None表示使用默认环境
+            
+        Examples:
+            >>> client = MCPClient("playwright", "npx", ["@playwright/mcp@latest"])
+            >>> client.name
+            'playwright'
         """
         self.name = name
         self.command = command
@@ -33,10 +56,19 @@ class MCPClient:
         self._running = False
 
     def start(self) -> bool:
-        """启动 MCP 服务器进程
+        """
+        启动 MCP 服务器进程
+        
+        根据配置启动MCP服务器子进程，并初始化与服务器的连接，获取可用工具列表。
 
         Returns:
-            是否启动成功
+            bool: 是否启动成功
+            
+        Examples:
+            >>> client = MCPClient("test", "echo", ["hello"])
+            >>> success = client.start()
+            >>> isinstance(success, bool)
+            True
         """
         try:
             # 构建完整命令
@@ -93,7 +125,15 @@ class MCPClient:
             return False
 
     def stop(self) -> None:
-        """停止 MCP 服务器进程"""
+        """
+        停止 MCP 服务器进程
+        
+        终止MCP服务器子进程并清理相关资源，确保进程被完全停止。
+        
+        Examples:
+            >>> client = MCPClient("test", "echo", ["hello"])
+            >>> client.stop()  # 停止服务器进程
+        """
         self._running = False
         if self.process:
             try:
@@ -105,7 +145,12 @@ class MCPClient:
         print(f"🛑 MCP 服务器 '{self.name}' 已停止")
 
     def _read_stdout(self) -> None:
-        """后台线程：读取标准输出"""
+        """
+        后台线程：读取标准输出
+        
+        在独立线程中持续读取MCP服务器的标准输出，并将读取到的行放入队列中，
+        供主线程处理响应消息使用。该方法在单独的守护线程中运行。
+        """
         if not self.process or not self.process.stdout:
             return
 
@@ -120,14 +165,22 @@ class MCPClient:
                 break
 
     def _send_message(self, method: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-        """发送 JSON-RPC 消息到 MCP 服务器
+        """
+        发送 JSON-RPC 消息到 MCP 服务器
+        
+        通过标准输入向MCP服务器发送JSON-RPC格式的请求消息，并等待对应的响应。
 
         Args:
-            method: JSON-RPC 方法名
-            params: 参数字典
+            method (str): JSON-RPC 方法名，如"initialize"、"tools/list"等
+            params (Optional[Dict[str, Any]], optional): 请求参数字典
 
         Returns:
-            响应数据，失败返回 None
+               Optional[Dict[str, Any]]: 响应数据字典，失败时返回None
+            
+        Examples:
+            >>> client = MCPClient("test", "echo", ["hello"])
+            >>> # response = client._send_message("test_method", {"key": "value"})
+            >>> # 注意：这个方法通常由其他方法内部调用
         """
         if not self.process or not self.process.stdin:
             return None
@@ -144,7 +197,9 @@ class MCPClient:
 
             try:
                 # 发送消息
+                # 将消息转为JSON字符串并通过标准输入发送
                 self.process.stdin.write(json.dumps(message) + "\n")
+                # 刷新缓冲区确保消息立即发送
                 self.process.stdin.flush()
 
                 # 等待响应
@@ -176,10 +231,18 @@ class MCPClient:
                 return None
 
     def _initialize(self) -> bool:
-        """初始化 MCP 连接并获取工具列表
+        """
+        初始化 MCP 连接并获取工具列表
+        
+        发送初始化请求到MCP服务器，建立连接并获取服务器提供的工具列表。
 
         Returns:
-            是否初始化成功
+            bool: 是否初始化成功
+            
+        Examples:
+            >>> client = MCPClient("test", "echo", ["hello"])
+            >>> # success = client._initialize()
+            >>> # 注意：这个方法通常由start方法内部调用
         """
         # 发送初始化请求
         result = self._send_message("initialize", {
@@ -203,14 +266,22 @@ class MCPClient:
         return False
 
     def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Optional[str]:
-        """调用 MCP 工具
+        """
+        调用 MCP 工具
+        
+        向MCP服务器发送工具调用请求，并返回工具执行结果。
 
         Args:
-            tool_name: 工具名称
-            arguments: 工具参数
+            tool_name (str): 工具名称
+            arguments (Dict[str, Any]): 工具参数字典
 
         Returns:
-            工具执行结果，失败返回 None
+            Optional[str]: 工具执行结果文本，失败时返回None
+            
+        Examples:
+            >>> client = MCPClient("test", "echo", ["hello"])
+            >>> # result = client.call_tool("test_tool", {"param": "value"})
+            >>> # 注意：需要服务器实际运行才能调用工具
         """
         result = self._send_message("tools/call", {
             "name": tool_name,
@@ -231,17 +302,35 @@ class MCPClient:
         return None
 
     def get_tools(self) -> List[Dict[str, Any]]:
-        """获取此 MCP 服务器提供的工具列表
+        """
+        获取此 MCP 服务器提供的工具列表
+        
+        返回服务器提供的工具定义列表的副本，确保外部修改不会影响内部状态。
 
         Returns:
-            工具定义列表
+            tools (List[Dict[str, Any]]): 工具定义列表的副本
+            
+        Examples:
+            >>> client = MCPClient("test", "echo", ["hello"])
+            >>> tools = client.get_tools()
+            >>> isinstance(tools, list)
+            True
         """
         return self.tools.copy()
 
     def is_running(self) -> bool:
-        """检查 MCP 服务器是否正在运行
+        """
+        检查 MCP 服务器是否正在运行
+        
+        通过检查子进程是否存在且未终止来判断服务器运行状态。
 
         Returns:
-            是否运行中
+            bool: 是否运行中
+            
+        Examples:
+            >>> client = MCPClient("test", "echo", ["hello"])
+            >>> running = client.is_running()
+            >>> isinstance(running, bool)
+            True
         """
         return self.process is not None and self.process.poll() is None
