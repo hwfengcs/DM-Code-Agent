@@ -9,18 +9,35 @@ from ..clients.base_client import BaseLLMClient
 
 
 class ContextCompressor:
-    """每 N 轮对话自动压缩上下文"""
+
+    """
+    每 N 轮对话自动压缩上下文
+
+    上下文压缩器用于管理长时间对话中的token消耗问题。通过定期压缩历史对话记录，
+    保持重要的上下文信息同时减少token使用量，从而支持更长的对话序列。
+    
+    Attributes:
+        client (Optional[BaseLLMClient]): LLM客户端，用于生成摘要（当前未使用）
+        compress_every (int): 每多少轮对话触发一次压缩
+        keep_recent (int): 保留最近的对话轮数
+        turn_count (int): 对话轮数计数器
+    """
 
     def __init__(
         self, client: Optional[BaseLLMClient] = None, compress_every: int = 5, keep_recent: int = 3
     ):
         """
         初始化上下文压缩器
-
+        
         Args:
-            client: LLM 客户端（用于生成摘要）
-            compress_every: 每多少轮对话触发一次压缩
-            keep_recent: 保留最近的对话轮数
+            client (Optional[BaseLLMClient], optional): LLM 客户端（用于生成摘要），当前实现中未使用
+            compress_every (int, optional): 每多少轮对话触发一次压缩，默认为5轮
+            keep_recent (int, optional): 保留最近的对话轮数，默认为3轮
+            
+        Examples:
+            >>> compressor = ContextCompressor(compress_every=3, keep_recent=2)
+            >>> print(compressor.compress_every)
+            3
         """
         self.client = client
         self.compress_every = compress_every
@@ -28,7 +45,27 @@ class ContextCompressor:
         self.turn_count = 0  # 对话轮数计数
 
     def should_compress(self, history: List[Dict[str, str]]) -> bool:
-        """判断是否需要压缩"""
+        """
+        判断是否需要压缩对话历史
+        
+        通过统计用户消息数量来确定当前对话轮数，当达到设定阈值时返回True
+        
+        Args:
+            history (List[Dict[str, str]]): 对话历史列表，每个元素包含role和content键
+            
+        Returns:
+            bool: 当对话轮数达到压缩阈值时返回True，否则返回False
+            
+        Examples:
+            >>> history = [
+            ...     {"role": "user", "content": "你好"},
+            ...     {"role": "assistant", "content": "你好！有什么可以帮助你的吗？"},
+            ...     {"role": "user", "content": "分析一下这个项目"}
+            ... ]
+            >>> compressor = ContextCompressor(compress_every=2)
+            >>> compressor.should_compress(history)
+            True
+        """
         # 统计用户消息数量（每个用户消息代表一轮对话）
         user_messages = [msg for msg in history if msg.get("role") == "user"]
         self.turn_count = len(user_messages)
@@ -39,14 +76,29 @@ class ContextCompressor:
     def compress(self, history: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         压缩对话历史
-
-        策略：保留最近 N 轮对话，总结之前的历史
-
+        
+        采用提取关键信息的策略，保留最近N轮对话，将之前的对话历史压缩为摘要信息
+        
         Args:
-            history: 对话历史列表
-
+            history (List[Dict[str, str]]): 原始对话历史列表
+            
         Returns:
-            压缩后的对话历史
+            result (List[Dict[str, str]]): 压缩后的对话历史列表
+            
+        Examples:
+            >>> history = [
+            ...     {"role": "system", "content": "你是一个代码助手"},
+            ...     {"role": "user", "content": "分析项目结构"},
+            ...     {"role": "assistant", "content": "正在分析..."},
+            ...     {"role": "user", "content": "读取文件A"},
+            ...     {"role": "assistant", "content": "已读取文件A"},
+            ...     {"role": "user", "content": "读取文件B"},
+            ...     {"role": "assistant", "content": "已读取文件B"}
+            ... ]
+            >>> compressor = ContextCompressor(keep_recent=1)
+            >>> compressed = compressor.compress(history)
+            >>> len(compressed)
+            4  # 系统消息 + 摘要 + 最近1轮对话(2条消息)
         """
         if not history:
             return []
@@ -83,13 +135,26 @@ class ContextCompressor:
 
     def _extract_key_information(self, messages: List[Dict[str, str]]) -> str:
         """
-        提取式摘要：提取关键信息
-
-        提取：
-        - 文件路径
-        - 工具调用
-        - 错误信息
-        - 完成的任务
+        提取式摘要：从对话历史中提取关键信息
+        
+        通过正则表达式识别和提取对话中的关键信息，包括文件路径、工具调用、错误信息和完成的任务
+        
+        Args:
+            messages (List[Dict[str, str]]): 需要提取信息的对话消息列表
+            
+        Returns:
+            str: 格式化的关键信息摘要字符串
+            
+        Examples:
+            >>> messages = [
+            ...     {"role": "user", "content": "读取文件：main.py"},
+            ...     {"role": "assistant", "content": "执行工具 read_file，输入：{'path': 'main.py'}"},
+            ...     {"role": "user", "content": "观察：成功读取文件"}
+            ... ]
+            >>> compressor = ContextCompressor()
+            >>> summary = compressor._extract_key_information(messages)
+            >>> "涉及文件" in summary
+            True
         """
         key_info = []
 
@@ -166,7 +231,29 @@ class ContextCompressor:
     def get_compression_stats(
         self, original: List[Dict[str, str]], compressed: List[Dict[str, str]]
     ) -> Dict[str, Any]:
-        """获取压缩统计信息"""
+        """
+        获取压缩统计信息
+        
+        计算并返回压缩前后的统计信息，包括消息数量、压缩率和节省的消息数
+        
+        Args:
+            original (List[Dict[str, str]]): 原始对话历史
+            compressed (List[Dict[str, str]]): 压缩后的对话历史
+            
+        Returns:
+            stats (Dict[str, Any]): 包含压缩统计信息的字典
+                - original_messages (int): 原始消息数量
+                - compressed_messages (int): 压缩后消息数量
+                - compression_ratio (float): 压缩率 (0-1之间)
+                - saved_messages (int): 节省的消息数量
+                
+        Examples:
+            >>> original = [{"role": "user", "content": "1"}, {"role": "assistant", "content": "2"}]
+            >>> compressed = [{"role": "user", "content": "历史对话摘要：..."}]
+            >>> stats = compressor.get_compression_stats(original, compressed)
+            >>> stats["saved_messages"]
+            1
+        """
         return {
             "original_messages": len(original),
             "compressed_messages": len(compressed),
