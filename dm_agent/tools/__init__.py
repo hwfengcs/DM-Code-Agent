@@ -20,7 +20,31 @@ from .code_analysis_tools import (
 
 
 def task_complete(arguments: Dict[str, Any]) -> str:
-    """标记任务完成的工具。调用此工具将自动结束任务。"""
+    """
+    标记任务完成的工具。调用此工具将自动结束任务。
+    
+    当智能体认为任务已经完成时，应调用此工具来终止任务执行流程。
+    该工具通常作为任务计划的最后一个步骤被调用。
+    
+    Args:
+        arguments (Dict[str, Any]): 工具调用参数字典
+            - message (str, optional): 任务完成的描述信息，默认为空字符串
+            
+    Returns:
+        str: 格式化的任务完成消息
+            - 如果提供了有效的message字符串，则返回 "任务完成：{message}"
+            - 否则返回默认消息 "任务已完成。"
+            
+    Examples:
+        >>> task_complete({"message": "数据分析已完成"})
+        '任务完成：数据分析已完成'
+        
+        >>> task_complete({})
+        '任务已完成。'
+        
+        >>> task_complete({"message": "  "})
+        '任务已完成。'
+    """
     message = arguments.get("message", "")
     if message and isinstance(message, str):
         return f"任务完成：{message.strip()}"
@@ -31,11 +55,11 @@ def default_tools(include_mcp: bool = True, mcp_tools: Optional[List[Tool]] = No
     """返回默认工具集
 
     Args:
-        include_mcp: 是否包含 MCP 工具
-        mcp_tools: MCP 工具列表（可选）
+        include_mcp (bool): 是否包含 MCP 工具
+        mcp_tools (Optional[List[Tool]]): MCP 工具列表（可选）
 
     Returns:
-        工具列表
+        tools (List[Tool]): 默认工具列表
     """
     tools = [
         Tool(
