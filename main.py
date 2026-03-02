@@ -95,6 +95,7 @@ def get_api_key_for_provider(provider: str) -> str | None:
         "openai": "OPENAI_API_KEY",
         "claude": "CLAUDE_API_KEY",
         "gemini": "GEMINI_API_KEY",
+        "glm": "GLM_API_KEY",
     }
     env_var = provider_env_map.get(provider.lower())
     return os.getenv(env_var) if env_var else None
@@ -121,8 +122,8 @@ def parse_args(argv: Any) -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        default=saved_config.get("provider", "deepseek"),
-        help="LLM 提供商 (deepseek/openai/claude/gemini，默认：deepseek)。",
+        default=saved_config.get("provider", "glm"),
+        help="LLM 提供商 (deepseek/openai/claude/gemini/glm，默认：glm)。",
     )
     parser.add_argument(
         "--model",
@@ -251,8 +252,8 @@ def configure_settings(config: Config) -> None:
     config_changed = False
 
     # 修改提供商
-    provider_input = input(f"LLM 提供商 (deepseek/openai/claude/gemini) [{config.provider}]: ").strip().lower()
-    if provider_input and provider_input in ["deepseek", "openai", "claude", "gemini"]:
+    provider_input = input(f"LLM 提供商 (deepseek/openai/claude/gemini/glm) [{config.provider}]: ").strip().lower()
+    if provider_input and provider_input in ["deepseek", "openai", "claude", "gemini", "glm"]:
         if provider_input != config.provider:
             # 尝试获取新提供商的 API 密钥
             new_api_key = get_api_key_for_provider(provider_input)
@@ -268,7 +269,7 @@ def configure_settings(config: Config) -> None:
                 config.base_url = defaults.get("base_url", config.base_url)
                 config_changed = True
                 print(f"{Fore.GREEN}✓ 已更新提供商为 {provider_input}，模型和 URL 已自动调整{Style.RESET_ALL}")
-    elif provider_input and provider_input not in ["deepseek", "openai", "claude", "gemini"]:
+    elif provider_input and provider_input not in ["deepseek", "openai", "claude", "gemini", "glm"]:
         print(f"{Fore.RED}✗ 无效的提供商{Style.RESET_ALL}")
 
     # 修改模型

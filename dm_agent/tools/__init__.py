@@ -17,6 +17,7 @@ from .code_analysis_tools import (
     find_dependencies,
     get_code_metrics,
 )
+from .rag_tools import rag_search
 
 
 def task_complete(arguments: Dict[str, Any]) -> str:
@@ -51,12 +52,17 @@ def task_complete(arguments: Dict[str, Any]) -> str:
     return "任务已完成。"
 
 
-def default_tools(include_mcp: bool = True, mcp_tools: Optional[List[Tool]] = None) -> List[Tool]:
+def default_tools(
+    include_mcp: bool = True,
+    mcp_tools: Optional[List[Tool]] = None,
+    include_rag: bool = True
+) -> List[Tool]:
     """返回默认工具集
 
     Args:
         include_mcp (bool): 是否包含 MCP 工具
         mcp_tools (Optional[List[Tool]]): MCP 工具列表（可选）
+        include_rag (bool): 是否包含 RAG 工具
 
     Returns:
         tools (List[Tool]): 默认工具列表
@@ -165,6 +171,22 @@ def default_tools(include_mcp: bool = True, mcp_tools: Optional[List[Tool]] = No
     # 添加 MCP 工具
     if include_mcp and mcp_tools:
         tools.extend(mcp_tools)
+
+    # 添加 RAG 工具
+    if include_rag:
+        tools.append(
+            Tool(
+                name="rag_search",
+                description=(
+                    "使用RAG系统检索知识库中的相关文档。"
+                    "Arguments: {\"query\": string (required), "
+                    "\"top_k\": optional int (default 5), "
+                    "\"hybrid_search_ratio\": optional float (default 0.5)}. "
+                    "Returns JSON with results containing text, score, and metadata."
+                ),
+                runner=rag_search,
+            )
+        )
 
     return tools
 

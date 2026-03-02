@@ -17,6 +17,7 @@ from .clients import (
 from .tools import Tool, default_tools
 from .prompts import build_code_agent_prompt
 from .skills import BaseSkill, ConfigSkill, SkillMetadata, SkillManager
+from .rag import RAGManager
 
 __version__ = "1.0.0"
 
@@ -43,4 +44,6 @@ __all__ = [
     "ConfigSkill",
     "SkillMetadata",
     "SkillManager",
+    # RAG
+    "RAGManager",
 ]

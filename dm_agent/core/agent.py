@@ -56,6 +56,8 @@ class ReactAgent:
         enable_planning: bool = True,      # 是否启用规划
         enable_compression: bool = True,   # 是否启用上下文压缩
         skill_manager: Optional[Any] = None,  # 技能管理器
+        enable_rag: bool = True,          # 是否启用RAG
+        rag_config: Optional[Dict[str, Any]] = None,  # RAG配置
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -66,10 +68,16 @@ class ReactAgent:
             max_steps (int, optional): 最大执行步骤数，默认为200
             temperature (float, optional): LLM生成文本的温度参数，默认为0.0
             system_prompt (Optional[str], optional): 系统提示词，默认为None，将使用默认构建的提示词
-            step_callback (Optional[Callable[[int, Step], None]], optional): 
+            step_callback (Optional[Callable[[int, Step], None]], optional):
                 步骤执行回调函数，可用于实时监控执行过程，默认为None
             enable_planning (bool, optional): 是否启用任务规划功能，默认为True
             enable_compression (bool, optional): 是否启用上下文压缩功能，默认为True
+            enable_rag (bool, optional): 是否启用RAG功能，默认为True
+            rag_config (Optional[Dict[str, Any]], optional): RAG配置字典，包含：
+                - model_path: BGE-M3模型路径
+                - db_path: Milvus数据库路径
+                - data_dir: 文档目录路径
+                - llama_parse_api_key: LlamaParse API密钥
             
         Raises:
             ValueError: 当提供的工具列表为空时抛出异常
@@ -93,7 +101,7 @@ class ReactAgent:
         self.tools_list = tools  # 保留工具列表用于规划器
         self.max_steps = max_steps
         self.temperature = temperature
-        self.system_prompt = system_prompt or build_code_agent_prompt(tools)
+        self.system_prompt = system_prompt or build_code_agent_prompt(tools, "暂无参考内容")
         self.step_callback = step_callback
         # 多轮对话历史记录
         self.conversation_history: List[Dict[str, str]] = []
@@ -110,6 +118,31 @@ class ReactAgent:
         self.skill_manager = skill_manager
         self._base_system_prompt = self.system_prompt
         self._base_tools = dict(self.tools)
+
+        # RAG管理器
+        self.enable_rag = enable_rag
+        self.rag_manager = None
+        if enable_rag:
+            try:
+                from ..rag.rag_manager import RAGManager
+                self.rag_manager = RAGManager()
+                if rag_config:
+                    if "model_path" in rag_config:
+                        self.rag_manager._model_path = rag_config["model_path"]
+                    if "db_path" in rag_config:
+                        self.rag_manager._db_path = rag_config["db_path"]
+                    if "data_dir" in rag_config:
+                        self.rag_manager._data_dir = rag_config["data_dir"]
+                    if "llama_parse_api_key" in rag_config:
+                        self.rag_manager._llama_parse_api_key = rag_config["llama_parse_api_key"]
+
+                self.rag_manager.initialize()
+            except ImportError:
+                print("警告: RAG依赖未安装，跳过RAG初始化")
+                self.enable_rag = False
+            except Exception as e:
+                print(f"警告: RAG初始化失败: {e}")
+                self.enable_rag = False
 
     def run(self, task: str, *, max_steps: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -144,6 +177,21 @@ class ReactAgent:
         # 技能自动选择
         if self.skill_manager:
             self._apply_skills_for_task(task)
+
+        # RAG检索 - 在任务执行前获取相关文档
+        if self.enable_rag and self.rag_manager and self.rag_manager.is_initialized():
+            try:
+                rag_results = self.rag_manager.search(task, top_k=5)
+                if rag_results:
+                    formatted_refs = self._format_rag_results(rag_results)
+                    # 重新构建包含RAG结果的system_prompt
+                    self.system_prompt = build_code_agent_prompt(
+                        list(self.tools.values()), 
+                        formatted_refs
+                    )
+                    print(f"🔍 RAG检索到 {len(rag_results)} 条相关文档")
+            except Exception as e:
+                print(f"⚠️ RAG检索失败: {e}，使用原始prompt")
 
         # 第一步：生成计划（如果启用）
         plan : List[PlanStep] = []
@@ -436,3 +484,27 @@ class ReactAgent:
             if isinstance(value, str):
                 return value
         return json.dumps(action_input, ensure_ascii=False)
+
+    def _format_rag_results(self, results: List[Dict[str, Any]]) -> str:
+        """
+        格式化RAG检索结果
+        
+        Args:
+            results (List[Dict[str, Any]]): RAG检索结果列表
+            
+        Returns:
+            formatted (str): 格式化后的参考内容字符串
+        """
+        if not results:
+            return "暂无参考内容"
+        
+        formatted = []
+        for i, result in enumerate(results, 1):
+            text = result.get("text", "")
+            metadata = result.get("metadata", {})
+            score = result.get("score", 0)
+            source = metadata.get("source", "未知来源")
+            
+            formatted.append(f"[{i}] {text}\n    来源: {source}, 相关度: {score:.4f}")
+        
+        return "\n\n".join(formatted)

@@ -17,3 +17,12 @@ anthropic>=0.18.0
 
 # Google Generative AI SDK - 用于调用 Gemini API
 google-genai
+
+# RAG相关依赖
+pymilvus[milvus_lite]==2.4.8
+milvus-model==0.2.12
+huggingface-hub>=0.20.0
+llama-index>=0.10.0
+llama-cloud-services>=0.1.0
+scipy==1.11.4
+environs<=9.5.0

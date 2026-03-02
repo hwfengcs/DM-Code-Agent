@@ -2,6 +2,7 @@
 
 from .base_client import BaseLLMClient, LLMError
 from .deepseek_client import DeepSeekClient
+from .glm_client import GLMClient
 from .openai_client import OpenAIClient
 from .claude_client import ClaudeClient
 from .gemini_client import GeminiClient
@@ -11,6 +12,7 @@ __all__ = [
     "BaseLLMClient",
     "LLMError",
     "DeepSeekClient",
+    "GLMClient",
     "OpenAIClient",
     "ClaudeClient",
     "GeminiClient",

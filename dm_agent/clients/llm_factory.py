@@ -8,6 +8,7 @@ from .base_client import BaseLLMClient
 from .claude_client import ClaudeClient
 from .deepseek_client import DeepSeekClient
 from .gemini_client import GeminiClient
+from .glm_client import GLMClient
 from .openai_client import OpenAIClient
 
 
@@ -23,7 +24,7 @@ def create_llm_client(
     """创建 LLM 客户端实例。
 
     Args:
-        provider: 提供商名称 ("deepseek", "openai", "claude", "gemini")
+        provider: 提供商名称 ("deepseek", "openai", "claude", "gemini", "glm")
         api_key: API 密钥
         model: 模型名称（可选，使用默认值）
         base_url: API 基础 URL（可选，使用默认值）
@@ -74,12 +75,21 @@ def create_llm_client(
             "base_url": base_url or "",  # Gemini 不需要 base_url
             "timeout": timeout,
         }
-        return GeminiClient(**params)
+        return GeminiClient(**(params))
+
+    elif provider_lower == "glm":
+        params = {
+            "api_key": api_key,
+            "model": model or "xxx",
+            "base_url": base_url or "https://ark.cn-beijing.volces.com/api/v3",
+            "timeout": timeout,
+        }
+        return GLMClient(**params)
 
     else:
         raise ValueError(
             f"不支持的提供商: {provider}。"
-            f"支持的提供商: deepseek, openai, claude, gemini"
+            f"支持的提供商: deepseek, openai, claude, gemini, glm"
         )
 
 
@@ -100,5 +110,9 @@ PROVIDER_DEFAULTS = {
     "gemini": {
         "model": "gemini-2.5-flash",
         "base_url": "",  # Gemini 不需要 base_url
+    },
+    "glm": {
+        "model": "ep-20260210175539-4gr98",
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
     },
 }

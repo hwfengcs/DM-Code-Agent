@@ -204,7 +204,7 @@ class MCPClient:
 
                 # 等待响应
                 timeout_count = 0
-                while timeout_count < 50:  # 5 秒超时
+                while timeout_count < 100:  # 10 秒超时
                     try:
                         response_line = self._stdout_queue.get(timeout=0.1)
                         response = json.loads(response_line)
