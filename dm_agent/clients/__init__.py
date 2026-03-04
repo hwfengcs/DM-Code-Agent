@@ -7,6 +7,7 @@ from .openai_client import OpenAIClient
 from .claude_client import ClaudeClient
 from .gemini_client import GeminiClient
 from .llm_factory import create_llm_client, PROVIDER_DEFAULTS
+from .zhipuai_client import ZhipuAIClient
 
 __all__ = [
     "BaseLLMClient",
@@ -18,4 +19,5 @@ __all__ = [
     "GeminiClient",
     "create_llm_client",
     "PROVIDER_DEFAULTS",
+    "ZhipuAIClient",
 ]

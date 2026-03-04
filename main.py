@@ -96,6 +96,7 @@ def get_api_key_for_provider(provider: str) -> str | None:
         "claude": "CLAUDE_API_KEY",
         "gemini": "GEMINI_API_KEY",
         "glm": "GLM_API_KEY",
+        "zhipuai": "ZHIPUAI_API_KEY",
     }
     env_var = provider_env_map.get(provider.lower())
     return os.getenv(env_var) if env_var else None

@@ -18,8 +18,7 @@ from .code_analysis_tools import (
     get_code_metrics,
 )
 from .rag_tools import rag_search
-
-
+from .web_search_tools import web_search_answer
 def task_complete(arguments: Dict[str, Any]) -> str:
     """
     标记任务完成的工具。调用此工具将自动结束任务。
@@ -165,6 +164,11 @@ def default_tools(
             name="task_complete",
             description="Mark the task as complete and finish execution. Arguments: {\"message\": optional string with completion summary}.",
             runner=task_complete,
+        ),
+        Tool(
+            name="web_search",
+            description="Perform a web search and return the results. Arguments: {\"query\": string}.",
+            runner=web_search_answer,
         ),
     ]
 

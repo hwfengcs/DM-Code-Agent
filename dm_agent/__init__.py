@@ -11,6 +11,7 @@ from .clients import (
     OpenAIClient,
     ClaudeClient,
     GeminiClient,
+    ZhipuAIClient,
     create_llm_client,
     PROVIDER_DEFAULTS,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "OpenAIClient",
     "ClaudeClient",
     "GeminiClient",
+    "ZhipuAIClient",
     "create_llm_client",
     "PROVIDER_DEFAULTS",
     # Tools

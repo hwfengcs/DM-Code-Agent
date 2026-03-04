@@ -10,6 +10,7 @@ from .deepseek_client import DeepSeekClient
 from .gemini_client import GeminiClient
 from .glm_client import GLMClient
 from .openai_client import OpenAIClient
+from .zhipuai_client import ZhipuAIClient
 
 
 def create_llm_client(
@@ -86,10 +87,19 @@ def create_llm_client(
         }
         return GLMClient(**params)
 
+    elif provider_lower == "zhipuai":
+        params = {
+            "api_key": api_key,
+            "model": model or "glm-4.7",
+            "base_url": base_url or "",
+            "timeout": timeout,
+        }
+        return ZhipuAIClient(**params)
+
     else:
         raise ValueError(
             f"不支持的提供商: {provider}。"
-            f"支持的提供商: deepseek, openai, claude, gemini, glm"
+            f"支持的提供商: deepseek, openai, claude, gemini, glm, zhipuai"
         )
 
 
@@ -114,5 +124,9 @@ PROVIDER_DEFAULTS = {
     "glm": {
         "model": "ep-20260210175539-4gr98",
         "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    },
+    "zhipuai": {
+        "model": "glm-4.7",
+        "base_url": "",
     },
 }
