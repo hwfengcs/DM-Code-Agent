@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..clients.base_client import BaseLLMClient
@@ -11,7 +13,7 @@ from ..tools.base import Tool
 from ..prompts import build_code_agent_prompt
 from ..memory.context_compressor import ContextCompressor
 from .planner import TaskPlanner, PlanStep
-
+from ..reflection import reflection
 
 @dataclass
 class Step:
@@ -52,12 +54,12 @@ class ReactAgent:
         max_steps: int = 200,
         temperature: float = 0.0,
         system_prompt: Optional[str] = None,
-        step_callback: Optional[Callable[[int, Step], None]] = None,   # 步骤回调函数
-        enable_planning: bool = True,      # 是否启用规划
-        enable_compression: bool = True,   # 是否启用上下文压缩
-        skill_manager: Optional[Any] = None,  # 技能管理器
-        enable_rag: bool = True,          # 是否启用RAG
-        rag_config: Optional[Dict[str, Any]] = None,  # RAG配置
+        step_callback: Optional[Callable[[int, Step], None]] = None,
+        enable_planning: bool = True,
+        enable_compression: bool = True,
+        skill_manager: Optional[Any] = None,
+        enable_rag: bool = True,
+        rag_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -95,33 +97,27 @@ class ReactAgent:
             raise ValueError("必须为 ReactAgent 提供至少一个工具。")
         self.client = client
 
-        # 我感觉这里要改,能否设一个tools_mapping?
-        
         self.tools = {tool.name: tool for tool in tools}
-        self.tools_list = tools  # 保留工具列表用于规划器
+        self.tools_list = tools
         self.max_steps = max_steps
         self.temperature = temperature
         self.system_prompt = system_prompt or build_code_agent_prompt(tools, "暂无参考内容")
         self.step_callback = step_callback
-        # 多轮对话历史记录
         self.conversation_history: List[Dict[str, str]] = []
 
-        # 规划器
         self.enable_planning = enable_planning
         self.planner = TaskPlanner(client, tools) if enable_planning else None
 
-        # 上下文压缩器（每 5 轮对话压缩一次）
         self.enable_compression = enable_compression
         self.compressor = ContextCompressor(client, compress_every=5, keep_recent=3) if enable_compression else None
 
-        # 技能管理器
         self.skill_manager = skill_manager
         self._base_system_prompt = self.system_prompt
         self._base_tools = dict(self.tools)
 
-        # RAG管理器
         self.enable_rag = enable_rag
         self.rag_manager = None
+        self._log_file_path = Path(__file__).parent.parent / "log" / "logs.txt"
         if enable_rag:
             try:
                 from ..rag.rag_manager import RAGManager
@@ -143,6 +139,24 @@ class ReactAgent:
             except Exception as e:
                 print(f"警告: RAG初始化失败: {e}")
                 self.enable_rag = False
+
+    def _log_conversation_history(self, action_description: str = "conversation_history 变动") -> None:
+        """记录 conversation_history 变动到日志文件"""
+        try:
+            self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(self._log_file_path, "a", encoding="utf-8") as f:
+                f.write(f"\n{'='*80}\n")
+                f.write(f"[{timestamp}] {action_description}\n")
+                f.write(f"{'='*80}\n")
+                for idx, msg in enumerate(self.conversation_history, 1):
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    f.write(f"\n消息 #{idx} [{role}]:\n")
+                    f.write(f"{content}\n")
+                f.write(f"\n当前历史记录长度: {len(self.conversation_history)} 条消息\n")
+        except Exception as e:
+            print(f"⚠️ 日志记录失败: {e}")
 
     def run(self, task: str, *, max_steps: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -173,6 +187,9 @@ class ReactAgent:
 
         steps: List[Step] = []
         limit = max_steps or self.max_steps # 获取最大步骤数
+
+        retry_time = 0
+        retry_action: string = ''
 
         # 技能自动选择
         if self.skill_manager:
@@ -207,6 +224,7 @@ class ReactAgent:
         # 添加新任务到对话历史
         task_prompt : str = self._build_user_prompt(task, steps, plan)
         self.conversation_history.append({"role": "user", "content": task_prompt})
+        self._log_conversation_history("添加新任务到对话历史")
 
         for step_num in range(1, limit + 1):
             # 第二步：压缩上下文（如果需要）
@@ -230,8 +248,8 @@ class ReactAgent:
             # 获取 AI 响应
             raw = self.client.respond(messages_to_send, temperature=self.temperature)
 
-            # 将 AI 响应添加到历史记录
             self.conversation_history.append({"role": "assistant", "content": raw})
+            self._log_conversation_history("添加 AI 响应到历史记录")
             try:
                 parsed = self._parse_agent_response(raw)
             except ValueError as exc:
@@ -245,8 +263,8 @@ class ReactAgent:
                 )
                 steps.append(step)
 
-                # 将错误观察添加到历史记录
                 self.conversation_history.append({"role": "user", "content": f"观察：{observation}"})
+                self._log_conversation_history("添加错误观察到历史记录")
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
@@ -269,8 +287,8 @@ class ReactAgent:
                 )
                 steps.append(step)
 
-                # 添加完成标记到历史记录
                 self.conversation_history.append({"role": "user", "content": f"任务完成：{final}"})
+                self._log_conversation_history("添加任务完成标记到历史记录")
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
@@ -289,8 +307,8 @@ class ReactAgent:
                 )
                 steps.append(step)
 
-                # 将观察结果添加到历史记录
                 self.conversation_history.append({"role": "user", "content": f"观察：{observation}"})
+                self._log_conversation_history("添加未知工具观察到历史记录")
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
@@ -335,11 +353,10 @@ class ReactAgent:
                         self.planner.mark_completed(plan_step.step_number, observation)
                         break
 
-            # 将工具执行结果添加到历史记录
             tool_info = f"执行工具 {action}，输入：{json.dumps(action_input, ensure_ascii=False)}\n观察：{observation}"
             self.conversation_history.append({"role": "user", "content": tool_info})
+            self._log_conversation_history(f"添加工具执行结果到历史记录 (工具: {action})")
 
-            # 调用回调函数实时输出步骤
             if self.step_callback:
                 self.step_callback(step_num, step)
 
@@ -349,6 +366,33 @@ class ReactAgent:
                     "final_answer": observation,
                     "steps": [step.__dict__ for step in steps],
                 }
+
+            if self.enable_planning and self.planner:
+                #检查是否要触发反思机制
+                if action == retry_action:
+                    retry_time += 1
+                    if retry_time >= 2:  # 连续失败3次则触发反思
+                        step = Step(
+                            thought="由于一些不知名的原因，触发了三次重试重计划机制，需要重新制定计划",
+                            action="replan",
+                            action_input=action,
+                            observation="触发了三次重试重计划机制，需要重新制定计划",
+                            raw=raw,
+                        )
+                        steps.append(step)
+                        print(f"\n 触发重新计划中...")
+                        plan = self.planner.replan(task, plan, f"连续重试失败，最后一次失败的工具：{action}")
+                        if plan:
+                            plan_text = self.planner.get_progress()
+                            print(f"\n📋 重新生成的执行计划：\n{plan_text}")
+                        task_prompt = self._build_user_prompt(task, steps, plan)
+                        self.conversation_history.append({"role": "user", "content": task_prompt})
+                        self._log_conversation_history("添加重新计划的任务提示到历史记录")
+                        retry_action = ""
+                        retry_time = 0
+                else:
+                    retry_time = 0
+                    retry_action = action
 
         return {
             "final_answer": "达到步骤限制但未完成。",

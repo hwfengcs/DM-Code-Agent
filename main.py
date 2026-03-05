@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
@@ -663,6 +664,14 @@ def run_single_task(config: Config, task: str) -> int:
 def main(argv: Any = None) -> int:
     """主入口函数"""
     load_dotenv()
+    
+    log_file = Path(__file__).parent / "dm_agent" / "log" / "logs.txt"
+    try:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_file.write_text("", encoding="utf-8")
+    except Exception as e:
+        print(f"⚠️ 无法清空日志文件: {e}", file=sys.stderr)
+    
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
     # 如果没有提供 API 密钥，尝试根据提供商获取
