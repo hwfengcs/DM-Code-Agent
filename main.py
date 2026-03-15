@@ -198,7 +198,8 @@ def print_menu() -> None:
     print(f"{Fore.GREEN}  3.{Style.RESET_ALL} 查看可用工具列表")
     print(f"{Fore.GREEN}  4.{Style.RESET_ALL} 配置设置")
     print(f"{Fore.GREEN}  5.{Style.RESET_ALL} 查看可用技能列表")
-    print(f"{Fore.GREEN}  6.{Style.RESET_ALL} 退出程序")
+    print(f"{Fore.GREEN}  6.{Style.RESET_ALL} 多Agent并行模式")
+    print(f"{Fore.GREEN}  7.{Style.RESET_ALL} 退出程序")
     print()
 
 
@@ -517,6 +518,77 @@ def execute_task(config: Config, tools: List[Tool], skill_manager: SkillManager 
         print_separator("-")
 
 
+def multi_agent_mode(config: Config, tools: List[Tool]) -> None:
+    """多Agent并行模式"""
+    print_separator("-")
+    print(f"{Fore.CYAN}{Style.BRIGHT}多Agent并行模式{Style.RESET_ALL}\n")
+    print(f"{Fore.YELLOW}该模式会自动将任务分解为可并行执行的子任务。{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}子任务之间通过依赖关系自动确定执行顺序。{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}拓扑排序确保按依赖关系执行任务。{Style.RESET_ALL}\n")
+    print(f"{Fore.YELLOW}请输入任务描述（输入完成后按回车）：{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}示例：搜索apex英雄的相关资讯和生成一个求阶乘的计算器{Style.RESET_ALL}")
+    
+    task = input(f"{Fore.CYAN}> {Style.RESET_ALL}").strip()
+    
+    if not task:
+        print(f"{Fore.RED}✗ 任务描述不能为空{Style.RESET_ALL}")
+        return
+    
+    try:
+        from dm_agent.core.multi_agent.orchestrator import Orchestrator
+        
+        client = create_llm_client(
+            provider=config.provider,
+            api_key=config.api_key,
+            model=config.model,
+            base_url=config.base_url,
+        )
+        
+        orchestrator = Orchestrator(
+            client=client,
+            max_workers=3,
+            timeout=300.0,
+        )
+        
+        print(f"\n{Fore.CYAN}正在分解任务...{Style.RESET_ALL}\n")
+        
+        result = orchestrator.run(task)
+        
+        print(f"\n{Fore.GREEN}{Style.BRIGHT}任务执行完成！{Style.RESET_ALL}\n")
+        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+        
+        if "execution_levels" in result:
+            print(f"\n{Fore.CYAN}执行层级：{Style.RESET_ALL}")
+            for i, level in enumerate(result["execution_levels"], 1):
+                print(f"  {Fore.YELLOW}层级 {i}: {len(level)} 个并行任务{Style.RESET_ALL}")
+                for task_id in level:
+                    print(f"    - {task_id}")
+        
+        print(f"\n{Fore.CYAN}子任务详情：{Style.RESET_ALL}")
+        for subtask in result.get("subtasks", []):
+            status = "✓" if subtask.get("status") == "completed" else "✗"
+            role = subtask.get("assigned_role", {})
+            role_value = role.get("value", "explorer") if isinstance(role, dict) else str(role)
+            print(f"  {subtask.get('task_id')}: {role_value}")
+            desc_preview = subtask.get("description", "")[:60]
+            print(f"    描述: {desc_preview}...")
+            print(f"    状态: {status}")
+            if subtask.get("result"):
+                result_preview = subtask.get("result", "")[:100]
+                print(f"    结果: {result_preview}...")
+        
+        print(f"\n{Fore.GREEN}{Style.BRIGHT}汇总：{Style.RESET_ALL}\n")
+        print(result.get("summary", ""))
+        print()
+        
+        orchestrator.shutdown()
+        
+    except Exception as e:
+        print(f"\n{Fore.RED}{Style.BRIGHT}✗ 发生错误:{Style.RESET_ALL}{e}")
+    
+    print_separator("-")
+
+
 def interactive_mode(config: Config) -> int:
     """交互式菜单模式"""
     print_welcome()
@@ -552,35 +624,41 @@ def interactive_mode(config: Config) -> int:
         while True:
             try:
                 print_menu()
-                choice = input(f"{Fore.CYAN}请选择操作 (1-6): {Style.RESET_ALL}").strip()
+                choice = input(f"{Fore.CYAN}请选择操作 (1-7): {Style.RESET_ALL}").strip()
 
+                
                 if choice == "1":
                     # 执行新任务
                     execute_task(config, tools, skill_manager)
 
+                
                 elif choice == "2":
                     # 多轮对话模式
                     multi_turn_conversation(config, tools, skill_manager)
-
+                
                 elif choice == "3":
                     # 查看工具列表
                     show_tools(tools)
-
+                
                 elif choice == "4":
                     # 配置设置
                     configure_settings(config)
-
+                
                 elif choice == "5":
                     # 查看技能列表
                     show_skills(skill_manager)
-
+                
                 elif choice == "6":
+                    # 多Agent并行模式
+                    multi_agent_mode(config, tools)
+                
+                elif choice == "7":
                     # 退出程序
                     print(f"\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
                     return 0
-
+                
                 else:
-                    print(f"{Fore.RED}✗ 无效的选择，请输入 1-6{Style.RESET_ALL}")
+                    print(f"{Fore.RED}✗ 无效的选择，请输入 1-7{Style.RESET_ALL}")
 
             except KeyboardInterrupt:
                 print(f"\n\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
