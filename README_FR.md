@@ -1,5 +1,3 @@
-下面是在保留 Markdown 结构、链接、徽章、代码命令和项目名称不变的前提下，翻译成法语的版本。
-
 ````markdown
 # Votre premier projet d’agent IA
 
