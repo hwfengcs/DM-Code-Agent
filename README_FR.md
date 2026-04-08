@@ -1,4 +1,3 @@
-````markdown
 # Votre premier projet d’agent IA
 
 <div align="center">
