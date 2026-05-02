@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dm-code-agent"
-version = "1.6.0"
+version = "1.7.0"
 description = "A local-first, auditable Python Code Agent with ReAct, trace/replay, MCP tools, planning, benchmarks, memory compression, and skills."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -51,6 +51,13 @@ dev = [
   "ruff>=0.6.0",
   "black>=24.0.0",
   "build>=1.2.0",
+]
+swebench = [
+  "datasets>=2.14.0",
+]
+rag = [
+  "rank-bm25>=0.2.2",
+  "sentence-transformers>=2.2.0",
 ]
 
 [project.urls]

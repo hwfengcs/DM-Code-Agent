@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Optional
 
 from .models import BenchmarkRunConfig
 from .runner import (
@@ -18,12 +18,15 @@ from .runner import (
 )
 from .tasks import BENCHMARK_SUITES, get_benchmark_tasks
 
+SWEBENCH_LITE_SUITE = "swebench_lite"
+ALL_SUITES = sorted(set(BENCHMARK_SUITES.keys()) | {SWEBENCH_LITE_SUITE})
+
 
 def parse_args(argv: Any = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run DM-Code-Agent coding benchmarks.")
     parser.add_argument(
         "--suite",
-        choices=sorted(BENCHMARK_SUITES),
+        choices=ALL_SUITES,
         default="coding",
         help="Benchmark suite to run.",
     )
@@ -58,11 +61,198 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         action="store_true",
         help="Show live agent stdout during benchmark runs.",
     )
+
+    # SWE-bench Lite specific options.
+    parser.add_argument(
+        "--instance-id",
+        action="append",
+        help="(swebench_lite) instance id to run. Can be repeated. Defaults to the deterministic 50-instance subset.",
+    )
+    parser.add_argument(
+        "--max-instances",
+        type=int,
+        help="(swebench_lite) cap on the number of instances after subset/filter selection.",
+    )
+    parser.add_argument(
+        "--use-docker",
+        action="store_true",
+        help="(swebench_lite) Tier-2 docker-based verification. Currently raises NotImplementedError.",
+    )
+    parser.add_argument(
+        "--snapshot-path",
+        help="(swebench_lite) override the JSONL snapshot path used to load instances offline.",
+    )
+    parser.add_argument(
+        "--instance-test-timeout",
+        type=int,
+        default=300,
+        help="(swebench_lite) per-pytest-node timeout, seconds.",
+    )
     return parser.parse_args(argv)
+
+
+def _list_swebench_lite(args: argparse.Namespace) -> int:
+    """Print the deterministic 50-instance subset (or a provided slice) as JSON."""
+    try:
+        from .swebench_lite.loader import (
+            DEFAULT_SPLIT,
+            fixed_subset_50,
+            load_instances,
+            subset_signature,
+        )
+    except ImportError as exc:
+        print(
+            f"Failed to import the swebench_lite suite: {exc}\n"
+            'Install with: pip install "dm-code-agent[swebench]"',
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        if args.instance_id:
+            instances = load_instances(
+                instance_ids=args.instance_id,
+                snapshot_path=args.snapshot_path,
+            )
+        else:
+            instances = fixed_subset_50()
+    except RuntimeError as exc:
+        # Friendly message when datasets library is not installed.
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.max_instances is not None:
+        instances = instances[: args.max_instances]
+
+    payload = {
+        "suite": SWEBENCH_LITE_SUITE,
+        "split": DEFAULT_SPLIT,
+        "subset_seed": 42,
+        "subset_signature": subset_signature(instances),
+        "count": len(instances),
+        "instances": [inst.to_public_dict() for inst in instances],
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _run_swebench_lite(args: argparse.Namespace) -> int:
+    try:
+        from .swebench_lite.loader import fixed_subset_50, load_instances
+        from .swebench_lite.runner import (
+            render_markdown_report,
+            run_swebench_lite,
+        )
+        from .swebench_lite.analyzer import render_full_analysis
+        from .swebench_lite.models import SWEBenchResult, SWEBenchVerification, SWEBenchRunConfig
+    except ImportError as exc:
+        print(
+            f"Failed to import the swebench_lite suite: {exc}\n"
+            'Install with: pip install "dm-code-agent[swebench]"',
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        if args.instance_id:
+            instances = load_instances(
+                instance_ids=args.instance_id,
+                snapshot_path=args.snapshot_path,
+            )
+        else:
+            instances = fixed_subset_50()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.max_instances is not None:
+        instances = instances[: args.max_instances]
+    if not instances:
+        print("No instances selected.", file=sys.stderr)
+        return 2
+
+    config = SWEBenchRunConfig(
+        provider=args.provider,
+        model=args.model,
+        base_url=args.base_url,
+        api_key_env=args.api_key_env,
+        max_steps=args.max_steps or 60,
+        temperature=args.temperature,
+        test_timeout=args.instance_test_timeout,
+        use_docker=args.use_docker,
+        keep_workspaces=args.keep_workspaces,
+        workspace_root=args.workspace_root,
+        trace_dir=args.trace_dir,
+        quiet=not args.show_agent_output,
+    )
+
+    try:
+        report = run_swebench_lite(instances, config=config)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    # Reconstruct typed results for analyzer (results in the report dict are
+    # already serialized; re-hydrate the minimal subset we need).
+    analyzer_results: List[SWEBenchResult] = []
+    for r in report.get("results", []):
+        verif_dict = r["verification"]
+        verif = SWEBenchVerification(
+            patch_applied=verif_dict["patch_applied"],
+            fail_to_pass_pass=verif_dict["fail_to_pass_pass"],
+            fail_to_pass_total=verif_dict["fail_to_pass_total"],
+            pass_to_pass_pass=verif_dict["pass_to_pass_pass"],
+            pass_to_pass_total=verif_dict["pass_to_pass_total"],
+            stdout_tail=verif_dict.get("stdout_tail", ""),
+            stderr_tail=verif_dict.get("stderr_tail", ""),
+            duration_seconds=verif_dict.get("duration_seconds", 0.0),
+            error=verif_dict.get("error"),
+        )
+        analyzer_results.append(
+            SWEBenchResult(
+                instance_id=r["instance_id"],
+                repo=r["repo"],
+                success=r["success"],
+                failure_reason=r.get("failure_reason", ""),
+                final_answer=r.get("final_answer", ""),
+                actions=r.get("actions", []),
+                steps_count=r.get("steps_count", 0),
+                tool_calls=r.get("tool_calls", 0),
+                duration_seconds=r.get("duration_seconds", 0.0),
+                prompt_chars=r.get("prompt_chars", 0),
+                completion_chars=r.get("completion_chars", 0),
+                estimated_tokens=r.get("estimated_tokens", 0),
+                request_count=r.get("request_count", 0),
+                metadata=r.get("metadata", {}),
+                verification=verif,
+                prediction=r.get("prediction", ""),
+                workspace_path=r.get("workspace_path", ""),
+                trial=r.get("trial", 1),
+            )
+        )
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2, ensure_ascii=False)
+    if args.markdown:
+        args.markdown.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.markdown, "w", encoding="utf-8") as handle:
+            handle.write(render_markdown_report(report))
+            handle.write("\n")
+            handle.write(render_full_analysis(analyzer_results))
+
+    print(json.dumps(report["summary"], indent=2, ensure_ascii=False))
+    return 0
 
 
 def main(argv: Any = None) -> int:
     args = parse_args(argv)
+
+    if args.suite == SWEBENCH_LITE_SUITE:
+        if args.list:
+            return _list_swebench_lite(args)
+        return _run_swebench_lite(args)
 
     if args.list:
         tasks = [task.to_public_dict() for task in get_benchmark_tasks(args.suite)]
@@ -77,7 +267,7 @@ def main(argv: Any = None) -> int:
         return 0
 
     variant_names = args.variant
-    variants = None
+    variants: Optional[List[Any]] = None
     if args.all_variants:
         variants = BENCH_VARIANTS
         variant_names = None

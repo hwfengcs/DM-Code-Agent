@@ -20,7 +20,7 @@ these entries.
 | # | Title | Phase | Status |
 | --- | --- | --- | --- |
 | [00](00-kickoff.md) | Why this upgrade — motivation, goals, constraints | P0 | active |
-| 01 | SWE-bench Lite baseline and failure modes | P1 | planned |
+| [01](01-swebench-baseline.md) | SWE-bench Lite harness, sampling, and the road to numbers | P1 | active |
 | 02 | Reflexion: episodic memory across trials | P2 | planned |
 | 03 | Hybrid retrieval (BM25 + embeddings) for repository-scale context | P3 | planned |
 | 04 | Critic agent and self-consistency selection | P4 | planned |
