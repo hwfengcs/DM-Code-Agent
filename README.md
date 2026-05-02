@@ -2,17 +2,67 @@
 
 <div align="center">
 
-**本地优先、可审计、可复现的 Python Code Agent**
+**本地优先、可审计、有算法骨架的 Python Code Agent**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-ready-purple.svg)](MCP_GUIDE.md)
 [![Trace](https://img.shields.io/badge/Trace-Replay-blueviolet.svg)](docs/tracing.md)
+[![SWE-bench Lite](https://img.shields.io/badge/SWE--bench%20Lite-coming%20in%20v2-lightgrey.svg)](docs/research-log/00-kickoff.md)
+[![Research Log](https://img.shields.io/badge/Research%20Log-active-orange.svg)](docs/research-log/)
 
-**中文** | [English](README_EN.md)
+**中文** | [English](README_EN.md) | [Français](README_FR.md)
 
 </div>
+
+> **一句话**：DM-Code-Agent 是一个把 ReAct + Planner + Replan + Trace 写在 ~1500 行可读 Python 里的代码维护 Agent，正在升级到 v2 算法栈（Reflexion / Hybrid RAG / Critic / Self-Consistency / Adaptive Replan），并公开 SWE-bench Lite 跑分。
+>
+> 它不是要做又一个聊天黑盒，而是要做一个开发者能看懂、能复现、能扩展、能拿来对比研究的 Code Agent baseline。
+
+## Why this project
+
+- **可审计 (Auditable)**：每一步的计划、工具调用、观察结果都写入 JSONL trace，trace 自带 dry replay 与显式 tool replay，调试不靠"再问一次模型"。
+- **可对标 (Benchmarked)**：项目自带 coding 与 maintenance 两套 hidden-test benchmark，并接入 SWE-bench Lite（v2 phase 1）。所有 ablation 数据都附 raw JSON 报告，能复现。
+- **有算法 (Algorithmic, v2)**：不是"调用 GPT-4 并写个 ReAct"。Reflexion、Hybrid RAG、Critic、Self-Consistency、Adaptive Replanning 各自模块化、各自有 ablation 实验。看 `docs/research-log/` 可读到每个决策的来由与翻车数据。
+- **可扩展 (Extensible)**：内置 Skill 系统 + MCP 集成，任务激活领域 prompt 与专用工具；4 家主流 LLM 适配（DeepSeek/OpenAI/Claude/Gemini），可加自定义 `base_url`。
+
+## v.s. 同类项目（v2 完成后将填入实测数据）
+
+| 维度 | DM-Code-Agent | Aider | OpenHands | SWE-agent | smolagents |
+| --- | --- | --- | --- | --- | --- |
+| 本地优先（无沙箱依赖） | ✅ | ✅ | docker | docker | ✅ |
+| Trace + Replay | ✅ JSONL + dry/tool replay | git diff | server log | trajectory | 弱 |
+| Reflexion / Critic / Self-Consistency | ✅ v2 | ❌ | partial | ❌ | ❌ |
+| Hybrid BM25+Embedding RAG | ✅ v2（opt-in） | repo-map | partial | retrieval | ❌ |
+| MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
+| 自带 maintenance benchmark | ✅ 5+ tasks | ❌ | ❌ | SWE-bench | ❌ |
+| 公开 SWE-bench Lite 分数 | 🔄 v2 P1 进行中 | ❌ | ✅ | ✅ | ❌ |
+| 代码体积（核心 LOC） | ~1500 | ~10k | ~50k | ~5k | ~3k |
+| License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
+
+> 表中的 SWE-bench、ablation 实测数据将在 v2 Phase 1-5 完成时落地。
+> 进度见 [docs/research-log/](docs/research-log/) 与 [CHANGELOG.md](CHANGELOG.md)。
+
+## Algorithm Highlights（v2 路线图）
+
+| 模块 | 状态 | 说明 | Devlog |
+| --- | --- | --- | --- |
+| ReAct + Planner + Replan | ✅ v1.5 | 基础 ReAct 循环 + 3-8 步全局计划 + 失败 replan | [00](docs/research-log/00-kickoff.md) |
+| SWE-bench Lite suite | 🔄 P1 | 50 题子集，DeepSeek 基线 + 失败模式分析 | 01（即将发布） |
+| Reflexion (episodic memory) | 🔄 P2 | 失败 trial 反思 → lesson → 注入下一次 prompt，支持 pass@k | 02（即将发布） |
+| Hybrid RAG (BM25 + embeddings + RRF) | 🔄 P3 | 函数粒度索引、双路召回、Top-K 注入 prompt | 03（即将发布） |
+| Critic + Self-Consistency | 🔄 P4 | 独立 LLM 同行评审 + N-候选选优（majority vote / critic score / test pass） | 04（即将发布） |
+| Adaptive Replanning + Token economics | 🔄 P5 | 错误类型 → replan 策略，跨模型 cost-per-success 表 | 05（即将发布） |
+
+## Research Log
+
+DM-Code-Agent 的每个非平凡设计决策都会留下 devlog：动机、实验、ablation、踩坑、下一步。
+入口：[`docs/research-log/`](docs/research-log/)。已发布：
+
+- [00 — Kickoff: Why a v2 algorithm-track upgrade?](docs/research-log/00-kickoff.md)
+
+---
 
 DM-Code-Agent 是一个面向真实代码维护任务的轻量 Code Agent。它在本地工作区中运行，能够调用文件、搜索、测试、lint、代码分析和 MCP 工具，并把每一步计划、工具调用、观测结果和最终报告记录为可审计 trace。
 
@@ -178,23 +228,33 @@ python -m black --check .
 
 ## 文档
 
+- [docs/research-log/](docs/research-log/)：v2 算法升级的设计动机、实验、ablation 与踩坑记录
 - [docs/product.md](docs/product.md)：产品定位和落地场景
 - [docs/tracing.md](docs/tracing.md)：trace schema、view、replay 和隐私边界
 - [docs/benchmarks.md](docs/benchmarks.md)：benchmark suite、评分和报告字段
 - [MCP_GUIDE.md](MCP_GUIDE.md)：MCP 配置
 - [SKILL_GUIDE.md](SKILL_GUIDE.md)：内置和自定义 skill
+- [CHANGELOG.md](CHANGELOG.md)：版本变更
 
 ## Roadmap
+
+v2 算法栈正在按 [`docs/research-log/00-kickoff.md`](docs/research-log/00-kickoff.md) 的路线图分阶段交付：
+SWE-bench Lite 跑分 → Reflexion → Hybrid RAG → Critic + Self-Consistency → Adaptive Replanning + 跨模型经济学 → README/blog 发布。
+
+短期持续在做的非算法方向：
 
 - Trace diff：比较两次 agent run 的计划、工具调用和最终结果。
 - Tool replay sandbox：为危险工具提供更明确的隔离执行策略。
 - Maintenance benchmark 扩展：加入文档一致性、CI 配置修复、跨文件重构和多轮修复任务。
-- Code index：符号索引、依赖图和跨文件代码理解工具。
 - Run report：自动生成改动摘要、验证命令和剩余风险。
+
+发布记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 贡献
 
-欢迎提交 Issue 和 PR。建议先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)、[SECURITY.md](SECURITY.md) 和 [AGENTS.md](AGENTS.md)。
+欢迎提交 Issue 和 PR。建议先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)、[SECURITY.md](SECURITY.md)、[AGENTS.md](AGENTS.md) 与 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+
+如果你的工作有算法决策或非平凡 ablation，请同步在 [`docs/research-log/`](docs/research-log/) 留下一篇 devlog。
 
 ## License
 

@@ -90,8 +90,6 @@ class ReactAgent:
             raise ValueError("必须为 ReactAgent 提供至少一个工具。")
         self.client = client
 
-        # 我感觉这里要改,能否设一个tools_mapping?
-
         self.tools = {tool.name: tool for tool in tools}
         self.tools_list = tools  # 保留工具列表用于规划器
         self.max_steps = max_steps

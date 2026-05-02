@@ -289,7 +289,6 @@ class TaskPlanner:
             print(f"警告：重新规划失败 - {e}")
             return []
 
-    # 我感觉这个可以用__bool__()来写
     def has_plan(self) -> bool:
         """
         检查是否存在活跃的计划

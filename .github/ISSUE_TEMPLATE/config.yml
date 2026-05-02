@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussion
+    url: https://github.com/hwfengcs/DM-Code-Agent/discussions
+    about: Ask a question, share a use case, or discuss research direction.
+  - name: Security report
+    url: https://github.com/hwfengcs/DM-Code-Agent/security/advisories/new
+    about: Report a vulnerability privately. See SECURITY.md.

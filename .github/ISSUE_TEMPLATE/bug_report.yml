@@ -1,0 +1,109 @@
+name: Bug report
+description: Report a defect in DM-Code-Agent.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill in as much detail as you can.
+        If the bug touches a specific provider (DeepSeek/OpenAI/Claude/Gemini)
+        or MCP server, mention it in the description.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the bug.
+      placeholder: "dm-agent crashes when --trace is set and the workspace is read-only."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal reproducible commands or scripts.
+      placeholder: |
+        1. `pip install -e ".[dev]"`
+        2. `dm-agent "..." --trace traces/x.jsonl`
+        3. Observe the error.
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Paste tracebacks if available.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: DM-Code-Agent version
+      description: Output of `python -c "import dm_agent; print(dm_agent.__version__)"`.
+      placeholder: "1.5.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.11"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 / Ubuntu 22.04 / macOS 14"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM provider (if relevant)
+      options:
+        - "Not relevant"
+        - "DeepSeek"
+        - "OpenAI"
+        - "Claude"
+        - "Gemini"
+        - "Custom base_url"
+    validations:
+      required: false
+
+  - type: textarea
+    id: trace
+    attributes:
+      label: Trace excerpt (optional)
+      description: |
+        Paste a small excerpt of `traces/*.jsonl` if useful. Strip secrets first.
+      render: json
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I removed API keys, file paths, and other secrets from the report.
+          required: true
+        - label: I searched existing issues for duplicates.
+          required: true

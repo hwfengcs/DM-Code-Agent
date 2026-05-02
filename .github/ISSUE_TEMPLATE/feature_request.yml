@@ -1,0 +1,77 @@
+name: Feature request
+description: Propose a new feature, tool, or behavior change.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a new feature. DM-Code-Agent stays small and
+        readable on purpose, so please describe both the value and the cost.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: A short problem statement. Whose workflow gets better?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        A concrete description of the change. Include CLI flags, public API
+        names, prompt structure, or trace event schema if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other designs you considered, and why this one wins.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - "Core (agent loop, planner, replan)"
+        - "Tools (file/exec/test/lint/AST/code-index)"
+        - "Skills"
+        - "MCP integration"
+        - "Tracing / replay"
+        - "Benchmarks (coding / maintenance / SWE-bench)"
+        - "Evals"
+        - "Memory / context compression / RAG"
+        - "Reflexion / Critic / self-consistency"
+        - "Documentation"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Expected impact and trade-offs
+      description: |
+        What will this change cost (latency, tokens, complexity, dependencies)?
+        What measurable improvement will it bring (pass rate, recovery,
+        readability)?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I read CONTRIBUTING.md and AGENTS.md.
+          required: true
+        - label: This change can be implemented without removing existing safety defaults.
+          required: true

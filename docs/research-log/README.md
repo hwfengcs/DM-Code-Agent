@@ -1,0 +1,44 @@
+# Research Log
+
+This directory is the public devlog of DM-Code-Agent's algorithm-track upgrade.
+
+It is not a tutorial. It is a chronological record of:
+
+- the problems we noticed,
+- the algorithms or designs we picked to address them,
+- the experiments we ran (with seeds, configs, and ablations),
+- the things that did not work, and
+- the next bets.
+
+The intent is to make the agent's evolution **inspectable**, the same way
+JSONL traces make a single run inspectable. If you want to know **why** the
+project looks the way it does, the answer should be reachable from one of
+these entries.
+
+## Index
+
+| # | Title | Phase | Status |
+| --- | --- | --- | --- |
+| [00](00-kickoff.md) | Why this upgrade — motivation, goals, constraints | P0 | active |
+| 01 | SWE-bench Lite baseline and failure modes | P1 | planned |
+| 02 | Reflexion: episodic memory across trials | P2 | planned |
+| 03 | Hybrid retrieval (BM25 + embeddings) for repository-scale context | P3 | planned |
+| 04 | Critic agent and self-consistency selection | P4 | planned |
+| 05 | Adaptive replanning and cross-model token economics | P5 | planned |
+| 06 | Final write-up: what worked, what didn't, what's next | P6 | planned |
+
+## Conventions
+
+- Each entry is a single Markdown file `NN-slug.md`, ordered by date.
+- Numbers are stable. Do not renumber after publication.
+- Each entry begins with a short `## TL;DR`, then `## Context`, the work,
+  ablation tables, and `## Open questions / next bets`.
+- Ablation tables embed enough to reproduce: model, provider, dataset slice,
+  seed, configuration flags, raw `bench_reports/*.json` path.
+- Failures are first-class content. Negative results are kept in.
+
+## Reproducing
+
+Every ablation table in this log links to a JSON in `bench_reports/`. To
+reproduce, follow the command shown in the entry; the numbers should match
+within sampling noise. If they do not, please open an issue and tag the entry.
