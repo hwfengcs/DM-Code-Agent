@@ -16,11 +16,17 @@ from .runner import (
     write_json_report,
     write_markdown_report,
 )
-from .tasks import get_coding_tasks
+from .tasks import BENCHMARK_SUITES, get_benchmark_tasks
 
 
 def parse_args(argv: Any = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run DM-Code-Agent coding benchmarks.")
+    parser.add_argument(
+        "--suite",
+        choices=sorted(BENCHMARK_SUITES),
+        default="coding",
+        help="Benchmark suite to run.",
+    )
     parser.add_argument("--list", action="store_true", help="List benchmark tasks and exit.")
     parser.add_argument("--task", action="append", help="Task id to run. Can be repeated.")
     parser.add_argument("--variant", action="append", help="Variant name to run. Can be repeated.")
@@ -46,6 +52,7 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         help="Keep temporary workspaces and include their paths in the report.",
     )
     parser.add_argument("--workspace-root", help="Directory for kept workspaces.")
+    parser.add_argument("--trace-dir", help="Directory for per-run JSONL traces.")
     parser.add_argument(
         "--show-agent-output",
         action="store_true",
@@ -58,9 +65,15 @@ def main(argv: Any = None) -> int:
     args = parse_args(argv)
 
     if args.list:
-        tasks = [task.to_public_dict() for task in get_coding_tasks()]
+        tasks = [task.to_public_dict() for task in get_benchmark_tasks(args.suite)]
         variants = [variant.__dict__ for variant in BENCH_VARIANTS]
-        print(json.dumps({"tasks": tasks, "variants": variants}, indent=2, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"suite": args.suite, "tasks": tasks, "variants": variants},
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
         return 0
 
     variant_names = args.variant
@@ -73,6 +86,7 @@ def main(argv: Any = None) -> int:
 
     try:
         report = run_benchmark_suite(
+            suite=args.suite,
             task_ids=args.task,
             variants=variants,
             variant_names=variant_names,
@@ -88,6 +102,7 @@ def main(argv: Any = None) -> int:
                 test_timeout=args.test_timeout,
                 keep_workspaces=args.keep_workspaces,
                 workspace_root=args.workspace_root,
+                trace_dir=args.trace_dir,
                 quiet=not args.show_agent_output,
             ),
         )

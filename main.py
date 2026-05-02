@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
@@ -21,6 +23,7 @@ from dm_agent import (
 )
 from dm_agent.mcp import MCPManager, load_mcp_config
 from dm_agent.skills import SkillManager
+from dm_agent.tracing import TraceWriter
 
 # 尝试导入 colorama 用于彩色输出
 try:
@@ -170,6 +173,21 @@ def parse_args(argv: Any) -> argparse.Namespace:
         "--interactive",
         action="store_true",
         help="启动交互式菜单模式。",
+    )
+    parser.add_argument(
+        "--trace",
+        type=Path,
+        help="将本次任务的结构化执行轨迹写入 JSONL 文件。",
+    )
+    parser.add_argument(
+        "--trace-llm-io",
+        action="store_true",
+        help="在 trace 中包含完整 LLM 输入/输出。仅建议在私有调试时启用。",
+    )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="将本次任务的人类可读运行报告写入 Markdown 文件。",
     )
     return parser.parse_args(argv)
 
@@ -368,7 +386,6 @@ def configure_settings(config: Config) -> None:
 def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
     """格式化显示任务结果"""
     print_separator("-")
-
     if show_steps and result.get("steps"):
         print(f"{Fore.CYAN}{Style.BRIGHT}执行步骤：{Style.RESET_ALL}\n")
         for idx, step in enumerate(result.get("steps", []), start=1):
@@ -388,6 +405,99 @@ def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
     print(final_answer)
     print()
     print_separator("-")
+
+
+def collect_git_status() -> List[str]:
+    """Return short git status lines for the current workspace, if available."""
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--short"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return []
+    if completed.returncode != 0:
+        return []
+    return [line for line in completed.stdout.splitlines() if line.strip()]
+
+
+def write_run_report(
+    path: Path,
+    *,
+    config: Config,
+    task: str,
+    result: Dict[str, Any],
+    trace_path: Path | None = None,
+    git_status_before: List[str] | None = None,
+    git_status_after: List[str] | None = None,
+) -> None:
+    """Write a human-readable Markdown report for one agent run."""
+    metadata = result.get("metadata", {})
+    steps = result.get("steps", [])
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        "# DM-Code-Agent Run Report",
+        "",
+        "## Task",
+        "",
+        task,
+        "",
+        "## Runtime",
+        "",
+        f"- Provider: `{config.provider}`",
+        f"- Model: `{config.model}`",
+        f"- Status: `{metadata.get('status', 'unknown')}`",
+        f"- Duration: `{float(metadata.get('duration_seconds', 0.0)):.2f}s`",
+        f"- Steps: `{len(steps)}`",
+        f"- Tool errors: `{metadata.get('tool_error_count', 0)}`",
+        f"- Replans: `{metadata.get('replan_count', 0)}`",
+    ]
+    if trace_path:
+        lines.append(f"- Trace: `{trace_path}`")
+
+    before = git_status_before or []
+    after = git_status_after or []
+    lines.extend(["", "## Workspace Status", ""])
+    if not before and not after:
+        lines.append("No git status information available.")
+    else:
+        lines.append(f"- Dirty entries before run: `{len(before)}`")
+        lines.append(f"- Dirty entries after run: `{len(after)}`")
+        if before:
+            lines.extend(["", "Before:", ""])
+            lines.extend(f"- `{line}`" for line in before)
+        if after:
+            lines.extend(["", "After:", ""])
+            lines.extend(f"- `{line}`" for line in after)
+
+    lines.extend(
+        [
+            "",
+            "## Steps",
+            "",
+            "| # | Action | Observation |",
+            "| ---: | --- | --- |",
+        ]
+    )
+    for index, step in enumerate(steps, start=1):
+        observation = str(step.get("observation", "")).replace("\n", " ")
+        if len(observation) > 180:
+            observation = observation[:177] + "..."
+        lines.append(f"| {index} | `{step.get('action', '')}` | {observation} |")
+
+    lines.extend(
+        [
+            "",
+            "## Final Answer",
+            "",
+            str(result.get("final_answer", "")),
+            "",
+        ]
+    )
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def create_step_callback(show_steps: bool):
@@ -637,11 +747,19 @@ def interactive_mode(config: Config) -> int:
         print(f"{Fore.GREEN}✓ MCP 服务器已关闭{Style.RESET_ALL}")
 
 
-def run_single_task(config: Config, task: str) -> int:
+def run_single_task(
+    config: Config,
+    task: str,
+    *,
+    trace_path: Path | None = None,
+    trace_llm_io: bool = False,
+    report_path: Path | None = None,
+) -> int:
     """运行单个任务（命令行模式）"""
     # 初始化 MCP
     mcp_config = load_mcp_config()
     mcp_manager = MCPManager(mcp_config)
+    trace_writer: TraceWriter | None = None
 
     try:
         # 启动 MCP 服务器
@@ -655,7 +773,7 @@ def run_single_task(config: Config, task: str) -> int:
 
         # 初始化技能管理器
         skill_manager = SkillManager()
-        skill_manager.load_all()
+        skill_count = skill_manager.load_all()
 
         client = create_llm_client(
             provider=config.provider,
@@ -663,6 +781,23 @@ def run_single_task(config: Config, task: str) -> int:
             model=config.model,
             base_url=config.base_url,
         )
+        if trace_path:
+            trace_writer = TraceWriter(trace_path, capture_llm_io=trace_llm_io)
+            trace_writer.record(
+                "runtime",
+                {
+                    "provider": config.provider,
+                    "model": config.model,
+                    "base_url": config.base_url,
+                    "max_steps": config.max_steps,
+                    "temperature": config.temperature,
+                    "show_steps": config.show_steps,
+                    "mcp_started_count": started_count,
+                    "mcp_tool_count": len(mcp_tools),
+                    "skill_count": skill_count,
+                    "trace_llm_io": trace_llm_io,
+                },
+            )
 
         # 创建步骤回调函数
         step_callback = create_step_callback(config.show_steps)
@@ -674,28 +809,54 @@ def run_single_task(config: Config, task: str) -> int:
             temperature=config.temperature,
             step_callback=step_callback,
             skill_manager=skill_manager,
+            trace_writer=trace_writer,
         )
 
         print(f"\n{Fore.CYAN}正在执行任务：{Style.RESET_ALL}{task}\n")
         print_separator()
 
+        git_status_before = collect_git_status()
         result = agent.run(task)
+        git_status_after = collect_git_status()
+        if report_path:
+            write_run_report(
+                report_path,
+                config=config,
+                task=task,
+                result=result,
+                trace_path=trace_path,
+                git_status_before=git_status_before,
+                git_status_after=git_status_after,
+            )
 
         # 显示最终结果
         print(f"\n{Fore.GREEN}{Style.BRIGHT}最终答案：{Style.RESET_ALL}\n")
         print(result.get("final_answer", ""))
         print()
         print_separator()
+        if trace_writer:
+            print(f"{Fore.CYAN}Trace 已写入：{trace_writer.path}{Style.RESET_ALL}")
+        if report_path:
+            print(f"{Fore.CYAN}Report 已写入：{report_path}{Style.RESET_ALL}")
 
         return 0
 
     except LLMError as e:
+        if trace_writer:
+            trace_writer.record("run_error", {"error_type": "LLMError", "message": str(e)})
         print(f"{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}", file=sys.stderr)
         return 1
     except Exception as e:
+        if trace_writer:
+            trace_writer.record(
+                "run_error",
+                {"error_type": type(e).__name__, "message": str(e)},
+            )
         print(f"{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}", file=sys.stderr)
         return 1
     finally:
+        if trace_writer:
+            trace_writer.close()
         # 清理 MCP 资源
         mcp_manager.stop_all()
 
@@ -740,7 +901,13 @@ def main(argv: Any = None) -> int:
 
     # 如果提供了任务参数，直接执行任务
     if args.task:
-        return run_single_task(config, args.task)
+        return run_single_task(
+            config,
+            args.task,
+            trace_path=args.trace,
+            trace_llm_io=args.trace_llm_io,
+            report_path=args.report,
+        )
 
     # 如果指定了交互模式或没有提供任务，进入交互式菜单
     if args.interactive or not args.task:

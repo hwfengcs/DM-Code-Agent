@@ -1,46 +1,55 @@
-# DM-Code-Agent Coding Benchmarks
+# DM-Code-Agent Benchmarks
 
-This directory documents the L2 capability benchmark suite. Unlike the deterministic evals,
-these tasks are scored by hidden tests that are injected only after the agent finishes.
+This directory documents the benchmark entry points. The implementation lives in
+`dm_agent.benchmarks`.
 
-## Run
+## Suites
 
-List tasks:
+- `coding`: compact hidden-test coding tasks.
+- `maintenance`: repository-maintenance tasks with edge cases and changed-file constraints.
+
+## Commands
 
 ```bash
 dm-agent-bench --list
+dm-agent-bench --suite maintenance --list
 ```
 
-Run one live DeepSeek task:
+Run one live maintenance task:
 
 ```bash
 DEEPSEEK_API_KEY=your_deepseek_api_key
-dm-agent-bench --provider deepseek --task slugify_cleanup
+dm-agent-bench --suite maintenance --provider deepseek --task config_precedence
 ```
 
-Run the full default benchmark and write reports:
+Write reports:
 
 ```bash
-dm-agent-bench --provider deepseek \
-  --output bench_reports/deepseek_coding.json \
-  --markdown bench_reports/deepseek_coding.md
+dm-agent-bench --suite maintenance --provider deepseek \
+  --output bench_reports/maintenance.json \
+  --markdown bench_reports/maintenance.md \
+  --trace-dir bench_reports/traces
 ```
 
 Run ablations:
 
 ```bash
-dm-agent-bench --provider deepseek --all-variants
+dm-agent-bench --suite maintenance --provider deepseek --all-variants
 ```
 
 ## What It Measures
 
+- Strict pass rate
 - Hidden-test pass rate
-- Average agent steps
+- Agent completion rate
+- Average steps
 - Average tool calls
+- Average changed files
 - Real provider request count
-- Real token usage when the provider returns usage metadata
-- Planning / skills / compression ablations
+- Token usage when returned by the provider
+- Changed-file constraint violations
+- Optional per-run trace files
 
-The benchmark is intentionally harder than the L1 eval suite: prompts are less tool-explicit,
-tasks include visible and hidden tests, and success is based on executable behavior rather than
-final-answer keywords.
+The maintenance suite is intended to be more practical than puzzle-style coding tasks: it
+checks configuration precedence, retry policy regression tests, patch summaries, safe workspace
+path handling, and cross-file API contracts.

@@ -19,6 +19,7 @@ from dm_agent.core import ReactAgent
 from dm_agent.evals.real_runner import PROVIDER_API_KEY_ENV, UsageTrackingClient
 from dm_agent.skills import SkillManager
 from dm_agent.tools import default_tools
+from dm_agent.tracing import TraceWriter
 
 from .models import (
     BenchmarkRunConfig,
@@ -27,7 +28,7 @@ from .models import (
     CodingBenchResult,
     CommandResult,
 )
-from .tasks import get_coding_tasks
+from .tasks import get_benchmark_tasks
 
 BENCH_VARIANTS: List[BenchmarkVariant] = [
     BenchmarkVariant("full", True, True, True),
@@ -51,6 +52,7 @@ def chdir(path: Path):
 
 def run_benchmark_suite(
     *,
+    suite: str = "coding",
     tasks: Optional[Sequence[BenchmarkTask]] = None,
     variants: Optional[Sequence[BenchmarkVariant]] = None,
     task_ids: Optional[Iterable[str]] = None,
@@ -58,7 +60,7 @@ def run_benchmark_suite(
     config: Optional[BenchmarkRunConfig] = None,
 ) -> Dict[str, Any]:
     config = config or BenchmarkRunConfig()
-    selected_tasks = list(tasks or get_coding_tasks(task_ids))
+    selected_tasks = list(tasks or get_benchmark_tasks(suite, task_ids))
     selected_variants = list(variants or DEFAULT_BENCH_VARIANTS)
 
     if task_ids and tasks is not None:
@@ -88,13 +90,15 @@ def run_benchmark_suite(
                         variant,
                         config,
                         repeat_index=repeat_index,
+                        suite=suite,
                     )
                 )
 
     provider = config.provider.lower()
     defaults = PROVIDER_DEFAULTS.get(provider, {})
     return {
-        "mode": "coding_benchmark",
+        "mode": f"{suite}_benchmark",
+        "suite": suite,
         "provider": provider,
         "model": config.model or defaults.get("model"),
         "base_url": config.base_url or defaults.get("base_url"),
@@ -112,6 +116,7 @@ def run_benchmark_task(
     config: BenchmarkRunConfig,
     *,
     repeat_index: int = 0,
+    suite: str = "coding",
 ) -> CodingBenchResult:
     if config.keep_workspaces:
         root = Path(config.workspace_root) if config.workspace_root else None
@@ -123,12 +128,24 @@ def run_benchmark_task(
             )
         )
         return _run_benchmark_task_in_workspace(
-            task, variant, config, workspace, repeat_index=repeat_index, cleanup=False
+            task,
+            variant,
+            config,
+            workspace,
+            repeat_index=repeat_index,
+            cleanup=False,
+            suite=suite,
         )
 
     with tempfile.TemporaryDirectory(prefix=f"dm-agent-bench-{task.task_id}-") as tmp:
         return _run_benchmark_task_in_workspace(
-            task, variant, config, Path(tmp), repeat_index=repeat_index, cleanup=True
+            task,
+            variant,
+            config,
+            Path(tmp),
+            repeat_index=repeat_index,
+            cleanup=True,
+            suite=suite,
         )
 
 
@@ -193,6 +210,7 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
             "agent_completion_rate": len(completed) / len(group) if group else 0.0,
             "avg_steps": _mean(result.steps_count for result in group),
             "avg_tool_calls": _mean(result.tool_calls for result in group),
+            "avg_changed_files": _mean(len(result.changed_files) for result in group),
             "avg_estimated_tokens": _mean(result.estimated_tokens for result in group),
             "total_requests": sum(result.request_count for result in group),
             "avg_duration_seconds": _mean(result.duration_seconds for result in group),
@@ -221,7 +239,7 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     summary = report["summary"]
     lines = [
-        "# DM-Code-Agent Coding Benchmark Report",
+        f"# DM-Code-Agent {str(report.get('suite', 'coding')).title()} Benchmark Report",
         "",
         f"- Total runs: `{summary['total_runs']}`",
         f"- Overall pass rate: `{summary['overall_pass_rate']:.1%}`",
@@ -230,15 +248,16 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
         "",
         "## Variant Summary",
         "",
-        "| Variant | Strict pass | Hidden pass | Agent done | Avg steps | Avg tools | Avg tokens | Requests |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Variant | Strict pass | Hidden pass | Agent done | Avg steps | Avg tools | Avg changed | Avg tokens | Requests |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
     for name, data in summary["variants"].items():
         lines.append(
             "| {name} | {pass_rate:.1%} ({successes}/{tasks}) | "
             "{hidden_test_pass_rate:.1%} | {agent_completion_rate:.1%} | "
-            "{avg_steps:.2f} | {avg_tool_calls:.2f} | {avg_estimated_tokens:.0f} | "
+            "{avg_steps:.2f} | {avg_tool_calls:.2f} | {avg_changed_files:.2f} | "
+            "{avg_estimated_tokens:.0f} | "
             "{total_requests} |".format(name=name, **data)
         )
 
@@ -249,6 +268,31 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
     else:
         for result in failures:
             lines.append(f"- `{result['variant']}/{result['task_id']}`: {result['failure_reason']}")
+
+    lines.extend(
+        [
+            "",
+            "## Run Details",
+            "",
+            "| Variant | Task | Pass | Hidden rc | Changed files | Trace |",
+            "| --- | --- | ---: | ---: | --- | --- |",
+        ]
+    )
+    for result in report["results"]:
+        changed = ", ".join(f"`{path}`" for path in result.get("changed_files", [])) or "-"
+        trace = result.get("metadata", {}).get("trace_path") or "-"
+        if trace != "-":
+            trace = f"`{trace}`"
+        lines.append(
+            "| {variant} | {task_id} | {success} | {hidden_rc} | {changed} | {trace} |".format(
+                variant=result["variant"],
+                task_id=result["task_id"],
+                success="yes" if result["success"] else "no",
+                hidden_rc=result.get("hidden_test", {}).get("returncode", ""),
+                changed=changed,
+                trace=trace,
+            )
+        )
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -261,9 +305,32 @@ def _run_benchmark_task_in_workspace(
     *,
     repeat_index: int,
     cleanup: bool,
+    suite: str,
 ) -> CodingBenchResult:
     prepare_workspace(task, workspace)
+    before_snapshot = _snapshot_workspace(workspace)
     client = _build_tracking_client(config)
+    trace_path: Optional[Path] = None
+    trace_writer: Optional[TraceWriter] = None
+
+    if config.trace_dir:
+        trace_root = Path(config.trace_dir)
+        trace_root.mkdir(parents=True, exist_ok=True)
+        trace_path = trace_root / f"{suite}-{variant.name}-{task.task_id}-r{repeat_index}.jsonl"
+        trace_writer = TraceWriter(trace_path)
+        trace_writer.record(
+            "runtime",
+            {
+                "mode": f"{suite}_benchmark",
+                "suite": suite,
+                "task_id": task.task_id,
+                "variant": variant.name,
+                "provider": config.provider.lower(),
+                "model": client.model,
+                "base_url": client.base_url,
+                "repeat_index": repeat_index,
+            },
+        )
 
     skill_manager = None
     if variant.enable_skills:
@@ -278,6 +345,7 @@ def _run_benchmark_task_in_workspace(
         enable_planning=variant.enable_planning,
         enable_compression=variant.enable_compression,
         skill_manager=skill_manager,
+        trace_writer=trace_writer,
     )
 
     with chdir(workspace):
@@ -288,6 +356,11 @@ def _run_benchmark_task_in_workspace(
             else:
                 raw_result = agent.run(task.prompt)
         except Exception as exc:  # noqa: BLE001
+            if trace_writer:
+                trace_writer.record(
+                    "run_error",
+                    {"error_type": type(exc).__name__, "message": str(exc)},
+                )
             raw_result = {
                 "final_answer": "",
                 "steps": [],
@@ -297,14 +370,19 @@ def _run_benchmark_task_in_workspace(
                     "duration_seconds": 0.0,
                 },
             }
+        finally:
+            if trace_writer:
+                trace_writer.close()
 
+    changed_files = _diff_workspace(before_snapshot, _snapshot_workspace(workspace))
     _write_files(workspace, task.hidden_files)
     hidden_result = run_hidden_tests(task, workspace, timeout=config.test_timeout)
 
     metadata = raw_result.get("metadata", {})
     metadata.update(
         {
-            "mode": "coding_benchmark",
+            "mode": f"{suite}_benchmark",
+            "suite": suite,
             "provider": config.provider.lower(),
             "model": client.model,
             "request_count": client.usage.request_count,
@@ -312,10 +390,12 @@ def _run_benchmark_task_in_workspace(
             "completion_tokens": client.usage.completion_tokens,
             "total_tokens": client.usage.total_tokens,
             "repeat_index": repeat_index,
+            "changed_files": changed_files,
+            "trace_path": str(trace_path) if trace_path else "",
         }
     )
 
-    success, failure_reason = _score_run(raw_result, hidden_result)
+    success, failure_reason = _score_run(task, raw_result, hidden_result, changed_files)
     steps = raw_result.get("steps", [])
     actions = [step.get("action", "") for step in steps]
 
@@ -336,14 +416,30 @@ def _run_benchmark_task_in_workspace(
         request_count=client.usage.request_count,
         metadata=metadata,
         hidden_test=hidden_result,
+        changed_files=changed_files,
         workspace_path=str(workspace) if not cleanup else "",
     )
 
 
-def _score_run(raw_result: Dict[str, Any], hidden_result: CommandResult) -> tuple[bool, str]:
+def _score_run(
+    task: BenchmarkTask,
+    raw_result: Dict[str, Any],
+    hidden_result: CommandResult,
+    changed_files: Sequence[str],
+) -> tuple[bool, str]:
     metadata = raw_result.get("metadata", {})
     if metadata.get("status") != "success":
         return False, metadata.get("failure_reason") or f"agent status={metadata.get('status')}"
+    if task.allowed_changed_files:
+        allowed = set(task.allowed_changed_files)
+        violations = [path for path in changed_files if path not in allowed]
+        if violations:
+            return False, "changed files outside allowed set: " + ", ".join(violations)
+    if task.required_changed_files:
+        changed = set(changed_files)
+        missing = [path for path in task.required_changed_files if path not in changed]
+        if missing:
+            return False, "required files were not changed: " + ", ".join(missing)
     if hidden_result.returncode != 0:
         detail = hidden_result.stderr or hidden_result.stdout or "hidden tests failed"
         return False, _tail(detail, limit=800)
@@ -376,6 +472,33 @@ def _write_files(workspace: Path, files: Dict[str, str]) -> None:
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+
+
+def _snapshot_workspace(workspace: Path) -> Dict[str, bytes]:
+    snapshot: Dict[str, bytes] = {}
+    for path in workspace.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(workspace).as_posix()
+        if not _should_track_file(relative):
+            continue
+        snapshot[relative] = path.read_bytes()
+    return snapshot
+
+
+def _diff_workspace(before: Dict[str, bytes], after: Dict[str, bytes]) -> List[str]:
+    changed = []
+    for path in sorted(set(before) | set(after)):
+        if before.get(path) != after.get(path):
+            changed.append(path)
+    return changed
+
+
+def _should_track_file(relative_path: str) -> bool:
+    parts = set(Path(relative_path).parts)
+    if parts & {".git", ".pytest_cache", "__pycache__", ".mypy_cache", ".ruff_cache"}:
+        return False
+    return not relative_path.endswith((".pyc", ".pyo"))
 
 
 def _resolve_command(command: Sequence[str]) -> List[str]:

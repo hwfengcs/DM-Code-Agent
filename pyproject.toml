@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dm-code-agent"
-version = "1.4.0"
-description = "A lightweight, extensible Python Code Agent with ReAct, MCP tools, planning, memory compression, and skills."
+version = "1.5.0"
+description = "A local-first, auditable Python Code Agent with ReAct, trace/replay, MCP tools, planning, benchmarks, memory compression, and skills."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -18,6 +18,9 @@ keywords = [
   "code-agent",
   "react-agent",
   "mcp",
+  "trace",
+  "benchmark",
+  "code-maintenance",
   "llm",
   "python",
   "agent-framework"
@@ -59,6 +62,7 @@ Issues = "https://github.com/hwfengcs/DM-Code-Agent/issues"
 dm-agent = "main:main"
 dm-agent-eval = "dm_agent.evals.cli:main"
 dm-agent-bench = "dm_agent.benchmarks.cli:main"
+dm-agent-trace = "dm_agent.tracing.cli:main"
 
 [tool.setuptools]
 py-modules = ["main"]

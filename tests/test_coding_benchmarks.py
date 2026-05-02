@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from dm_agent.benchmarks.cli import main as bench_main
-from dm_agent.benchmarks.runner import prepare_workspace, run_hidden_tests
-from dm_agent.benchmarks.tasks import get_coding_tasks
+from dm_agent.benchmarks.runner import prepare_workspace, run_hidden_tests, write_markdown_report
+from dm_agent.benchmarks.tasks import get_benchmark_tasks, get_coding_tasks, get_maintenance_tasks
 
 
 def test_coding_benchmark_manifest_is_hidden_test_based():
@@ -16,6 +16,23 @@ def test_coding_benchmark_manifest_is_hidden_test_based():
 
 def test_coding_benchmark_cli_lists_without_api_key():
     assert bench_main(["--list"]) == 0
+
+
+def test_maintenance_benchmark_manifest_is_realistic_and_keyless():
+    tasks = get_maintenance_tasks()
+
+    assert len(tasks) >= 4
+    assert all(task.setup_files for task in tasks)
+    assert all(task.hidden_files for task in tasks)
+    assert all("Hidden tests will be added" in task.prompt for task in tasks)
+    assert any(task.required_changed_files for task in tasks)
+    assert bench_main(["--suite", "maintenance", "--list"]) == 0
+
+
+def test_benchmark_suite_selector_filters_tasks():
+    tasks = get_benchmark_tasks("maintenance", ["config_precedence"])
+
+    assert [task.task_id for task in tasks] == ["config_precedence"]
 
 
 def test_hidden_tests_fail_on_initial_slugify_workspace(tmp_path):
@@ -45,3 +62,90 @@ def test_hidden_tests_pass_for_known_slugify_solution(tmp_path):
     result = run_hidden_tests(task, tmp_path)
 
     assert result.returncode == 0
+
+
+def test_maintenance_hidden_tests_fail_on_initial_config_workspace(tmp_path):
+    task = get_maintenance_tasks(["config_precedence"])[0]
+    prepare_workspace(task, tmp_path, include_hidden=True)
+
+    result = run_hidden_tests(task, tmp_path)
+
+    assert result.returncode != 0
+    assert "test_cli_overrides_env_and_file" in result.stdout
+
+
+def test_maintenance_hidden_tests_pass_for_known_config_solution(tmp_path):
+    task = get_maintenance_tasks(["config_precedence"])[0]
+    prepare_workspace(task, tmp_path, include_hidden=True)
+    Path(tmp_path / "config_loader.py").write_text(
+        (
+            "import os\n\n"
+            'DEFAULTS = {"timeout": 30, "debug": False, "retries": 2}\n\n\n'
+            "def _bool(value):\n"
+            "    if isinstance(value, bool):\n"
+            "        return value\n"
+            "    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}\n\n\n"
+            "def load_config(file_config=None, env=None, cli_args=None):\n"
+            "    env = env or os.environ\n"
+            "    config = DEFAULTS.copy()\n"
+            "    config.update(file_config or {})\n"
+            "    if 'DM_TIMEOUT' in env:\n"
+            "        config['timeout'] = env['DM_TIMEOUT']\n"
+            "    if 'DM_DEBUG' in env:\n"
+            "        config['debug'] = env['DM_DEBUG']\n"
+            "    config.update(cli_args or {})\n"
+            "    config['timeout'] = int(config['timeout'])\n"
+            "    config['debug'] = _bool(config['debug'])\n"
+            "    return config\n"
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_hidden_tests(task, tmp_path)
+
+    assert result.returncode == 0
+
+
+def test_benchmark_markdown_report_includes_run_details(tmp_path):
+    report_path = tmp_path / "bench.md"
+    report = {
+        "suite": "maintenance",
+        "summary": {
+            "total_runs": 1,
+            "overall_pass_rate": 1.0,
+            "overall_hidden_test_pass_rate": 1.0,
+            "overall_agent_completion_rate": 1.0,
+            "variants": {
+                "full": {
+                    "tasks": 1,
+                    "successes": 1,
+                    "pass_rate": 1.0,
+                    "hidden_test_pass_rate": 1.0,
+                    "agent_completion_rate": 1.0,
+                    "avg_steps": 2,
+                    "avg_tool_calls": 1,
+                    "avg_changed_files": 1,
+                    "avg_estimated_tokens": 100,
+                    "total_requests": 2,
+                }
+            },
+        },
+        "results": [
+            {
+                "variant": "full",
+                "task_id": "config_precedence",
+                "success": True,
+                "failure_reason": "",
+                "changed_files": ["config_loader.py"],
+                "metadata": {"trace_path": "traces/config.jsonl"},
+                "hidden_test": {"returncode": 0},
+            }
+        ],
+    }
+
+    write_markdown_report(report, report_path)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert "Run Details" in text
+    assert "`config_loader.py`" in text
+    assert "`traces/config.jsonl`" in text

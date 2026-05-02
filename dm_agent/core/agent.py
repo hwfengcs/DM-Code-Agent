@@ -58,6 +58,7 @@ class ReactAgent:
         enable_planning: bool = True,  # 是否启用规划
         enable_compression: bool = True,  # 是否启用上下文压缩
         skill_manager: Optional[Any] = None,  # 技能管理器
+        trace_writer: Optional[Any] = None,
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -114,6 +115,7 @@ class ReactAgent:
 
         # 技能管理器
         self.skill_manager = skill_manager
+        self.trace_writer = trace_writer
         self._base_system_prompt = self.system_prompt
         self._base_tools = dict(self.tools)
         self._last_parse_repaired = False
@@ -164,10 +166,37 @@ class ReactAgent:
             "compressed_messages": 0,
             "failure_reason": "",
         }
+        if self.trace_writer:
+            self.trace_writer.start_run(
+                task,
+                metadata={
+                    "max_steps": limit,
+                    "temperature": self.temperature,
+                    "planning_enabled": self.enable_planning,
+                    "compression_enabled": self.enable_compression,
+                    "skills_enabled": bool(self.skill_manager),
+                    "tools": [
+                        {"name": tool.name, "description": tool.description}
+                        for tool in self.tools_list
+                    ],
+                },
+            )
+
+        def finish_result(final_answer: str) -> Dict[str, Any]:
+            result = {
+                "final_answer": final_answer,
+                "steps": [step.__dict__ for step in steps],
+                "metadata": metadata,
+            }
+            if self.trace_writer:
+                self.trace_writer.finish_run(result)
+            return result
 
         # 技能自动选择
         if self.skill_manager:
             metadata["activated_skills"] = self._apply_skills_for_task(task)
+            if self.trace_writer:
+                self.trace_writer.record_skills(metadata["activated_skills"])
 
         # 第一步：生成计划（如果启用）
         plan: List[PlanStep] = []
@@ -175,10 +204,14 @@ class ReactAgent:
             try:
                 plan = self.planner.plan(task)
                 metadata["initial_plan_steps"] = len(plan)
+                if self.trace_writer:
+                    self.trace_writer.record_plan(plan)
                 if plan:
                     plan_text = self.planner.get_progress()
                     print(f"\n📋 生成的执行计划：\n{plan_text}")
             except Exception as e:
+                if self.trace_writer:
+                    self.trace_writer.record_plan_error(str(e))
                 print(f"⚠️ 计划生成失败：{e}，将使用常规模式执行")
 
         # 添加新任务到对话历史
@@ -210,7 +243,22 @@ class ReactAgent:
                     )
 
             # 获取 AI 响应
-            raw = self.client.respond(messages_to_send, temperature=self.temperature)
+            try:
+                raw = self.client.respond(messages_to_send, temperature=self.temperature)
+            except Exception as exc:
+                if self.trace_writer:
+                    self.trace_writer.record(
+                        "llm_error",
+                        {"step_number": step_num, "error": str(exc)},
+                    )
+                raise
+            if self.trace_writer:
+                self.trace_writer.record_llm_call(
+                    step_number=step_num,
+                    messages=messages_to_send,
+                    temperature=self.temperature,
+                    raw_response=raw,
+                )
 
             # 将 AI 响应添加到历史记录
             self.conversation_history.append({"role": "assistant", "content": raw})
@@ -220,6 +268,12 @@ class ReactAgent:
                 metadata["parse_error_count"] += 1
                 metadata["failure_reason"] = str(exc)
                 observation = f"Agent response parse failed: {exc}"
+                if self.trace_writer:
+                    self.trace_writer.record_parse_error(
+                        step_number=step_num,
+                        raw_response=raw,
+                        error=str(exc),
+                    )
                 step = Step(
                     thought="",
                     action="error",
@@ -236,6 +290,8 @@ class ReactAgent:
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
+                if self.trace_writer:
+                    self.trace_writer.record_step(step_number=step_num, step=step)
                 continue
             if self._last_parse_repaired:
                 metadata["parse_repair_count"] += 1
@@ -262,13 +318,11 @@ class ReactAgent:
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
+                if self.trace_writer:
+                    self.trace_writer.record_step(step_number=step_num, step=step)
                 metadata["status"] = "success"
                 metadata["duration_seconds"] = time.perf_counter() - started_at
-                return {
-                    "final_answer": final,
-                    "steps": [step.__dict__ for step in steps],
-                    "metadata": metadata,
-                }
+                return finish_result(final)
 
             # 检查工具
             tool = self.tools.get(action)
@@ -292,6 +346,15 @@ class ReactAgent:
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
+                if self.trace_writer:
+                    self.trace_writer.record_tool_call(
+                        step_number=step_num,
+                        action=action,
+                        action_input=action_input,
+                        observation=observation,
+                        failed=True,
+                    )
+                    self.trace_writer.record_step(step_number=step_num, step=step)
                 if plan and self.planner:
                     plan = self._try_replan(task, plan, observation, metadata)
                 continue
@@ -334,6 +397,14 @@ class ReactAgent:
                 raw=raw,
             )
             steps.append(step)
+            if self.trace_writer:
+                self.trace_writer.record_tool_call(
+                    step_number=step_num,
+                    action=action,
+                    action_input=action_input,
+                    observation=observation,
+                    failed=self._is_failure_observation(observation),
+                )
 
             # 更新计划进度（如果有计划）
             if plan and self.planner:
@@ -350,6 +421,8 @@ class ReactAgent:
             # 调用回调函数实时输出步骤
             if self.step_callback:
                 self.step_callback(step_num, step)
+            if self.trace_writer:
+                self.trace_writer.record_step(step_number=step_num, step=step)
 
             if self._is_failure_observation(observation) and plan and self.planner:
                 plan = self._try_replan(task, plan, observation, metadata)
@@ -358,20 +431,12 @@ class ReactAgent:
             if action == "task_complete" and not self._is_failure_observation(observation):
                 metadata["status"] = "success"
                 metadata["duration_seconds"] = time.perf_counter() - started_at
-                return {
-                    "final_answer": observation,
-                    "steps": [step.__dict__ for step in steps],
-                    "metadata": metadata,
-                }
+                return finish_result(observation)
 
         metadata["status"] = "max_steps_exceeded"
         metadata["duration_seconds"] = time.perf_counter() - started_at
         metadata["failure_reason"] = metadata["failure_reason"] or "Max steps exceeded"
-        return {
-            "final_answer": "Reached step limit without completion.",
-            "steps": [step.__dict__ for step in steps],
-            "metadata": metadata,
-        }
+        return finish_result("Reached step limit without completion.")
 
     def _apply_skills_for_task(self, task: str) -> List[str]:
         """根据任务自动选择并激活相关技能。"""
@@ -558,6 +623,8 @@ class ReactAgent:
 
         if new_plan:
             metadata["replan_count"] += 1
+            if self.trace_writer:
+                self.trace_writer.record_replan(reason=observation, steps=new_plan)
             self.conversation_history.append(
                 {
                     "role": "user",

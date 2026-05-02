@@ -17,8 +17,9 @@ from .clients import (
 from .tools import Tool, default_tools
 from .prompts import build_code_agent_prompt
 from .skills import BaseSkill, ConfigSkill, SkillMetadata, SkillManager
+from .tracing import TraceWriter
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 __all__ = [
     # Core
@@ -43,4 +44,5 @@ __all__ = [
     "ConfigSkill",
     "SkillMetadata",
     "SkillManager",
+    "TraceWriter",
 ]

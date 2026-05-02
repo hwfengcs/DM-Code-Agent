@@ -17,6 +17,7 @@ from .code_analysis_tools import (
     find_dependencies,
     get_code_metrics,
 )
+from .code_index_tools import build_code_index, dependency_graph, search_symbol
 
 
 def task_complete(arguments: Dict[str, Any]) -> str:
@@ -152,6 +153,31 @@ def default_tools(include_mcp: bool = True, mcp_tools: Optional[List[Tool]] = No
                 'Get code metrics (lines, functions, classes count). Arguments: {"path": string}.'
             ),
             runner=get_code_metrics,
+        ),
+        Tool(
+            name="build_code_index",
+            description=(
+                'Build a repository-level Python symbol index. Arguments: {"root": optional string (default "."), '
+                '"max_files": optional int (default 200), "include_tests": optional bool (default true)}.'
+            ),
+            runner=build_code_index,
+        ),
+        Tool(
+            name="search_symbol",
+            description=(
+                'Search classes, functions, and methods by name. Arguments: {"name": string, '
+                '"root": optional string, "kind": optional "class"|"function"|"method", '
+                '"exact": optional bool, "max_files": optional int}.'
+            ),
+            runner=search_symbol,
+        ),
+        Tool(
+            name="dependency_graph",
+            description=(
+                'Build a local Python import dependency graph. Arguments: {"root": optional string, '
+                '"max_files": optional int, "include_external": optional bool}.'
+            ),
+            runner=dependency_graph,
         ),
         Tool(
             name="task_complete",

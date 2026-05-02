@@ -23,6 +23,8 @@ class BenchmarkTask:
     )
     max_steps: int = 14
     tags: List[str] = field(default_factory=list)
+    allowed_changed_files: List[str] = field(default_factory=list)
+    required_changed_files: List[str] = field(default_factory=list)
 
     def to_public_dict(self) -> Dict[str, Any]:
         return {
@@ -35,6 +37,8 @@ class BenchmarkTask:
             "hidden_test_command": self.hidden_test_command,
             "max_steps": self.max_steps,
             "tags": self.tags,
+            "allowed_changed_files": self.allowed_changed_files,
+            "required_changed_files": self.required_changed_files,
         }
 
 
@@ -59,6 +63,7 @@ class BenchmarkRunConfig:
     test_timeout: int = 30
     keep_workspaces: bool = False
     workspace_root: Optional[str] = None
+    trace_dir: Optional[str] = None
     quiet: bool = True
 
 
@@ -98,6 +103,7 @@ class CodingBenchResult:
     request_count: int
     metadata: Dict[str, Any]
     hidden_test: CommandResult
+    changed_files: List[str] = field(default_factory=list)
     workspace_path: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -118,5 +124,6 @@ class CodingBenchResult:
             "request_count": self.request_count,
             "metadata": self.metadata,
             "hidden_test": self.hidden_test.to_dict(),
+            "changed_files": self.changed_files,
             "workspace_path": self.workspace_path,
         }

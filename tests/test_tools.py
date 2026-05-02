@@ -2,6 +2,7 @@ import json
 
 from dm_agent.tools import task_complete
 from dm_agent.tools.code_analysis_tools import get_code_metrics, get_function_signature, parse_ast
+from dm_agent.tools.code_index_tools import build_code_index, dependency_graph, search_symbol
 from dm_agent.tools.execution_tools import run_python
 from dm_agent.tools.file_tools import create_file, edit_file, read_file, search_in_file
 
@@ -67,6 +68,39 @@ def test_code_analysis_tools_return_structured_json(tmp_path):
     metrics = json.loads(get_code_metrics({"path": str(module)}))
     assert metrics["num_functions"] == 2
     assert metrics["num_classes"] == 1
+
+
+def test_code_index_tools_find_symbols_and_dependencies(tmp_path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "models.py").write_text(
+        "class User:\n" "    def display_name(self) -> str:\n" "        return 'Ada'\n",
+        encoding="utf-8",
+    )
+    (package / "service.py").write_text(
+        "from . import models\n"
+        "from .models import User\n\n\n"
+        "def load_user() -> User:\n"
+        "    return User()\n",
+        encoding="utf-8",
+    )
+
+    index = json.loads(build_code_index({"root": str(tmp_path)}))
+    assert index["file_count"] == 3
+    assert index["symbol_count"] == 3
+    assert any(
+        symbol["qualified_name"] == "pkg.models.User"
+        for file_info in index["files"]
+        for symbol in file_info["symbols"]
+    )
+
+    matches = json.loads(search_symbol({"root": str(tmp_path), "name": "load_user", "exact": True}))
+    assert matches["match_count"] == 1
+    assert matches["matches"][0]["path"] == "pkg/service.py"
+
+    graph = json.loads(dependency_graph({"root": str(tmp_path)}))
+    assert {"from": "pkg.service", "to": "pkg.models", "import": "pkg.models"} in graph["edges"]
 
 
 def test_run_python_executes_inline_code():
