@@ -1,0 +1,62 @@
+[
+  {
+    "task_id": "direct_finish",
+    "tags": ["control"],
+    "goal": "Checks direct final-answer behavior without tool calls."
+  },
+  {
+    "task_id": "create_file",
+    "tags": ["tool-use", "file"],
+    "goal": "Checks file creation and task completion."
+  },
+  {
+    "task_id": "read_file",
+    "tags": ["tool-use", "file"],
+    "goal": "Checks reading workspace files before answering."
+  },
+  {
+    "task_id": "search_todo",
+    "tags": ["tool-use", "search"],
+    "goal": "Checks regex search with context."
+  },
+  {
+    "task_id": "code_metrics",
+    "tags": ["code-analysis"],
+    "goal": "Checks AST-backed code metrics."
+  },
+  {
+    "task_id": "function_signature",
+    "tags": ["code-analysis"],
+    "goal": "Checks signature extraction."
+  },
+  {
+    "task_id": "run_python",
+    "tags": ["tool-use", "execution"],
+    "goal": "Checks local Python execution."
+  },
+  {
+    "task_id": "skill_activation",
+    "tags": ["skills"],
+    "goal": "Checks skill activation metadata under the full variant."
+  },
+  {
+    "task_id": "json_repair",
+    "tags": ["recovery", "json"],
+    "goal": "Checks automatic parsing of common non-strict JSON drift."
+  },
+  {
+    "task_id": "unknown_tool_recovery",
+    "tags": ["recovery"],
+    "goal": "Checks recovery after an unknown tool selection."
+  },
+  {
+    "task_id": "tool_failure_replan",
+    "tags": ["recovery", "replan"],
+    "goal": "Checks re-planning after a failed file read."
+  },
+  {
+    "task_id": "argument_recovery",
+    "tags": ["recovery", "arguments"],
+    "goal": "Checks recovery after invalid action_input."
+  }
+]

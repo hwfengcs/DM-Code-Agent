@@ -139,15 +139,17 @@ class SkillManager:
         for name, skill in self.skills.items():
             meta = skill.get_metadata()
             tools = skill.get_tools()
-            info_list.append({
-                "name": meta.name,
-                "display_name": meta.display_name,
-                "description": meta.description,
-                "keywords": meta.keywords,
-                "priority": meta.priority,
-                "version": meta.version,
-                "tools_count": len(tools),
-                "is_active": name in self.active_skills,
-                "is_builtin": not isinstance(skill, ConfigSkill),
-            })
+            info_list.append(
+                {
+                    "name": meta.name,
+                    "display_name": meta.display_name,
+                    "description": meta.description,
+                    "keywords": meta.keywords,
+                    "priority": meta.priority,
+                    "version": meta.version,
+                    "tools_count": len(tools),
+                    "is_active": name in self.active_skills,
+                    "is_builtin": not isinstance(skill, ConfigSkill),
+                }
+            )
         return info_list

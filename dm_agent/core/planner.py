@@ -14,11 +14,11 @@ from ..tools.base import Tool
 class PlanStep:
     """计划中的单个步骤"""
 
-    step_number: int               # 步骤编号
-    action: str                    # 工具名称
-    reason: str                    # 使用工具的原因
-    completed: bool = False        # 是否完成当前步骤
-    result: Optional[str] = None   # 返回结果
+    step_number: int  # 步骤编号
+    action: str  # 工具名称
+    reason: str  # 使用工具的原因
+    completed: bool = False  # 是否完成当前步骤
+    result: Optional[str] = None  # 返回结果
 
 
 class TaskPlanner:
@@ -27,22 +27,22 @@ class TaskPlanner:
     def __init__(self, client: BaseLLMClient, tools: List[Tool]):
         self.client = client
         self.tools = tools
-        self.current_plan: List[PlanStep] = [] # 当前计划列表
+        self.current_plan: List[PlanStep] = []  # 当前计划列表
 
     def plan(self, task: str) -> List[PlanStep]:
         """
         为任务生成执行计划
-        
+
         该方法通过调用大语言模型(LLM)来分析任务描述，并基于可用工具生成一个结构化的执行计划。
         计划由一系列有序的步骤组成，每个步骤都指定了要使用的工具及其理由。
-        
+
         Args:
             task (str): 需要执行的任务描述字符串
-            
+
         Returns:
             steps (List[PlanStep]): 包含计划步骤的列表，每个步骤是一个PlanStep对象。
                           如果计划生成失败，则返回空列表，系统将回退到逐步执行模式。
-                          
+
         Examples:
             >>> planner = TaskPlanner(client, tools)
             >>> steps = planner.plan("分析项目代码并生成报告")
@@ -50,15 +50,13 @@ class TaskPlanner:
             5
             >>> print(steps[0].action)
             'read_file'
-            
+
         Raises:
             Exception: 当LLM响应解析失败时会打印警告信息，但不会抛出异常，
                       而是返回空列表以启用回退机制
         """
         # 构建工具描述
-        tool_descriptions = "\n".join(
-            [f"- {tool.name}: {tool.description}" for tool in self.tools]
-        )
+        tool_descriptions = "\n".join([f"- {tool.name}: {tool.description}" for tool in self.tools])
 
         prompt = f"""你是一个专业的任务规划助手。请为以下任务生成详细的执行计划。
 
@@ -138,17 +136,17 @@ class TaskPlanner:
     def mark_completed(self, step_number: int, result: str) -> None:
         """
         标记指定步骤为完成状态
-        
+
         在任务执行过程中，当某个步骤执行完毕后，调用此方法将该步骤标记为已完成，
         并保存执行结果。
-        
+
         Args:
             step_number (int): 要标记为完成的步骤编号
             result (str): 步骤执行的结果描述
-            
+
         Returns:
             None: 该方法不返回任何值，直接修改内部状态
-            
+
         Examples:
             >>> planner.mark_completed(1, "成功读取文件内容")
             >>> step = planner.get_next_step()
@@ -164,12 +162,12 @@ class TaskPlanner:
     def get_next_step(self) -> Optional[PlanStep]:
         """
         获取下一个未完成的步骤
-        
+
         按照步骤编号顺序查找第一个尚未完成的步骤。
-        
+
         Returns:
             Optional[PlanStep]: 下一个未完成的步骤对象，如果没有未完成的步骤则返回None
-            
+
         Examples:
             >>> step = planner.get_next_step()
             >>> if step:
@@ -186,12 +184,12 @@ class TaskPlanner:
     def get_progress(self) -> str:
         """
         获取计划执行进度报告
-        
+
         生成一个格式化的字符串，展示当前计划的执行进度，包括已完成和未完成的步骤。
-        
+
         Returns:
             progress_text (str): 格式化的进度报告字符串
-            
+
         Examples:
             >>> progress = planner.get_progress()
             >>> print(progress)
@@ -206,11 +204,11 @@ class TaskPlanner:
         """
         if not self.current_plan:
             return "无计划"
-        
+
         # 已完成的步骤数和总步骤数
         completed = sum(1 for step in self.current_plan if step.completed)
         total = len(self.current_plan)
-        
+
         # 生成文本
         progress_text = f"计划进度：{completed}/{total} 步骤已完成\n\n"
         for step in self.current_plan:
@@ -226,18 +224,18 @@ class TaskPlanner:
     ) -> List[PlanStep]:
         """
         遇到问题时重新规划
-        
+
         当任务执行过程中出现错误时，基于已完成的步骤和错误信息重新生成执行计划。
         这种机制提高了系统的容错能力和适应性。
-        
+
         Args:
             task (str): 原始任务描述
             completed_steps (List[PlanStep]): 已成功完成的步骤列表
             error (Optional[str], optional): 错误信息描述，默认为None
-            
+
         Returns:
             steps (List[PlanStep]): 新生成的计划步骤列表，如果重新规划失败则返回空列表
-            
+
         Examples:
             >>> completed = [step for step in planner.current_plan if step.completed]
             >>> error_msg = "文件不存在: config.json"
@@ -248,10 +246,7 @@ class TaskPlanner:
             ...     print("重新规划失败")
         """
         completed_summary = "\n".join(
-            [
-                f"步骤 {s.step_number}: {s.action} - {s.reason} (已完成)"
-                for s in completed_steps
-            ]
+            [f"步骤 {s.step_number}: {s.action} - {s.reason} (已完成)" for s in completed_steps]
         )
 
         error_info = f"\n{error}" if error else ""
@@ -293,15 +288,15 @@ class TaskPlanner:
         except Exception as e:
             print(f"警告：重新规划失败 - {e}")
             return []
-    
+
     # 我感觉这个可以用__bool__()来写
     def has_plan(self) -> bool:
         """
         检查是否存在活跃的计划
-        
+
         Returns:
             bool: 如果存在未完成的计划步骤则返回True，否则返回False
-            
+
         Examples:
             >>> if planner.has_plan():
             ...     print("继续执行计划...")
@@ -313,12 +308,12 @@ class TaskPlanner:
     def clear_plan(self) -> None:
         """
         清空当前计划
-        
+
         将当前计划重置为空列表，清除所有已有的计划步骤。
-        
+
         Returns:
             None: 该方法不返回任何值
-            
+
         Examples:
             >>> planner.clear_plan()
             >>> print(planner.has_plan())

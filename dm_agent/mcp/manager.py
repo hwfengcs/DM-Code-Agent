@@ -11,7 +11,7 @@ class MCPManager:
     MCP管理器提供了对多个MCP（Model Control Protocol）服务器的统一管理接口，
     包括启动、停止服务器以及获取可用工具等功能。它维护了所有运行中的MCP客户端
     并缓存它们提供的工具，以便系统可以方便地访问这些外部工具。
-    
+
     Attributes:
         config (MCPConfig): MCP配置对象，包含所有服务器的配置信息
         clients (Dict[str, MCPClient]): 服务器名称到客户端实例的映射
@@ -21,10 +21,10 @@ class MCPManager:
     def __init__(self, config: Optional[MCPConfig] = None):
         """
         初始化 MCP 管理器
-        
+
         Args:
             config (Optional[MCPConfig], optional): MCP 配置对象，如果未提供则使用默认空配置
-            
+
         """
         self.config = config or MCPConfig()
         self.clients: Dict[str, MCPClient] = {}
@@ -33,12 +33,12 @@ class MCPManager:
     def start_all(self) -> int:
         """
         启动所有启用的 MCP 服务器
-        
+
         遍历配置中所有启用的服务器，并尝试启动它们。成功启动后重建工具缓存。
 
         Returns:
             success_count (int): 成功启动的服务器数量
-            
+
         Examples:
             >>> manager = MCPManager()
             >>> started_count = manager.start_all()
@@ -60,7 +60,7 @@ class MCPManager:
     def start_server(self, name: str) -> bool:
         """
         启动指定的 MCP 服务器
-        
+
         检查服务器是否已经在运行，如果未运行则根据配置创建并启动新的客户端实例。
 
         Args:
@@ -68,7 +68,7 @@ class MCPManager:
 
         Returns:
             bool: 是否启动成功
-            
+
         Examples:
             >>> manager = MCPManager()
             >>> success = manager.start_server("nonexistent_server")
@@ -90,10 +90,7 @@ class MCPManager:
 
         # 创建并启动客户端
         client = MCPClient(
-            name=name,
-            command=server_config.command,
-            args=server_config.args,
-            env=server_config.env
+            name=name, command=server_config.command, args=server_config.args, env=server_config.env
         )
 
         if client.start():
@@ -106,12 +103,12 @@ class MCPManager:
     def stop_server(self, name: str) -> None:
         """
         停止指定的 MCP 服务器
-        
+
         停止指定名称的MCP服务器进程，并从客户端字典中移除，最后重建工具缓存。
 
         Args:
             name (str): 服务器名称
-            
+
         Examples:
             >>> manager = MCPManager()
             >>> manager.stop_server("test_server")  # 即使服务器不存在也不会出错
@@ -124,9 +121,9 @@ class MCPManager:
     def stop_all(self) -> None:
         """
         停止所有 MCP 服务器
-        
+
         停止所有正在运行的MCP服务器进程，并清空客户端字典和工具缓存。
-        
+
         Examples:
             >>> manager = MCPManager()
             >>> manager.stop_all()  # 停止所有服务器
@@ -139,7 +136,7 @@ class MCPManager:
     def _rebuild_tools_cache(self) -> None:
         """
         重建工具缓存
-        
+
         遍历所有运行中的MCP客户端，获取它们提供的工具，并将这些工具转换为系统
         可用的Tool对象，存储在工具缓存中以提高访问效率。
         """
@@ -161,20 +158,16 @@ class MCPManager:
                     server_name=server_name,
                     tool_name=tool_name,
                     description=description,
-                    input_schema=input_schema
+                    input_schema=input_schema,
                 )
                 self._tools_cache.append(wrapped_tool)
 
     def _create_tool_wrapper(
-        self,
-        server_name: str,
-        tool_name: str,
-        description: str,
-        input_schema: Dict[str, Any]
+        self, server_name: str, tool_name: str, description: str, input_schema: Dict[str, Any]
     ) -> Tool:
         """
         创建 MCP 工具的包装器
-        
+
         将MCP服务器提供的工具封装为系统可用的Tool对象，包括构建工具描述和执行函数。
 
         Args:
@@ -215,10 +208,10 @@ class MCPManager:
         def runner(arguments: Dict[str, Any]) -> str:
             """
             工具执行函数
-            
+
             Args:
                 arguments (Dict[str, Any]): 工具执行参数
-                
+
             Returns:
                 str: 工具执行结果
             """
@@ -233,20 +226,18 @@ class MCPManager:
             return result
 
         return Tool(
-            name=f"mcp_{server_name}_{tool_name}",
-            description=full_description,
-            runner=runner
+            name=f"mcp_{server_name}_{tool_name}", description=full_description, runner=runner
         )
 
     def get_tools(self) -> List[Tool]:
         """
         获取所有 MCP 工具
-        
+
         返回当前缓存的所有MCP工具的副本，确保外部修改不会影响内部缓存。
 
         Returns:
             List[Tool]: 工具列表的副本
-            
+
         Examples:
             >>> manager = MCPManager()
             >>> tools = manager.get_tools()
@@ -258,32 +249,29 @@ class MCPManager:
     def get_running_servers(self) -> List[str]:
         """
         获取正在运行的服务器名称列表
-        
+
         返回当前所有正在运行的MCP服务器名称列表。
 
         Returns:
             List[str]: 服务器名称列表
-            
+
         Examples:
             >>> manager = MCPManager()
             >>> running = manager.get_running_servers()
             >>> isinstance(running, list)
             True
         """
-        return [
-            name for name, client in self.clients.items()
-            if client.is_running()
-        ]
+        return [name for name, client in self.clients.items() if client.is_running()]
 
     def get_server_status(self) -> Dict[str, bool]:
         """
         获取所有服务器的运行状态
-        
+
         返回配置中所有服务器的运行状态映射。
 
         Returns:
             status (Dict[str, bool]): 服务器名称到运行状态的映射
-            
+
         Examples:
             >>> manager = MCPManager()
             >>> status = manager.get_server_status()
@@ -299,12 +287,12 @@ class MCPManager:
     def add_server_config(self, config: MCPServerConfig) -> None:
         """
         添加新的 MCP 服务器配置
-        
+
         将新的服务器配置添加到管理器的配置中。
 
         Args:
             config (MCPServerConfig): 服务器配置
-            
+
         Examples:
             >>> from dm_agent.mcp.config import MCPServerConfig
             >>> manager = MCPManager()
@@ -316,12 +304,12 @@ class MCPManager:
     def remove_server_config(self, name: str) -> None:
         """
         移除 MCP 服务器配置
-        
+
         先停止指定的服务器（如果正在运行），然后从配置中移除。
 
         Args:
             name (str): 服务器名称
-            
+
         Examples:
             >>> manager = MCPManager()
             >>> manager.remove_server_config("test_server")  # 移除配置

@@ -18,7 +18,7 @@ from .tools import Tool, default_tools
 from .prompts import build_code_agent_prompt
 from .skills import BaseSkill, ConfigSkill, SkillMetadata, SkillManager
 
-__version__ = "1.0.0"
+__version__ = "1.4.0"
 
 __all__ = [
     # Core

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Compile Python sources
+        run: python -m compileall dm_agent main.py
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Run deterministic eval smoke test
+        run: python -m dm_agent.evals.cli --variant full --task direct_finish
+
+      - name: List coding benchmark tasks
+        run: python -m dm_agent.benchmarks.cli --list
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Format check
+        run: python -m black --check .

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
@@ -17,18 +19,18 @@ from .planner import TaskPlanner, PlanStep
 class Step:
     """表示智能体的一个推理步骤。"""
 
-    thought: str                 # 智能体的思考过程
-    action: str                  # 要执行的动作/工具名称
-    action_input: Any            # 动作的输入参数
-    observation: str             # 执行动作后的观察结果
-    raw: str = ""                # 原始响应内容
+    thought: str  # 智能体的思考过程
+    action: str  # 要执行的动作/工具名称
+    action_input: Any  # 动作的输入参数
+    observation: str  # 执行动作后的观察结果
+    raw: str = ""  # 原始响应内容
 
 
-class ReactAgent:  
+class ReactAgent:
     """
     ReAct Agent 实现了推理(Reasoning)和行动(Action)的循环模式，允许智能体通过与环境交互来解决问题。
     它结合了任务规划、上下文压缩等功能，提供了一个完整的智能体执行框架。
-    
+
     Attributes:
         client (BaseLLMClient): 用于与大语言模型通信的客户端
         tools (Dict[str, Tool]): 可用工具的字典映射，键为工具名称
@@ -52,32 +54,32 @@ class ReactAgent:
         max_steps: int = 200,
         temperature: float = 0.0,
         system_prompt: Optional[str] = None,
-        step_callback: Optional[Callable[[int, Step], None]] = None,   # 步骤回调函数
-        enable_planning: bool = True,      # 是否启用规划
-        enable_compression: bool = True,   # 是否启用上下文压缩
+        step_callback: Optional[Callable[[int, Step], None]] = None,  # 步骤回调函数
+        enable_planning: bool = True,  # 是否启用规划
+        enable_compression: bool = True,  # 是否启用上下文压缩
         skill_manager: Optional[Any] = None,  # 技能管理器
     ) -> None:
         """
         初始化 ReactAgent 实例
-        
+
         Args:
             client (BaseLLMClient): LLM客户端实例
             tools (List[Tool]): 可用工具列表
             max_steps (int, optional): 最大执行步骤数，默认为200
             temperature (float, optional): LLM生成文本的温度参数，默认为0.0
             system_prompt (Optional[str], optional): 系统提示词，默认为None，将使用默认构建的提示词
-            step_callback (Optional[Callable[[int, Step], None]], optional): 
+            step_callback (Optional[Callable[[int, Step], None]], optional):
                 步骤执行回调函数，可用于实时监控执行过程，默认为None
             enable_planning (bool, optional): 是否启用任务规划功能，默认为True
             enable_compression (bool, optional): 是否启用上下文压缩功能，默认为True
-            
+
         Raises:
             ValueError: 当提供的工具列表为空时抛出异常
-            
+
         Examples:
             >>> from dm_agent.clients import OpenAIClient
             >>> from dm_agent.tools import default_tools
-            >>> 
+            >>>
             >>> client = OpenAIClient(api_key="your-api-key")
             >>> tools = default_tools()
             >>> agent = ReactAgent(client, tools, max_steps=50)
@@ -88,7 +90,7 @@ class ReactAgent:
         self.client = client
 
         # 我感觉这里要改,能否设一个tools_mapping?
-        
+
         self.tools = {tool.name: tool for tool in tools}
         self.tools_list = tools  # 保留工具列表用于规划器
         self.max_steps = max_steps
@@ -104,32 +106,37 @@ class ReactAgent:
 
         # 上下文压缩器（每 5 轮对话压缩一次）
         self.enable_compression = enable_compression
-        self.compressor = ContextCompressor(client, compress_every=5, keep_recent=3) if enable_compression else None
+        self.compressor = (
+            ContextCompressor(client, compress_every=5, keep_recent=3)
+            if enable_compression
+            else None
+        )
 
         # 技能管理器
         self.skill_manager = skill_manager
         self._base_system_prompt = self.system_prompt
         self._base_tools = dict(self.tools)
+        self._last_parse_repaired = False
 
     def run(self, task: str, *, max_steps: Optional[int] = None) -> Dict[str, Any]:
         """
         执行指定任务
-        
+
         该方法实现了完整的ReAct循环，包括任务规划、推理、行动和观察等阶段。它支持上下文压缩以
         控制token消耗，并提供回调机制用于监控执行过程。
-        
+
         Args:
             task (str): 要执行的任务描述
             max_steps (Optional[int], optional): 覆盖默认的最大步骤数
-            
+
         Returns:
             result (Dict[str, Any]): 包含最终答案和执行步骤的字典
                     - final_answer (str): 任务执行的最终结果
                     - steps (List[Dict]): 执行的所有步骤信息列表
-                
+
         Raises:
             ValueError: 当任务不是非空字符串时抛出异常
-            
+
         Examples:
             >>> result = agent.run("帮我分析项目的代码结构")
             >>> print(result["final_answer"])
@@ -138,18 +145,36 @@ class ReactAgent:
         if not isinstance(task, str) or not task.strip():
             raise ValueError("任务必须是非空字符串。")
 
+        started_at = time.perf_counter()
         steps: List[Step] = []
-        limit = max_steps or self.max_steps # 获取最大步骤数
+        limit = max_steps or self.max_steps
+        metadata: Dict[str, Any] = {
+            "status": "running",
+            "planning_enabled": self.enable_planning,
+            "compression_enabled": self.enable_compression,
+            "skills_enabled": bool(self.skill_manager),
+            "activated_skills": [],
+            "initial_plan_steps": 0,
+            "parse_error_count": 0,
+            "parse_repair_count": 0,
+            "tool_error_count": 0,
+            "unknown_tool_count": 0,
+            "argument_error_count": 0,
+            "replan_count": 0,
+            "compressed_messages": 0,
+            "failure_reason": "",
+        }
 
         # 技能自动选择
         if self.skill_manager:
-            self._apply_skills_for_task(task)
+            metadata["activated_skills"] = self._apply_skills_for_task(task)
 
         # 第一步：生成计划（如果启用）
-        plan : List[PlanStep] = []
+        plan: List[PlanStep] = []
         if self.enable_planning and self.planner:
             try:
                 plan = self.planner.plan(task)
+                metadata["initial_plan_steps"] = len(plan)
                 if plan:
                     plan_text = self.planner.get_progress()
                     print(f"\n📋 生成的执行计划：\n{plan_text}")
@@ -157,23 +182,28 @@ class ReactAgent:
                 print(f"⚠️ 计划生成失败：{e}，将使用常规模式执行")
 
         # 添加新任务到对话历史
-        task_prompt : str = self._build_user_prompt(task, steps, plan)
+        task_prompt: str = self._build_user_prompt(task, steps, plan)
         self.conversation_history.append({"role": "user", "content": task_prompt})
 
         for step_num in range(1, limit + 1):
             # 第二步：压缩上下文（如果需要）
-            messages_to_send = [{"role": "system", "content": self.system_prompt}] + self.conversation_history
+            messages_to_send = [
+                {"role": "system", "content": self.system_prompt}
+            ] + self.conversation_history
 
             if self.enable_compression and self.compressor:
                 if self.compressor.should_compress(self.conversation_history):
                     print(f"\n🗜️ 压缩对话历史以节省 token...")
                     compressed_history = self.compressor.compress(self.conversation_history)
-                    messages_to_send = [{"role": "system", "content": self.system_prompt}] + compressed_history
+                    messages_to_send = [
+                        {"role": "system", "content": self.system_prompt}
+                    ] + compressed_history
 
                     # 显示压缩统计
                     stats = self.compressor.get_compression_stats(
                         self.conversation_history, compressed_history
                     )
+                    metadata["compressed_messages"] += stats["saved_messages"]
                     print(
                         f"   压缩率：{stats['compression_ratio']:.1%}，"
                         f"节省 {stats['saved_messages']} 条消息"
@@ -187,7 +217,9 @@ class ReactAgent:
             try:
                 parsed = self._parse_agent_response(raw)
             except ValueError as exc:
-                observation = f"解析智能体响应失败：{exc}"
+                metadata["parse_error_count"] += 1
+                metadata["failure_reason"] = str(exc)
+                observation = f"Agent response parse failed: {exc}"
                 step = Step(
                     thought="",
                     action="error",
@@ -198,17 +230,21 @@ class ReactAgent:
                 steps.append(step)
 
                 # 将错误观察添加到历史记录
-                self.conversation_history.append({"role": "user", "content": f"观察：{observation}"})
+                self.conversation_history.append(
+                    {"role": "user", "content": f"观察：{observation}"}
+                )
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
                 continue
-            
+            if self._last_parse_repaired:
+                metadata["parse_repair_count"] += 1
+
             # 获取动作、thought 和输入
             action = parsed.get("action", "").strip()
             thought = parsed.get("thought", "").strip()
             action_input = parsed.get("action_input")
-            
+
             # 检查是否完成
             if action == "finish":
                 final = self._format_final_answer(action_input)
@@ -226,12 +262,20 @@ class ReactAgent:
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
-                return {"final_answer": final, "steps": [step.__dict__ for step in steps]}
-            
+                metadata["status"] = "success"
+                metadata["duration_seconds"] = time.perf_counter() - started_at
+                return {
+                    "final_answer": final,
+                    "steps": [step.__dict__ for step in steps],
+                    "metadata": metadata,
+                }
+
             # 检查工具
             tool = self.tools.get(action)
             if tool is None:
-                observation = f"未知工具 '{action}'。"
+                metadata["unknown_tool_count"] += 1
+                metadata["failure_reason"] = f"Unknown tool: {action}"
+                observation = f"Unknown tool '{action}'."
                 step = Step(
                     thought=thought,
                     action=action,
@@ -242,10 +286,14 @@ class ReactAgent:
                 steps.append(step)
 
                 # 将观察结果添加到历史记录
-                self.conversation_history.append({"role": "user", "content": f"观察：{observation}"})
+                self.conversation_history.append(
+                    {"role": "user", "content": f"观察：{observation}"}
+                )
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
+                if plan and self.planner:
+                    plan = self._try_replan(task, plan, observation, metadata)
                 continue
 
             # task_complete 工具可以接受字符串或空参数
@@ -259,16 +307,24 @@ class ReactAgent:
                 try:
                     observation = tool.execute(action_input)
                 except Exception as exc:  # noqa: BLE001 - 将工具错误传递给 LLM
-                    observation = f"工具执行失败：{exc}"
+                    metadata["tool_error_count"] += 1
+                    metadata["failure_reason"] = str(exc)
+                    observation = f"Tool execution failed: {exc}"
             elif action_input is None:
-                observation = "工具参数缺失（action_input 为 null）。"
+                metadata["argument_error_count"] += 1
+                metadata["failure_reason"] = "Tool arguments missing"
+                observation = "Tool arguments missing: action_input is null."
             elif not isinstance(action_input, dict):
-                observation = "工具参数必须是 JSON 对象。"
+                metadata["argument_error_count"] += 1
+                metadata["failure_reason"] = "Tool arguments must be a JSON object"
+                observation = "Tool arguments must be a JSON object."
             else:
                 try:
                     observation = tool.execute(action_input)
                 except Exception as exc:  # noqa: BLE001 - 将工具错误传递给 LLM
-                    observation = f"工具执行失败：{exc}"
+                    metadata["tool_error_count"] += 1
+                    metadata["failure_reason"] = str(exc)
+                    observation = f"Tool execution failed: {exc}"
 
             step = Step(
                 thought=thought,
@@ -295,19 +351,29 @@ class ReactAgent:
             if self.step_callback:
                 self.step_callback(step_num, step)
 
+            if self._is_failure_observation(observation) and plan and self.planner:
+                plan = self._try_replan(task, plan, observation, metadata)
+
             # 检查是否调用了 task_complete 工具
-            if action == "task_complete" and not observation.startswith("工具执行失败"):
+            if action == "task_complete" and not self._is_failure_observation(observation):
+                metadata["status"] = "success"
+                metadata["duration_seconds"] = time.perf_counter() - started_at
                 return {
                     "final_answer": observation,
                     "steps": [step.__dict__ for step in steps],
+                    "metadata": metadata,
                 }
 
+        metadata["status"] = "max_steps_exceeded"
+        metadata["duration_seconds"] = time.perf_counter() - started_at
+        metadata["failure_reason"] = metadata["failure_reason"] or "Max steps exceeded"
         return {
-            "final_answer": "达到步骤限制但未完成。",
+            "final_answer": "Reached step limit without completion.",
             "steps": [step.__dict__ for step in steps],
+            "metadata": metadata,
         }
 
-    def _apply_skills_for_task(self, task: str) -> None:
+    def _apply_skills_for_task(self, task: str) -> List[str]:
         """根据任务自动选择并激活相关技能。"""
         # 恢复基础状态，避免上一次任务的技能残留
         self.system_prompt = self._base_system_prompt
@@ -317,7 +383,7 @@ class ReactAgent:
         selected = self.skill_manager.select_skills_for_task(task)
         if not selected:
             self.skill_manager.deactivate_all()
-            return
+            return []
 
         # 激活选中技能
         self.skill_manager.activate_skills(selected)
@@ -340,79 +406,180 @@ class ReactAgent:
                 display_names.append(skill.get_metadata().display_name)
         if display_names:
             print(f"\n🎯 已激活技能：{', '.join(display_names)}")
+        return selected
 
     def _build_user_prompt(self, task: str, steps: List[Step], plan: List[PlanStep] = None) -> str:
         """
         构建用户提示词
-        
+
         Args:
             task (str): 当前任务描述
             steps (List[Step]): 已执行的步骤列表
             plan (List[PlanStep], optional): 执行计划
-            
+
         Returns:
             prompt (str): 构建好的用户提示词字符串
         """
-        lines : List[str] = [f"任务：{task.strip()}"]
+        lines: List[str] = [f"任务：{task.strip()}"]
 
         # 如果有计划，添加到提示中
         if plan:
             lines.append("\n执行计划：")
             for plan_step in plan:
                 status = "✓" if plan_step.completed else "○"
-                lines.append(f"{status} 步骤 {plan_step.step_number}: {plan_step.action} - {plan_step.reason}")
+                lines.append(
+                    f"{status} 步骤 {plan_step.step_number}: {plan_step.action} - {plan_step.reason}"
+                )
 
         if steps:
             lines.append("\n之前的步骤：")
             for index, step in enumerate(steps, start=1):
                 lines.append(f"步骤 {index} 思考：{step.thought}")
                 lines.append(f"步骤 {index} 动作：{step.action}")
-                lines.append(f"步骤 {index} 输入：{json.dumps(step.action_input, ensure_ascii=False)}")
+                lines.append(
+                    f"步骤 {index} 输入：{json.dumps(step.action_input, ensure_ascii=False)}"
+                )
                 lines.append(f"步骤 {index} 观察：{step.observation}")
         lines.append(
-            "\n用 JSON 对象回应：{\"thought\": string, \"action\": string, \"action_input\": object|string}。"
+            '\n用 JSON 对象回应：{"thought": string, "action": string, "action_input": object|string}。'
         )
         return "\n".join(lines)
 
     def _parse_agent_response(self, raw: str) -> Dict[str, Any]:
         """
         解析智能体响应
-        
+
         Args:
             raw (str): 智能体的原始响应字符串
-            
+
         Returns:
             parsed (Dict[str, Any]): 解析后的JSON对象
-            
+
         Raises:
             ValueError: 当响应不是有效的JSON时抛出异常
         """
         candidate = raw.strip()
+        self._last_parse_repaired = False
         if not candidate:
             raise ValueError("模型返回空响应。")
+
+        for index, snippet in enumerate(self._json_candidates(candidate)):
+            strict_json = self._is_strict_json_object(snippet)
+            parsed = self._load_json_object(snippet)
+            if parsed is not None:
+                self._last_parse_repaired = index > 0 or snippet != candidate or not strict_json
+                return parsed
+
+        raise ValueError("Response is not a valid JSON object.")
+
+    @staticmethod
+    def _json_candidates(candidate: str) -> List[str]:
+        candidates = [candidate]
+
+        fence_match = re.search(r"```(?:json)?\s*(.*?)```", candidate, re.DOTALL | re.IGNORECASE)
+        if fence_match:
+            candidates.append(fence_match.group(1).strip())
+
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidates.append(candidate[start : end + 1])
+
+        repaired_candidates = []
+        for item in candidates:
+            repaired = ReactAgent._repair_json_text(item)
+            if repaired != item:
+                repaired_candidates.append(repaired)
+
+        return candidates + repaired_candidates
+
+    @staticmethod
+    def _repair_json_text(text: str) -> str:
+        text = text.strip()
+        text = text.replace("“", '"').replace("”", '"').replace("’", "'")
+        text = re.sub(r",(\s*[}\]])", r"\1", text)
+        return text
+
+    @staticmethod
+    def _load_json_object(text: str) -> Optional[Dict[str, Any]]:
         try:
-            parsed = json.loads(candidate)
+            parsed = json.loads(text)
         except json.JSONDecodeError:
-            start = candidate.find("{")
-            end = candidate.rfind("}")
-            if start == -1 or end == -1 or end <= start:
-                raise ValueError("响应不是有效的 JSON。")
-            snippet = candidate[start : end + 1]
-            parsed = json.loads(snippet)
+            try:
+                import ast
+
+                parsed = ast.literal_eval(text)
+            except (ValueError, SyntaxError):
+                return None
         if not isinstance(parsed, dict):
-            raise ValueError("智能体响应的 JSON 必须是对象。")
+            return None
         return parsed
+
+    @staticmethod
+    def _is_strict_json_object(text: str) -> bool:
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return False
+        return isinstance(parsed, dict)
+
+    @staticmethod
+    def _is_failure_observation(observation: str) -> bool:
+        failure_markers = [
+            "Tool execution failed",
+            "Unknown tool",
+            "Tool arguments",
+            "parse failed",
+            "returncode: 1",
+            "error",
+            "Error",
+            "Traceback",
+            "失败",
+            "错误",
+            "不存在",
+        ]
+        return any(marker in observation for marker in failure_markers)
+
+    def _try_replan(
+        self,
+        task: str,
+        plan: List[PlanStep],
+        observation: str,
+        metadata: Dict[str, Any],
+    ) -> List[PlanStep]:
+        completed_steps = [step for step in plan if step.completed]
+        try:
+            new_plan = (
+                self.planner.replan(task, completed_steps, observation) if self.planner else []
+            )
+        except Exception as exc:  # noqa: BLE001
+            metadata["failure_reason"] = f"Replan failed: {exc}"
+            return plan
+
+        if new_plan:
+            metadata["replan_count"] += 1
+            self.conversation_history.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Recovery: execution plan was regenerated after failure.\n"
+                        f"Failure observation: {observation}"
+                    ),
+                }
+            )
+            return new_plan
+        return plan
 
     def reset_conversation(self) -> None:
         """重置对话历史
-        
+
         清空所有对话历史记录，为新任务做准备。
         """
         self.conversation_history = []
 
     def get_conversation_history(self) -> List[Dict[str, str]]:
         """获取对话历史
-        
+
         Returns:
             conversation_history (List[Dict[str, str]]): 对话历史记录的副本
         """
@@ -422,10 +589,10 @@ class ReactAgent:
     def _format_final_answer(action_input: Any) -> str:
         """
         格式化最终答案
-        
+
         Args:
             action_input (Any): finish动作的输入参数
-            
+
         Returns:
             answer (str): 格式化后的最终答案字符串
         """

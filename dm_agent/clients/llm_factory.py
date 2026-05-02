@@ -78,8 +78,7 @@ def create_llm_client(
 
     else:
         raise ValueError(
-            f"不支持的提供商: {provider}。"
-            f"支持的提供商: deepseek, openai, claude, gemini"
+            f"不支持的提供商: {provider}。" f"支持的提供商: deepseek, openai, claude, gemini"
         )
 
 

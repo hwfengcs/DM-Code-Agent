@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 try:
     from google import genai
+
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -25,9 +26,7 @@ class GeminiClient(BaseLLMClient):
         timeout: int = 600,
     ) -> None:
         if not GENAI_AVAILABLE:
-            raise ImportError(
-                "google-genai 未安装。请运行: pip install google-genai"
-            )
+            raise ImportError("google-genai 未安装。请运行: pip install google-genai")
 
         super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
 
@@ -46,10 +45,7 @@ class GeminiClient(BaseLLMClient):
             contents = self._convert_messages_to_contents(messages)
 
             # 调用 Gemini API
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=contents
-            )
+            response = self.client.models.generate_content(model=self.model, contents=contents)
 
             # 返回包含响应的字典
             return {"response": response}

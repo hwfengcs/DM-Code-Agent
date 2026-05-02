@@ -25,10 +25,12 @@ from dm_agent.skills import SkillManager
 # 尝试导入 colorama 用于彩色输出
 try:
     from colorama import Fore, Style, init as colorama_init
+
     colorama_init(autoreset=True)
     COLORS_AVAILABLE = True
 except ImportError:
     COLORS_AVAILABLE = False
+
     # 如果没有 colorama，定义空的颜色常量
     class Fore:
         GREEN = ""
@@ -46,6 +48,7 @@ except ImportError:
 @dataclass
 class Config:
     """运行时配置"""
+
     api_key: str
     provider: str = "deepseek"
     model: str = "deepseek-chat"
@@ -57,6 +60,16 @@ class Config:
 
 # 配置文件路径
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+
+
+def configure_console_encoding() -> None:
+    """Avoid crashes when Windows terminals cannot encode Unicode status symbols."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:
+                pass
 
 
 def load_config_from_file() -> Dict[str, Any]:
@@ -227,8 +240,12 @@ def show_skills(skill_manager: SkillManager) -> None:
             print(f"{Fore.GREEN}{idx}. {info['display_name']}{Style.RESET_ALL} {status}")
             print(f"   {Fore.YELLOW}标识：{Style.RESET_ALL}{info['name']}")
             print(f"   {Fore.YELLOW}描述：{Style.RESET_ALL}{info['description']}")
-            print(f"   {Fore.YELLOW}类型：{Style.RESET_ALL}{source}  {Fore.YELLOW}版本：{Style.RESET_ALL}{info['version']}  {Fore.YELLOW}专用工具：{Style.RESET_ALL}{info['tools_count']} 个")
-            print(f"   {Fore.YELLOW}关键词：{Style.RESET_ALL}{', '.join(info['keywords'][:8])}{'...' if len(info['keywords']) > 8 else ''}")
+            print(
+                f"   {Fore.YELLOW}类型：{Style.RESET_ALL}{source}  {Fore.YELLOW}版本：{Style.RESET_ALL}{info['version']}  {Fore.YELLOW}专用工具：{Style.RESET_ALL}{info['tools_count']} 个"
+            )
+            print(
+                f"   {Fore.YELLOW}关键词：{Style.RESET_ALL}{', '.join(info['keywords'][:8])}{'...' if len(info['keywords']) > 8 else ''}"
+            )
             print()
 
     print_separator("-")
@@ -251,14 +268,20 @@ def configure_settings(config: Config) -> None:
     config_changed = False
 
     # 修改提供商
-    provider_input = input(f"LLM 提供商 (deepseek/openai/claude/gemini) [{config.provider}]: ").strip().lower()
+    provider_input = (
+        input(f"LLM 提供商 (deepseek/openai/claude/gemini) [{config.provider}]: ").strip().lower()
+    )
     if provider_input and provider_input in ["deepseek", "openai", "claude", "gemini"]:
         if provider_input != config.provider:
             # 尝试获取新提供商的 API 密钥
             new_api_key = get_api_key_for_provider(provider_input)
             if not new_api_key:
-                print(f"{Fore.RED}✗ 未找到 {provider_input.upper()}_API_KEY 环境变量{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}请在 .env 文件中配置 {provider_input.upper()}_API_KEY{Style.RESET_ALL}")
+                print(
+                    f"{Fore.RED}✗ 未找到 {provider_input.upper()}_API_KEY 环境变量{Style.RESET_ALL}"
+                )
+                print(
+                    f"{Fore.YELLOW}请在 .env 文件中配置 {provider_input.upper()}_API_KEY{Style.RESET_ALL}"
+                )
             else:
                 config.provider = provider_input
                 config.api_key = new_api_key  # 更新 API 密钥
@@ -267,7 +290,9 @@ def configure_settings(config: Config) -> None:
                 config.model = defaults.get("model", config.model)
                 config.base_url = defaults.get("base_url", config.base_url)
                 config_changed = True
-                print(f"{Fore.GREEN}✓ 已更新提供商为 {provider_input}，模型和 URL 已自动调整{Style.RESET_ALL}")
+                print(
+                    f"{Fore.GREEN}✓ 已更新提供商为 {provider_input}，模型和 URL 已自动调整{Style.RESET_ALL}"
+                )
     elif provider_input and provider_input not in ["deepseek", "openai", "claude", "gemini"]:
         print(f"{Fore.RED}✗ 无效的提供商{Style.RESET_ALL}")
 
@@ -314,13 +339,15 @@ def configure_settings(config: Config) -> None:
         print(f"{Fore.RED}✗ 无效的数字{Style.RESET_ALL}")
 
     # 修改显示步骤
-    show_steps_input = input(f"显示步骤 (y/n) [{'y' if config.show_steps else 'n'}]: ").strip().lower()
-    if show_steps_input in ['y', 'yes', '是']:
+    show_steps_input = (
+        input(f"显示步骤 (y/n) [{'y' if config.show_steps else 'n'}]: ").strip().lower()
+    )
+    if show_steps_input in ["y", "yes", "是"]:
         if not config.show_steps:
             config.show_steps = True
             config_changed = True
         print(f"{Fore.GREEN}✓ 已启用显示步骤{Style.RESET_ALL}")
-    elif show_steps_input in ['n', 'no', '否']:
+    elif show_steps_input in ["n", "no", "否"]:
         if config.show_steps:
             config.show_steps = False
             config_changed = True
@@ -329,8 +356,10 @@ def configure_settings(config: Config) -> None:
     # 保存配置
     if config_changed:
         print()
-        save_choice = input(f"{Fore.CYAN}是否保存为永久配置？(y/n) [y]: {Style.RESET_ALL}").strip().lower()
-        if save_choice in ['', 'y', 'yes', '是']:
+        save_choice = (
+            input(f"{Fore.CYAN}是否保存为永久配置？(y/n) [y]: {Style.RESET_ALL}").strip().lower()
+        )
+        if save_choice in ["", "y", "yes", "是"]:
             save_config_to_file(config)
 
     print_separator("-")
@@ -346,9 +375,11 @@ def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
             print(f"{Fore.MAGENTA}步骤 {idx}:{Style.RESET_ALL}")
             print(f"  {Fore.YELLOW}思考：{Style.RESET_ALL}{step.get('thought')}")
             print(f"  {Fore.YELLOW}动作：{Style.RESET_ALL}{step.get('action')}")
-            action_input = step.get('action_input')
+            action_input = step.get("action_input")
             if action_input:
-                print(f"  {Fore.YELLOW}输入：{Style.RESET_ALL}{json.dumps(action_input, ensure_ascii=False)}")
+                print(
+                    f"  {Fore.YELLOW}输入：{Style.RESET_ALL}{json.dumps(action_input, ensure_ascii=False)}"
+                )
             print(f"  {Fore.YELLOW}观察：{Style.RESET_ALL}{step.get('observation')}")
             print()
 
@@ -361,17 +392,22 @@ def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
 
 def create_step_callback(show_steps: bool):
     """创建步骤回调函数，用于实时打印 agent 执行状态"""
+
     def callback(step_num: int, step: Any) -> None:
         if show_steps:
             print(f"\n{Fore.MAGENTA}{Style.BRIGHT}[步骤 {step_num}]{Style.RESET_ALL}")
             print(f"  {Fore.YELLOW}思考：{Style.RESET_ALL}{step.thought}")
             print(f"  {Fore.YELLOW}动作：{Style.RESET_ALL}{step.action}")
             if step.action_input:
-                print(f"  {Fore.YELLOW}输入：{Style.RESET_ALL}{json.dumps(step.action_input, ensure_ascii=False)}")
+                print(
+                    f"  {Fore.YELLOW}输入：{Style.RESET_ALL}{json.dumps(step.action_input, ensure_ascii=False)}"
+                )
             print(f"  {Fore.YELLOW}观察：{Style.RESET_ALL}{step.observation}")
         else:
             # 即使不显示详细步骤，也显示简要进度
-            print(f"{Fore.CYAN}[步骤 {step_num}] {step.action}{Style.RESET_ALL}", end=" ", flush=True)
+            print(
+                f"{Fore.CYAN}[步骤 {step_num}] {step.action}{Style.RESET_ALL}", end=" ", flush=True
+            )
             if step.action == "finish" or step.action == "task_complete":
                 print(f"{Fore.GREEN}✓{Style.RESET_ALL}")
             elif step.action == "error":
@@ -382,7 +418,9 @@ def create_step_callback(show_steps: bool):
     return callback
 
 
-def multi_turn_conversation(config: Config, tools: List[Tool], skill_manager: SkillManager | None = None) -> None:
+def multi_turn_conversation(
+    config: Config, tools: List[Tool], skill_manager: SkillManager | None = None
+) -> None:
     """多轮对话模式"""
     print_separator("-")
     print(f"{Fore.CYAN}{Style.BRIGHT}多轮对话模式{Style.RESET_ALL}\n")
@@ -413,7 +451,9 @@ def multi_turn_conversation(config: Config, tools: List[Tool], skill_manager: Sk
 
         while True:
             print(f"\n{Fore.CYAN}[对话 {conversation_count + 1}]{Style.RESET_ALL}")
-            task = input(f"{Fore.YELLOW}请输入任务（exit 退出，reset 重置历史）：{Style.RESET_ALL}\n> ").strip()
+            task = input(
+                f"{Fore.YELLOW}请输入任务（exit 退出，reset 重置历史）：{Style.RESET_ALL}\n> "
+            ).strip()
 
             if not task:
                 print(f"{Fore.RED}✗ 任务描述不能为空{Style.RESET_ALL}")
@@ -458,7 +498,9 @@ def multi_turn_conversation(config: Config, tools: List[Tool], skill_manager: Sk
         print_separator("-")
 
 
-def execute_task(config: Config, tools: List[Tool], skill_manager: SkillManager | None = None) -> None:
+def execute_task(
+    config: Config, tools: List[Tool], skill_manager: SkillManager | None = None
+) -> None:
     """执行任务"""
     print_separator("-")
     print(f"{Fore.CYAN}{Style.BRIGHT}执行新任务{Style.RESET_ALL}\n")
@@ -660,6 +702,7 @@ def run_single_task(config: Config, task: str) -> int:
 
 def main(argv: Any = None) -> int:
     """主入口函数"""
+    configure_console_encoding()
     load_dotenv()
     args = parse_args(argv if argv is not None else sys.argv[1:])
 

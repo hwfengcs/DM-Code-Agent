@@ -13,16 +13,16 @@ def check_command(command: str, args: list = None) -> tuple[bool, str]:
         (是否可用, 版本信息或错误信息)
     """
     try:
-        cmd = [command] + (args or ['--version'])
+        cmd = [command] + (args or ["--version"])
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            shell=True if sys.platform == 'win32' else False,
-            timeout=5
+            shell=True if sys.platform == "win32" else False,
+            timeout=5,
         )
         if result.returncode == 0:
-            version = result.stdout.strip().split('\n')[0]
+            version = result.stdout.strip().split("\n")[0]
             return True, version
         else:
             return False, result.stderr.strip()
@@ -42,11 +42,11 @@ def check_mcp_config():
         return False, "配置文件不存在"
 
     try:
-        with open(config_file, 'r', encoding='utf-8') as f:
+        with open(config_file, "r", encoding="utf-8") as f:
             config = json.load(f)
 
-        servers = config.get('mcpServers', {})
-        enabled_count = sum(1 for s in servers.values() if s.get('enabled', True))
+        servers = config.get("mcpServers", {})
+        enabled_count = sum(1 for s in servers.values() if s.get("enabled", True))
 
         return True, f"配置有效，共 {len(servers)} 个服务器，{enabled_count} 个已启用"
     except json.JSONDecodeError as e:
@@ -75,13 +75,13 @@ def main():
 
     # 检查 Node.js
     print("📋 检查 Node.js 环境")
-    node_ok, node_msg = check_command('node')
+    node_ok, node_msg = check_command("node")
     print_status("Node.js", node_ok, node_msg)
 
-    npm_ok, npm_msg = check_command('npm')
+    npm_ok, npm_msg = check_command("npm")
     print_status("npm", npm_ok, npm_msg)
 
-    npx_ok, npx_msg = check_command('npx')
+    npx_ok, npx_msg = check_command("npx")
     print_status("npx", npx_ok, npx_msg)
     print()
 
@@ -107,7 +107,7 @@ def main():
         if not (node_ok and npm_ok and npx_ok):
             print("1. 安装 Node.js:")
             print("   访问 https://nodejs.org/ 下载并安装")
-            if sys.platform == 'win32':
+            if sys.platform == "win32":
                 print("   Windows 用户请确保勾选 'Add to PATH' 选项")
             print()
 
@@ -120,7 +120,7 @@ def main():
     print("=" * 70)
 
     # 平台特定提示
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         print()
         print("💡 Windows 用户提示:")
         print("   - 安装 Node.js 后需要重启终端")

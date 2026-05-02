@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 try:
     from openai import OpenAI
+
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -25,9 +26,7 @@ class OpenAIClient(BaseLLMClient):
         timeout: int = 600,
     ) -> None:
         if not OPENAI_AVAILABLE:
-            raise ImportError(
-                "openai 未安装。请运行: pip install openai"
-            )
+            raise ImportError("openai 未安装。请运行: pip install openai")
 
         super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
 

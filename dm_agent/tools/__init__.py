@@ -22,26 +22,26 @@ from .code_analysis_tools import (
 def task_complete(arguments: Dict[str, Any]) -> str:
     """
     标记任务完成的工具。调用此工具将自动结束任务。
-    
+
     当智能体认为任务已经完成时，应调用此工具来终止任务执行流程。
     该工具通常作为任务计划的最后一个步骤被调用。
-    
+
     Args:
         arguments (Dict[str, Any]): 工具调用参数字典
             - message (str, optional): 任务完成的描述信息，默认为空字符串
-            
+
     Returns:
         str: 格式化的任务完成消息
             - 如果提供了有效的message字符串，则返回 "任务完成：{message}"
             - 否则返回默认消息 "任务已完成。"
-            
+
     Examples:
         >>> task_complete({"message": "数据分析已完成"})
         '任务完成：数据分析已完成'
-        
+
         >>> task_complete({})
         '任务已完成。'
-        
+
         >>> task_complete({"message": "  "})
         '任务已完成。'
     """
@@ -73,91 +73,89 @@ def default_tools(include_mcp: bool = True, mcp_tools: Optional[List[Tool]] = No
         Tool(
             name="read_file",
             description=(
-                "Read a UTF-8 text file. Arguments: {\"path\": string, "
-                "\"line_start\": optional int, \"line_end\": optional int}."
+                'Read a UTF-8 text file. Arguments: {"path": string, '
+                '"line_start": optional int, "line_end": optional int}.'
             ),
             runner=read_file,
         ),
         Tool(
             name="create_file",
-            description="Create or overwrite a text file. Arguments: {\"path\": string, \"content\": string}.",
+            description='Create or overwrite a text file. Arguments: {"path": string, "content": string}.',
             runner=create_file,
         ),
         Tool(
             name="edit_file",
             description=(
-                "Edit specific lines in a file. Arguments: {\"path\": string, \"operation\": \"insert\"|\"replace\"|\"delete\", "
-                "\"line_start\": int, \"line_end\": int (for replace/delete), \"content\": string (for insert/replace)}."
+                'Edit specific lines in a file. Arguments: {"path": string, "operation": "insert"|"replace"|"delete", '
+                '"line_start": int, "line_end": int (for replace/delete), "content": string (for insert/replace)}.'
             ),
             runner=edit_file,
         ),
         Tool(
             name="search_in_file",
             description=(
-                "Search for text or regex pattern in a file. Arguments: {\"path\": string, \"pattern\": string, "
-                "\"context_lines\": optional int (default 2)}."
+                'Search for text or regex pattern in a file. Arguments: {"path": string, "pattern": string, '
+                '"context_lines": optional int (default 2)}.'
             ),
             runner=search_in_file,
         ),
         Tool(
             name="run_python",
             description=(
-                "Execute Python code using the local interpreter. Arguments: either {\"code\": string} or {\"path\": string, \"args\": optional string or list}."
+                'Execute Python code using the local interpreter. Arguments: either {"code": string} or {"path": string, "args": optional string or list}.'
             ),
             runner=run_python,
         ),
         Tool(
             name="run_shell",
-            description="Execute a shell command. Arguments: {\"command\": string}.",
+            description='Execute a shell command. Arguments: {"command": string}.',
             runner=run_shell,
         ),
         Tool(
             name="run_tests",
             description=(
                 "Run Python test suite. Arguments: {\"test_path\": optional string (default '.'), "
-                "\"framework\": optional \"pytest\"|\"unittest\" (default 'pytest'), \"verbose\": optional bool (default false)}."
+                '"framework": optional "pytest"|"unittest" (default \'pytest\'), "verbose": optional bool (default false)}.'
             ),
             runner=run_tests,
         ),
         Tool(
             name="run_linter",
             description=(
-                "Run code linter/formatter. Arguments: {\"path\": string, "
-                "\"tool\": optional \"pylint\"|\"flake8\"|\"mypy\"|\"black\" (default 'flake8')}."
+                'Run code linter/formatter. Arguments: {"path": string, '
+                '"tool": optional "pylint"|"flake8"|"mypy"|"black" (default \'flake8\')}.'
             ),
             runner=run_linter,
         ),
         Tool(
             name="parse_ast",
             description=(
-                "Parse Python file AST to extract structure (functions, classes, imports). Arguments: {\"path\": string}."
+                'Parse Python file AST to extract structure (functions, classes, imports). Arguments: {"path": string}.'
             ),
             runner=parse_ast,
         ),
         Tool(
             name="get_function_signature",
             description=(
-                "Get function signature with type hints. Arguments: {\"path\": string, \"function_name\": string}."
+                'Get function signature with type hints. Arguments: {"path": string, "function_name": string}.'
             ),
             runner=get_function_signature,
         ),
         Tool(
             name="find_dependencies",
-            description=(
-                "Analyze file dependencies (imports). Arguments: {\"path\": string}."
-            ),
+            description=('Analyze file dependencies (imports). Arguments: {"path": string}.'),
             runner=find_dependencies,
         ),
         Tool(
             name="get_code_metrics",
             description=(
-                "Get code metrics (lines, functions, classes count). Arguments: {\"path\": string}."
+                'Get code metrics (lines, functions, classes count). Arguments: {"path": string}.'
             ),
             runner=get_code_metrics,
         ),
         Tool(
             name="task_complete",
-            description="Mark the task as complete and finish execution. Arguments: {\"message\": optional string with completion summary}.",
+            description='Mark the task as complete and finish execution. Arguments: {"message": optional string with completion summary}.',
             runner=task_complete,
         ),
     ]

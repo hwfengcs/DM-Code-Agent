@@ -32,9 +32,7 @@ class SkillSelector:
         self.enable_llm_fallback = enable_llm_fallback
         self.llm_client = llm_client
 
-    def select(
-        self, task: str, skills: Dict[str, "BaseSkill"]
-    ) -> List[str]:
+    def select(self, task: str, skills: Dict[str, "BaseSkill"]) -> List[str]:
         """为任务选择最合适的技能，返回技能名称列表。"""
         if not skills or not task.strip():
             return []
@@ -58,9 +56,7 @@ class SkillSelector:
     # 内部方法
     # ------------------------------------------------------------------
 
-    def _score_all(
-        self, task: str, skills: Dict[str, "BaseSkill"]
-    ) -> Dict[str, float]:
+    def _score_all(self, task: str, skills: Dict[str, "BaseSkill"]) -> Dict[str, float]:
         """计算每个技能的综合匹配分数。"""
         scores: Dict[str, float] = {}
         task_lower = task.lower()
@@ -96,16 +92,13 @@ class SkillSelector:
                 continue
         return hits / len(patterns)
 
-    def _llm_select(
-        self, task: str, skills: Dict[str, "BaseSkill"]
-    ) -> List[tuple]:
+    def _llm_select(self, task: str, skills: Dict[str, "BaseSkill"]) -> List[tuple]:
         """使用 LLM 辅助选择技能（备用策略）。"""
         if not self.llm_client:
             return []
 
         skill_descriptions = "\n".join(
-            f"- {name}: {skill.get_metadata().description}"
-            for name, skill in skills.items()
+            f"- {name}: {skill.get_metadata().description}" for name, skill in skills.items()
         )
         prompt = (
             f"根据以下任务描述，从可用技能列表中选择最相关的技能（最多 {self.max_active_skills} 个）。\n"

@@ -269,6 +269,7 @@ def find_dependencies(arguments: Dict[str, Any]) -> str:
         local_modules = set()
 
         import sys
+
         stdlib_module_names = set(sys.stdlib_module_names)
 
         for imp in imports:
@@ -363,9 +364,7 @@ def get_code_metrics(arguments: Dict[str, Any]) -> str:
                     for node in ast.walk(tree)
                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 )
-                num_classes = sum(
-                    1 for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-                )
+                num_classes = sum(1 for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
 
                 metrics["num_functions"] = num_functions
                 metrics["num_classes"] = num_classes

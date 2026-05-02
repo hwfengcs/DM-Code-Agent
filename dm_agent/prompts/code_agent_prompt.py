@@ -1,6 +1,6 @@
 """Code Agent 系统提示词"""
 
-SYSTEM_PROMPT =  """
+SYSTEM_PROMPT = """
 # Code Agent 系统提示词
 
 你是一个专业的 Code Agent,专注于软件开发和代码相关任务。

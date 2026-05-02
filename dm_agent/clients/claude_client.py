@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 try:
     import anthropic
+
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
@@ -26,9 +27,7 @@ class ClaudeClient(BaseLLMClient):
         anthropic_version: str = "2023-06-01",
     ) -> None:
         if not ANTHROPIC_AVAILABLE:
-            raise ImportError(
-                "anthropic 未安装。请运行: pip install anthropic"
-            )
+            raise ImportError("anthropic 未安装。请运行: pip install anthropic")
 
         super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
         self.anthropic_version = anthropic_version
@@ -86,11 +85,11 @@ class ClaudeClient(BaseLLMClient):
         if response:
             try:
                 # Claude SDK 返回的 content 是一个列表
-                if hasattr(response, 'content') and response.content:
+                if hasattr(response, "content") and response.content:
                     # 提取所有文本块
                     text_parts = []
                     for block in response.content:
-                        if hasattr(block, 'text'):
+                        if hasattr(block, "text"):
                             text_parts.append(block.text)
                     if text_parts:
                         return "\n".join(text_parts).strip()

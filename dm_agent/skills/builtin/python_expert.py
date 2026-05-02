@@ -7,7 +7,6 @@ from typing import Any, Dict, List
 from ..base import BaseSkill, SkillMetadata
 from ...tools.base import Tool
 
-
 _PYTHON_BEST_PRACTICES: Dict[str, str] = {
     "代码风格": (
         "- 遵循 PEP 8 代码风格指南\n"
@@ -88,9 +87,22 @@ class PythonExpertSkill(BaseSkill):
             display_name="Python 专家",
             description="提供 Python 编程最佳实践、代码规范和性能优化指导",
             keywords=[
-                "python", "pip", "pytest", "async", "类型提示", "dataclass",
-                "装饰器", "生成器", "虚拟环境", "venv", "poetry", "pyproject",
-                "pydantic", "fastapi", "flask", "django",
+                "python",
+                "pip",
+                "pytest",
+                "async",
+                "类型提示",
+                "dataclass",
+                "装饰器",
+                "生成器",
+                "虚拟环境",
+                "venv",
+                "poetry",
+                "pyproject",
+                "pydantic",
+                "fastapi",
+                "flask",
+                "django",
             ],
             patterns=[
                 r"\.py\b",
@@ -120,7 +132,7 @@ class PythonExpertSkill(BaseSkill):
                 name="python_best_practices",
                 description=(
                     "查询 Python 最佳实践建议。"
-                    "参数：{\"topic\": \"主题名称\"}，"
+                    '参数：{"topic": "主题名称"}，'
                     "可选主题：代码风格、类型提示、异常处理、性能优化、项目结构、测试、异步编程"
                 ),
                 runner=_python_best_practices_runner,

@@ -7,7 +7,6 @@ from typing import Any, Dict, List
 from ..base import BaseSkill, SkillMetadata
 from ...tools.base import Tool
 
-
 _SQL_COMMON_ISSUES = {
     "SELECT *": "避免使用 SELECT *，显式列出需要的列以提高性能和可维护性",
     "无 WHERE": "缺少 WHERE 子句可能导致全表扫描，确认是否需要过滤条件",
@@ -22,7 +21,7 @@ def _sql_review_runner(arguments: Dict[str, Any]) -> str:
     """审查 SQL 语句，检测常见问题并给出优化建议"""
     sql = arguments.get("sql", "").strip()
     if not sql:
-        return "请提供要审查的 SQL 语句。参数：{\"sql\": \"你的 SQL 语句\"}"
+        return '请提供要审查的 SQL 语句。参数：{"sql": "你的 SQL 语句"}'
 
     sql_upper = sql.upper()
     findings: List[str] = []
@@ -60,9 +59,22 @@ class DatabaseExpertSkill(BaseSkill):
             display_name="数据库专家",
             description="提供 SQL 最佳实践、数据库设计、ORM 使用和性能优化指导",
             keywords=[
-                "sql", "mysql", "postgresql", "sqlite", "数据库", "索引",
-                "orm", "sqlalchemy", "django orm", "查询优化", "事务",
-                "迁移", "migration", "表设计", "mongodb", "redis",
+                "sql",
+                "mysql",
+                "postgresql",
+                "sqlite",
+                "数据库",
+                "索引",
+                "orm",
+                "sqlalchemy",
+                "django orm",
+                "查询优化",
+                "事务",
+                "迁移",
+                "migration",
+                "表设计",
+                "mongodb",
+                "redis",
             ],
             patterns=[
                 r"\bSELECT\b",
@@ -92,7 +104,7 @@ class DatabaseExpertSkill(BaseSkill):
                 name="sql_review",
                 description=(
                     "审查 SQL 语句，检测常见问题并给出优化建议。"
-                    "参数：{\"sql\": \"要审查的 SQL 语句\"}"
+                    '参数：{"sql": "要审查的 SQL 语句"}'
                 ),
                 runner=_sql_review_runner,
             )
