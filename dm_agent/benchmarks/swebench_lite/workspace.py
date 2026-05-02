@@ -155,6 +155,13 @@ class SWEBenchWorkspace:
 
         Subsequent instances of the same repo reuse this cache, avoiding a
         full re-clone per task.
+
+        Note: we deliberately use a *full* bare clone (no ``--filter=blob:none``)
+        because partial clones force later instance clones into lazy-fetch mode
+        through a "promisor remote", which fails when the workspace clone is
+        offline or when the partial cache lacks specific blobs. A full clone
+        costs more disk space the first time (a few hundred MB per repo) but
+        produces an offline-friendly self-contained cache.
         """
         self.cache_root.mkdir(parents=True, exist_ok=True)
         repo_dir = self.cached_repo_dir
@@ -165,9 +172,8 @@ class SWEBenchWorkspace:
             except WorkspaceError:
                 pass
             return repo_dir
-        repo_dir.mkdir(parents=True, exist_ok=True)
         _run_git(
-            ["clone", "--bare", "--filter=blob:none", self.repo_url, str(repo_dir)],
+            ["clone", "--bare", self.repo_url, str(repo_dir)],
             cwd=self.cache_root,
         )
         return repo_dir
@@ -183,7 +189,7 @@ class SWEBenchWorkspace:
         if result.returncode == 0:
             return
         _run_git(
-            ["fetch", "--filter=blob:none", "origin", commit],
+            ["fetch", "origin", commit],
             cwd=cache_dir,
         )
 
@@ -196,12 +202,14 @@ class SWEBenchWorkspace:
         self._workspace_path = workspace_path
 
         cache = self.ensure_repo_cache()
-        # Clone from the local cache (fast, offline-friendly after first warmup)
+        # Default `git clone <local-cache>` uses --local, which hard-links the
+        # objects directory. This is fast and offline-safe. We avoid --no-local
+        # because it forces network protocol semantics and breaks for caches
+        # that originated as partial clones.
         _run_git(
-            ["clone", "--no-local", str(cache), str(workspace_path)],
+            ["clone", str(cache), str(workspace_path)],
             cwd=self.root_dir,
         )
-        _run_git(["fetch", "origin", self.instance.base_commit], cwd=workspace_path)
         _run_git(["checkout", self.instance.base_commit], cwd=workspace_path)
         # Drop the upstream remote so the agent cannot inadvertently push.
         _run_git(["remote", "remove", "origin"], cwd=workspace_path, check=False)
