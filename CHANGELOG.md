@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.1] - P1 SWE-bench Lite baseline
 
 ### Added
-- Published the first SWE-bench Lite DeepSeek Tier-1 smoke baseline report:
+- Published the first SWE-bench Lite DeepSeek Tier-1 baseline report:
   `bench_reports/swebench_lite_baseline.json` and
   `bench_reports/swebench_lite_baseline.md`. This is a harness/trace baseline,
   not a leaderboard-comparable score.
@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verifier runs, avoiding `gbk` decode crashes on UTF-8 pytest output.
 
 ### Benchmarks
-- SWE-bench Lite fixed 50-instance Tier-1 smoke subset
+- SWE-bench Lite fixed 50-instance Tier-1 subset
   (`subset_signature=30e25d14e380`):
   0/50 resolved (0.0%), 36/50 patches applied (72.0%), avg 47.14 steps,
   avg 483,885 estimated tokens, `resume.reused_results=8`.

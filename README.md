@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-ready-purple.svg)](MCP_GUIDE.md)
 [![Trace](https://img.shields.io/badge/Trace-Replay-blueviolet.svg)](docs/tracing.md)
-[![SWE-bench Lite](https://img.shields.io/badge/SWE--bench%20Lite-Tier--1%20smoke-lightgrey.svg)](docs/research-log/01-swebench-baseline.md)
+[![SWE-bench Lite](https://img.shields.io/badge/SWE--bench%20Lite-0.0%25-blue.svg)](docs/research-log/01-swebench-baseline.md)
 [![Research Log](https://img.shields.io/badge/Research%20Log-active-orange.svg)](docs/research-log/)
 
 **中文** | [English](README_EN.md) | [Français](README_FR.md)
@@ -23,7 +23,7 @@
 ## Why this project
 
 - **可审计 (Auditable)**：每一步的计划、工具调用、观察结果都写入 JSONL trace，trace 自带 dry replay 与显式 tool replay，调试不靠"再问一次模型"。
-- **可对标 (Benchmarked)**：项目自带 coding 与 maintenance 两套 hidden-test benchmark，并已跑通 SWE-bench Lite DeepSeek Tier-1 smoke baseline：0.0% resolved / 72.0% patch-applied on the fixed 50-instance subset。这个 Tier-1 数字受 host verifier 环境噪声影响，不能和官方 leaderboard 直接比较；所有 ablation 数据都附 raw JSON 报告，能复现。
+- **可对标 (Benchmarked)**：项目自带 coding 与 maintenance 两套 hidden-test benchmark，并已发布 SWE-bench Lite DeepSeek Tier-1 baseline：0.0% resolved / 72.0% patch-applied on the fixed 50-instance subset。这个 Tier-1 数字受 host verifier 环境噪声影响，不能和官方 leaderboard 直接比较；所有 ablation 数据都附 raw JSON 报告，能复现。
 - **有算法 (Algorithmic, v2)**：不是"调用 GPT-4 并写个 ReAct"。Reflexion、Hybrid RAG、Critic、Self-Consistency、Adaptive Replanning 各自模块化、各自有 ablation 实验。看 `docs/research-log/` 可读到每个决策的来由与翻车数据。
 - **可扩展 (Extensible)**：内置 Skill 系统 + MCP 集成，任务激活领域 prompt 与专用工具；4 家主流 LLM 适配（DeepSeek/OpenAI/Claude/Gemini），可加自定义 `base_url`。
 
@@ -37,11 +37,11 @@
 | Hybrid BM25+Embedding RAG | ✅ v2（opt-in） | repo-map | partial | retrieval | ❌ |
 | MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
 | 自带 maintenance benchmark | ✅ 5+ tasks | ❌ | ❌ | SWE-bench | ❌ |
-| 公开 SWE-bench Lite 分数 | ⚠️ Tier-1 smoke：0.0%（非官方口径） | ❌ | ✅ | ✅ | ❌ |
+| 公开 SWE-bench Lite 分数 | ⚠️ Tier-1：0.0%（50/300 子集，非官方口径） | ❌ | ✅ | ✅ | ❌ |
 | 代码体积（核心 LOC） | ~1500 | ~10k | ~50k | ~5k | ~3k |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
-> 表中的 SWE-bench Tier-1 smoke baseline 已在 P1 落地；leaderboard-comparable 分数需要 Tier-2 Docker verifier。
+> 表中的 SWE-bench Tier-1 baseline 已在 P1 落地；leaderboard-comparable 分数需要 Tier-2 Docker verifier，v2 Phase 2-5 会继续补齐 ablation 实测数据。
 > 进度见 [docs/research-log/](docs/research-log/) 与 [CHANGELOG.md](CHANGELOG.md)。
 
 ## Algorithm Highlights（v2 路线图）
@@ -49,7 +49,7 @@
 | 模块 | 状态 | 说明 | Devlog |
 | --- | --- | --- | --- |
 | ReAct + Planner + Replan | ✅ v1.5 | 基础 ReAct 循环 + 3-8 步全局计划 + 失败 replan | [00](docs/research-log/00-kickoff.md) |
-| SWE-bench Lite suite | ✅ P1 | 50 题子集，DeepSeek Tier-1 smoke baseline：0.0% resolved / 72.0% patch-applied；已确认 host verifier 噪声 | [01](docs/research-log/01-swebench-baseline.md) |
+| SWE-bench Lite suite | ✅ P1 | 50 题子集，DeepSeek Tier-1 baseline：0.0% resolved / 72.0% patch-applied；含失败模式分析并已说明 host verifier 噪声 | [01](docs/research-log/01-swebench-baseline.md) |
 | Reflexion (episodic memory) | 🔄 P2 | 失败 trial 反思 → lesson → 注入下一次 prompt，支持 pass@k | 02（即将发布） |
 | Hybrid RAG (BM25 + embeddings + RRF) | 🔄 P3 | 函数粒度索引、双路召回、Top-K 注入 prompt | 03（即将发布） |
 | Critic + Self-Consistency | 🔄 P4 | 独立 LLM 同行评审 + N-候选选优（majority vote / critic score / test pass） | 04（即将发布） |

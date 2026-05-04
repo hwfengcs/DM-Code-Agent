@@ -4,7 +4,7 @@
 > — loader, deterministic 50-instance subset, per-instance git workspace, Tier-1
 > Python-host verifier, runner, failure-mode analyzer, and a CLI integration via
 > `dm-agent-bench --suite swebench_lite`. The first 50-instance DeepSeek
-> Tier-1 smoke baseline is now published: **0/50 resolved (0.0%)**,
+> Tier-1 baseline is now published: **0/50 resolved (0.0%)**,
 > **36/50 patches applied (72.0%)**. A follow-up gold-patch smoke audit
 > confirmed that the Tier-1 host verifier is noisy, so this run is useful as a
 > harness/trace baseline but should **not** be treated as an official
@@ -251,11 +251,11 @@ publishing a strong external SWE-bench claim.**
 
 - [x] Harness implemented: loader, workspace, verifier, runner, analyzer.
 - [x] CLI integration: `dm-agent-bench --suite swebench_lite`.
-- [x] Unit tests (14) passing without the `[swebench]` extra.
+- [x] Unit tests (16) passing without the `[swebench]` extra.
 - [x] First baseline run: DeepSeek 50-instance Tier-1 baseline complete.
 - [x] Failure-mode distribution: `regression=36`, `patch_not_produced=13`,
       `patch_apply_failed=1`.
-- [x] README badge update: Tier-1 smoke baseline, explicitly marked as
+- [x] README badge update: 0.0% Tier-1 baseline, explicitly marked as
       non-official.
 - [ ] Tier-2 docker verifier: deferred to post-P1 (or P5 if needed for
       reproducing instances Tier-1 can't exercise).
@@ -275,6 +275,7 @@ publishing a strong external SWE-bench claim.**
 
 ## Status flag
 
-This entry is now **frozen** as the P1 harness and Tier-1 smoke-baseline
-record. Entry 02 can still use the trace taxonomy for Reflexion design, but a
-leaderboard-comparable score should wait for Tier-2 Docker verification.
+This entry is now **frozen** as the P1 harness and Tier-1 baseline record.
+Entry 02 can use the trace taxonomy for Reflexion design and measure relative
+gains against this 0.0% line, but a leaderboard-comparable score should wait
+for Tier-2 Docker verification.
