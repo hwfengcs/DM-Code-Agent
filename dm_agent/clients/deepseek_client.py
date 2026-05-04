@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, Iterable, List, Optional
 
 import requests
 
 from .base_client import BaseLLMClient, LLMError
+
+DEFAULT_RETRY_STATUS_CODES = frozenset({400, 408, 409, 429, 500, 502, 503, 504})
 
 
 class DeepSeekError(LLMError):
@@ -24,9 +27,23 @@ class DeepSeekClient(BaseLLMClient):
         base_url: str = "https://api.deepseek.com",
         endpoint: str = "/v1/chat/completions",
         timeout: int = 600,
+        max_retries: int = 3,
+        retry_backoff: float = 1.0,
+        retry_status_codes: Optional[Iterable[int]] = None,
     ) -> None:
         super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
+        if max_retries < 0:
+            raise ValueError("max_retries must be >= 0.")
+        if retry_backoff < 0:
+            raise ValueError("retry_backoff must be >= 0.")
         self.endpoint = endpoint
+        self.max_retries = max_retries
+        self.retry_backoff = retry_backoff
+        self.retry_status_codes = (
+            DEFAULT_RETRY_STATUS_CODES
+            if retry_status_codes is None
+            else frozenset(retry_status_codes)
+        )
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -58,11 +75,40 @@ class DeepSeekClient(BaseLLMClient):
         payload.update(extra)
 
         url = f"{self.base_url}/{self.endpoint.lstrip('/')}"
-        response = self.session.post(url, json=payload, timeout=self.timeout)
-        if not response.ok:
+        for retry_index in range(self.max_retries + 1):
+            attempt = retry_index + 1
+            has_retry_budget = retry_index < self.max_retries
+            try:
+                response = self.session.post(url, json=payload, timeout=self.timeout)
+            except requests.RequestException as exc:
+                if self._is_retryable_exception(exc) and has_retry_budget:
+                    self._sleep_before_retry(retry_index)
+                    continue
+                message = "DeepSeek API request failed"
+                if self._is_retryable_exception(exc) and attempt > 1:
+                    message = f"{message} after {attempt} attempts"
+                raise DeepSeekError(f"{message}: {exc}") from exc
+
+            if response.ok:
+                try:
+                    return response.json()
+                except ValueError as exc:
+                    if has_retry_budget:
+                        self._sleep_before_retry(retry_index)
+                        continue
+                    raise DeepSeekError(
+                        f"DeepSeek API returned invalid JSON after {attempt} attempts: {exc}"
+                    ) from exc
+
             message = self._format_error(response)
+            if self._is_retryable_response(response) and has_retry_budget:
+                self._sleep_before_retry(retry_index)
+                continue
+            if self._is_retryable_response(response) and attempt > 1:
+                message = f"{message} after {attempt} attempts"
             raise DeepSeekError(message)
-        return response.json()
+
+        raise DeepSeekError("DeepSeek API request failed after exhausting retry budget.")
 
     def extract_text(self, data: Dict[str, Any]) -> str:
         """从各种响应格式中提取助手文本内容。"""
@@ -112,3 +158,18 @@ class DeepSeekClient(BaseLLMClient):
         elif body:
             message = f"{message} - {body}"
         return message
+
+    def _sleep_before_retry(self, retry_index: int) -> None:
+        if self.retry_backoff <= 0:
+            return
+        time.sleep(self.retry_backoff * (2**retry_index))
+
+    def _is_retryable_response(self, response: requests.Response) -> bool:
+        return response.status_code in self.retry_status_codes
+
+    @staticmethod
+    def _is_retryable_exception(exc: requests.RequestException) -> bool:
+        if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+            return True
+        response = getattr(exc, "response", None)
+        return response is None

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - P1 SWE-bench Lite baseline
+
+### Added
+- Published the first SWE-bench Lite DeepSeek Tier-1 baseline report:
+  `bench_reports/swebench_lite_baseline.json` and
+  `bench_reports/swebench_lite_baseline.md`.
+- SWE-bench Lite CLI resume/checkpoint support: `--resume` and
+  `--resume-from-output` reuse completed instance results from an existing
+  JSON report, while `--output` / `--markdown` are now checkpointed after each
+  newly completed instance.
+- DeepSeek API retry protection for transient HTTP/network failures, including
+  intermittent `400`, `429`, and 5xx responses during long benchmark runs.
+- Windows-safe subprocess output decoding for benchmark and SWE-bench Lite
+  verifier runs, avoiding `gbk` decode crashes on UTF-8 pytest output.
+
+### Benchmarks
+- SWE-bench Lite fixed 50-instance subset (`subset_signature=30e25d14e380`):
+  0/50 resolved (0.0%), 36/50 patches applied (72.0%), avg 47.14 steps,
+  avg 483,885 estimated tokens, `resume.reused_results=8`.
+- Failure-mode distribution from
+  `summarize_failure_modes`: `regression=36`, `patch_not_produced=13`,
+  `patch_apply_failed=1`. The research log documents Tier-1 host-verifier
+  environment noise and why Tier-2 Docker remains deferred but important.
+
 ## [1.7.0] - P1 SWE-bench Lite harness
 
 ### Added
@@ -68,7 +92,8 @@ See `docs/research-log/00-kickoff.md` for the detailed plan.
 - Cross-platform CI on Ubuntu and Windows for Python 3.10/3.11/3.12.
 - Run report Markdown writer with git workspace status before/after.
 
-[Unreleased]: https://github.com/hwfengcs/DM-Code-Agent/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/hwfengcs/DM-Code-Agent/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/hwfengcs/DM-Code-Agent/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v1.7.0
 [1.6.0]: https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v1.6.0
 [1.5.0]: https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v1.5.0

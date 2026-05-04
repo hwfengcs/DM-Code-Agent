@@ -61,6 +61,8 @@ def _run_pytest_node(
             cwd=str(cwd),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
         elapsed = time.perf_counter() - started

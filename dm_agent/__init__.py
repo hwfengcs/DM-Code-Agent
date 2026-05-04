@@ -19,7 +19,7 @@ from .prompts import build_code_agent_prompt
 from .skills import BaseSkill, ConfigSkill, SkillMetadata, SkillManager
 from .tracing import TraceWriter
 
-__version__ = "1.7.0"
+__version__ = "1.7.1"
 
 __all__ = [
     # Core

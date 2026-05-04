@@ -30,7 +30,9 @@ def run_python(arguments: Dict[str, Any]) -> str:
     else:
         raise ValueError("run_python 工具需要 'code' 或 'path' 参数。")
 
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(
+        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     segments: List[str] = []
     if result.stdout:
         segments.append(result.stdout.strip())
@@ -43,7 +45,9 @@ def run_python(arguments: Dict[str, Any]) -> str:
 def run_shell(arguments: Dict[str, Any]) -> str:
     """运行 Shell 命令"""
     command = _require_str(arguments, "command")
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     segments: List[str] = []
     if result.stdout:
         segments.append(result.stdout.strip())
@@ -85,7 +89,9 @@ def run_tests(arguments: Dict[str, Any]) -> str:
         else:
             command.extend(["discover", "-s", str(path)])
 
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(
+        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     segments: List[str] = []
 
     if result.stdout:
@@ -116,7 +122,9 @@ def run_linter(arguments: Dict[str, Any]) -> str:
     else:
         command = [sys.executable, "-m", tool, str(path)]
 
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(
+        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     segments: List[str] = []
 
     if result.stdout:

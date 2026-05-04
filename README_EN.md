@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-ready-purple.svg)](MCP_GUIDE.md)
 [![Trace](https://img.shields.io/badge/Trace-Replay-blueviolet.svg)](docs/tracing.md)
-[![SWE-bench Lite](https://img.shields.io/badge/SWE--bench%20Lite-coming%20in%20v2-lightgrey.svg)](docs/research-log/00-kickoff.md)
+[![SWE-bench Lite](https://img.shields.io/badge/SWE--bench%20Lite-0.0%25-blue.svg)](docs/research-log/01-swebench-baseline.md)
 [![Research Log](https://img.shields.io/badge/Research%20Log-active-orange.svg)](docs/research-log/)
 
 [Chinese](README.md) | **English** | [Français](README_FR.md)
@@ -27,8 +27,9 @@
 
 - **Auditable.** Every plan, tool call, and observation is written to a JSONL trace. Trace ships with
   dry replay and explicit tool replay; debugging does not require asking the model again.
-- **Benchmarked.** Coding and maintenance hidden-test suites are in-tree. SWE-bench Lite lands in v2
-  Phase 1. Every ablation table links to its raw `bench_reports/*.json`.
+- **Benchmarked.** Coding and maintenance hidden-test suites are in-tree. The SWE-bench Lite
+  DeepSeek Tier-1 baseline is published: 0.0% resolved / 72.0% patch-applied on the fixed
+  50-instance subset. Every ablation table links to its raw `bench_reports/*.json`.
 - **Algorithmic (v2).** Not "call GPT-4 and write a ReAct loop." Reflexion, Hybrid RAG, Critic,
   Self-Consistency, and Adaptive Replanning are first-class modules with their own ablations. See
   `docs/research-log/` for the design rationale and the failures behind each one.
@@ -46,11 +47,11 @@
 | Hybrid BM25 + embedding RAG | ✅ v2 (opt-in) | repo-map | partial | retrieval | ❌ |
 | MCP integration | ✅ | ❌ | ✅ | ❌ | ❌ |
 | In-tree maintenance benchmark | ✅ 5+ tasks | ❌ | ❌ | SWE-bench | ❌ |
-| Public SWE-bench Lite score | 🔄 v2 P1 in progress | ❌ | ✅ | ✅ | ❌ |
+| Public SWE-bench Lite score | ✅ 0.0% (50/300 subset) | ❌ | ✅ | ✅ | ❌ |
 | Core LOC | ~1500 | ~10k | ~50k | ~5k | ~3k |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
-> SWE-bench numbers and ablation data drop in v2 phases 1-5. Track the progress in
+> The P1 SWE-bench baseline is published; v2 phases 2-5 will add ablation data. Track the progress in
 > [docs/research-log/](docs/research-log/) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Algorithm Highlights (v2 roadmap)
@@ -58,7 +59,7 @@
 | Module | Status | What it does | Devlog |
 | --- | --- | --- | --- |
 | ReAct + Planner + Replan | ✅ v1.5 | Base loop, 3-8 step plan, replan on failure | [00](docs/research-log/00-kickoff.md) |
-| SWE-bench Lite suite | 🔄 P1 | 50-instance subset, DeepSeek baseline, failure-mode analysis | 01 (soon) |
+| SWE-bench Lite suite | ✅ P1 | 50-instance DeepSeek baseline: 0.0% resolved / 72.0% patch-applied, plus failure-mode analysis | [01](docs/research-log/01-swebench-baseline.md) |
 | Reflexion (episodic memory) | 🔄 P2 | Failed trial → lesson → next-trial prompt; pass@k reporting | 02 (soon) |
 | Hybrid RAG (BM25 + embeddings + RRF) | 🔄 P3 | Function-granularity index, dual recall, top-K injection | 03 (soon) |
 | Critic + Self-Consistency | 🔄 P4 | Independent peer-review LLM + N-candidate selection (majority vote / critic score / test pass) | 04 (soon) |
@@ -72,6 +73,7 @@ ablation, what broke, what is next. Entry point: [`docs/research-log/`](docs/res
 Published:
 
 - [00 — Kickoff: Why a v2 algorithm-track upgrade?](docs/research-log/00-kickoff.md)
+- [01 — SWE-bench Lite baseline: harness, sampling, and the road to numbers](docs/research-log/01-swebench-baseline.md)
 
 ---
 

@@ -45,6 +45,12 @@ def create_llm_client(
             "base_url": base_url or "https://api.deepseek.com",
             "timeout": timeout,
         }
+        if "max_retries" in kwargs:
+            params["max_retries"] = kwargs["max_retries"]
+        if "retry_backoff" in kwargs:
+            params["retry_backoff"] = kwargs["retry_backoff"]
+        if "retry_status_codes" in kwargs:
+            params["retry_status_codes"] = kwargs["retry_status_codes"]
         return DeepSeekClient(**params)
 
     elif provider_lower == "openai":

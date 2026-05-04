@@ -25,7 +25,7 @@ import tempfile
 from contextlib import contextmanager, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import ReactAgent
@@ -294,6 +294,8 @@ def run_swebench_lite(
     enable_planning: bool = True,
     enable_skills: bool = True,
     enable_compression: bool = True,
+    resume_results: Optional[Sequence[SWEBenchResult]] = None,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """Run the agent on a sequence of SWE-bench Lite instances.
 
@@ -303,6 +305,10 @@ def run_swebench_lite(
         enable_planning: Toggle the agent's task planner.
         enable_skills: Toggle skill activation.
         enable_compression: Toggle context compression.
+        resume_results: Existing per-instance results to reuse by
+            ``instance_id``. Used by long-running CLI resume/checkpoint mode.
+        progress_callback: Optional hook called with a partial report after
+            each newly completed instance.
 
     Returns:
         A dict with summary statistics and per-instance results.
@@ -319,19 +325,59 @@ def run_swebench_lite(
 
     trace_dir = Path(config.trace_dir) if config.trace_dir else None
 
+    resume_by_id = {r.instance_id: r for r in resume_results or []}
     results: List[SWEBenchResult] = []
+    reused_count = 0
     for instance in instances:
-        result = _run_single_instance(
-            instance,
-            config,
-            workspace_root=workspace_root,
-            trace_dir=trace_dir,
-            enable_planning=enable_planning,
-            enable_skills=enable_skills,
-            enable_compression=enable_compression,
-        )
+        if instance.instance_id in resume_by_id:
+            result = resume_by_id[instance.instance_id]
+            reused_count += 1
+        else:
+            result = _run_single_instance(
+                instance,
+                config,
+                workspace_root=workspace_root,
+                trace_dir=trace_dir,
+                enable_planning=enable_planning,
+                enable_skills=enable_skills,
+                enable_compression=enable_compression,
+            )
         results.append(result)
+        if progress_callback is not None and instance.instance_id not in resume_by_id:
+            progress_callback(
+                build_report(
+                    results,
+                    instances,
+                    config=config,
+                    enable_planning=enable_planning,
+                    enable_skills=enable_skills,
+                    enable_compression=enable_compression,
+                    reused_count=reused_count,
+                )
+            )
 
+    return build_report(
+        results,
+        instances,
+        config=config,
+        enable_planning=enable_planning,
+        enable_skills=enable_skills,
+        enable_compression=enable_compression,
+        reused_count=reused_count,
+    )
+
+
+def build_report(
+    results: Sequence[SWEBenchResult],
+    instances: Sequence[SWEBenchInstance],
+    *,
+    config: SWEBenchRunConfig,
+    enable_planning: bool,
+    enable_skills: bool,
+    enable_compression: bool,
+    reused_count: int = 0,
+) -> Dict[str, Any]:
+    """Build the serializable report payload for completed results."""
     provider = config.provider.lower()
     defaults = PROVIDER_DEFAULTS.get(provider, {})
     return {
@@ -348,6 +394,11 @@ def run_swebench_lite(
         "summary": summarize_results(results),
         "results": [result.to_dict() for result in results],
         "instances": [instance.to_public_dict() for instance in instances],
+        "resume": {
+            "selected_instances": len(instances),
+            "completed_results": len(results),
+            "reused_results": reused_count,
+        },
     }
 
 
