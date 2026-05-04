@@ -289,6 +289,96 @@ def test_render_full_analysis_emits_table() -> None:
     assert "hidden_test_fail" in rendered
 
 
+def test_swebench_result_round_trips_from_report_dict() -> None:
+    result = _result(
+        instance_id="octo__example-9",
+        metadata={"status": "success"},
+        verification=SWEBenchVerification(
+            patch_applied=True,
+            fail_to_pass_pass=1,
+            fail_to_pass_total=1,
+            pass_to_pass_pass=1,
+            pass_to_pass_total=1,
+        ),
+    )
+
+    restored = SWEBenchResult.from_dict(result.to_dict())
+
+    assert restored.instance_id == "octo__example-9"
+    assert restored.metadata == {"status": "success"}
+    assert restored.verification.resolved is True
+
+
+def test_run_swebench_lite_resume_skips_completed_and_checkpoints(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from dm_agent.benchmarks.swebench_lite import runner as runner_module
+    from dm_agent.benchmarks.swebench_lite.models import SWEBenchRunConfig
+
+    first = _instance("octo__example-1")
+    second = _instance("octo__example-2")
+    resumed = _result(instance_id=first.instance_id, failure_reason="old_result")
+    fresh = _result(
+        instance_id=second.instance_id,
+        success=True,
+        verification=SWEBenchVerification(
+            patch_applied=True,
+            fail_to_pass_pass=1,
+            fail_to_pass_total=1,
+            pass_to_pass_pass=1,
+            pass_to_pass_total=1,
+        ),
+    )
+    calls: list[str] = []
+
+    def fake_run_single_instance(*args, **kwargs):
+        instance = args[0]
+        calls.append(instance.instance_id)
+        return fresh
+
+    monkeypatch.setattr(runner_module, "_run_single_instance", fake_run_single_instance)
+
+    checkpoints: list[dict] = []
+    report = runner_module.run_swebench_lite(
+        [first, second],
+        config=SWEBenchRunConfig(workspace_root=str(tmp_path)),
+        resume_results=[resumed],
+        progress_callback=checkpoints.append,
+    )
+
+    assert calls == [second.instance_id]
+    assert [r["instance_id"] for r in report["results"]] == [
+        first.instance_id,
+        second.instance_id,
+    ]
+    assert report["summary"]["total"] == 2
+    assert report["summary"]["resolved"] == 1
+    assert report["resume"]["reused_results"] == 1
+    assert len(checkpoints) == 1
+    assert checkpoints[0]["summary"]["total"] == 2
+
+
+def test_swebench_pytest_output_tolerates_invalid_utf8(tmp_path: Path) -> None:
+    from dm_agent.benchmarks.swebench_lite.verifier import _run_pytest_node
+
+    test_file = tmp_path / "test_bad_output.py"
+    test_file.write_text(
+        "import os\n\n"
+        "def test_bad_output():\n"
+        "    os.write(1, b'bad-byte: \\x99\\n')\n"
+        "    assert False\n",
+        encoding="utf-8",
+    )
+
+    outcome = _run_pytest_node(str(test_file) + "::test_bad_output", tmp_path, timeout=10)
+
+    assert outcome.passed is False
+    assert outcome.returncode != 0
+    assert isinstance(outcome.stdout_tail, str)
+    assert "test_bad_output" in outcome.stdout_tail
+
+
 def test_lazy_attribute_access_does_not_require_datasets() -> None:
     """Accessing the package's non-loader exports should not import datasets."""
     import dm_agent.benchmarks.swebench_lite as pkg

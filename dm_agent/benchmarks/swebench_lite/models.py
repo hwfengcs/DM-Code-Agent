@@ -101,6 +101,21 @@ class SWEBenchVerification:
             "resolved": self.resolved,
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SWEBenchVerification":
+        """Rehydrate a verification result from a JSON report."""
+        return cls(
+            patch_applied=bool(data.get("patch_applied", False)),
+            fail_to_pass_pass=int(data.get("fail_to_pass_pass", 0)),
+            fail_to_pass_total=int(data.get("fail_to_pass_total", 0)),
+            pass_to_pass_pass=int(data.get("pass_to_pass_pass", 0)),
+            pass_to_pass_total=int(data.get("pass_to_pass_total", 0)),
+            stdout_tail=str(data.get("stdout_tail", "")),
+            stderr_tail=str(data.get("stderr_tail", "")),
+            duration_seconds=float(data.get("duration_seconds", 0.0)),
+            error=data.get("error"),
+        )
+
 
 @dataclass(frozen=True)
 class SWEBenchResult:
@@ -146,6 +161,30 @@ class SWEBenchResult:
             "workspace_path": self.workspace_path,
             "trial": self.trial,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SWEBenchResult":
+        """Rehydrate a single instance result from a JSON report."""
+        return cls(
+            instance_id=str(data["instance_id"]),
+            repo=str(data["repo"]),
+            success=bool(data.get("success", False)),
+            failure_reason=str(data.get("failure_reason", "")),
+            final_answer=str(data.get("final_answer", "")),
+            actions=list(data.get("actions", [])),
+            steps_count=int(data.get("steps_count", 0)),
+            tool_calls=int(data.get("tool_calls", 0)),
+            duration_seconds=float(data.get("duration_seconds", 0.0)),
+            prompt_chars=int(data.get("prompt_chars", 0)),
+            completion_chars=int(data.get("completion_chars", 0)),
+            estimated_tokens=int(data.get("estimated_tokens", 0)),
+            request_count=int(data.get("request_count", 0)),
+            metadata=dict(data.get("metadata", {})),
+            verification=SWEBenchVerification.from_dict(data.get("verification", {})),
+            prediction=str(data.get("prediction", "")),
+            workspace_path=str(data.get("workspace_path", "")),
+            trial=int(data.get("trial", 1)),
+        )
 
 
 @dataclass(frozen=True)

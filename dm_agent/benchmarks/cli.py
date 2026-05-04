@@ -40,6 +40,19 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     )
     parser.add_argument("--output", type=Path, help="Write JSON report to this path.")
     parser.add_argument("--markdown", type=Path, help="Write Markdown report to this path.")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "(swebench_lite) Reuse completed results from --output when it "
+            "exists, and checkpoint reports after each instance."
+        ),
+    )
+    parser.add_argument(
+        "--resume-from-output",
+        type=Path,
+        help="(swebench_lite) JSON report to reuse completed instance results from.",
+    )
     parser.add_argument("--provider", default="deepseek", help="Provider for live benchmark runs.")
     parser.add_argument("--model", help="Model name for live benchmark runs.")
     parser.add_argument("--base-url", help="Base URL for live benchmark runs.")
@@ -136,15 +149,54 @@ def _list_swebench_lite(args: argparse.Namespace) -> int:
     return 0
 
 
+def _swebench_results_from_report(report: dict[str, Any]) -> List[Any]:
+    from .swebench_lite.models import SWEBenchResult
+
+    return [SWEBenchResult.from_dict(result) for result in report.get("results", [])]
+
+
+def _load_swebench_resume_results(path: Path) -> List[Any]:
+    with open(path, "r", encoding="utf-8") as handle:
+        report = json.load(handle)
+    if report.get("mode") != SWEBENCH_LITE_SUITE:
+        raise ValueError(f"{path} is not a SWE-bench Lite report.")
+    return _swebench_results_from_report(report)
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    tmp_path.replace(path)
+
+
+def _write_swebench_outputs(
+    report: dict[str, Any],
+    *,
+    output: Optional[Path],
+    markdown: Optional[Path],
+) -> None:
+    if output:
+        _atomic_write_text(output, json.dumps(report, indent=2, ensure_ascii=False))
+    if markdown:
+        from .swebench_lite.analyzer import render_full_analysis
+        from .swebench_lite.runner import render_markdown_report
+
+        analyzer_results = _swebench_results_from_report(report)
+        _atomic_write_text(
+            markdown,
+            render_markdown_report(report) + "\n" + render_full_analysis(analyzer_results),
+        )
+
+
 def _run_swebench_lite(args: argparse.Namespace) -> int:
     try:
         from .swebench_lite.loader import fixed_subset_50, load_instances
         from .swebench_lite.runner import (
-            render_markdown_report,
             run_swebench_lite,
         )
-        from .swebench_lite.analyzer import render_full_analysis
-        from .swebench_lite.models import SWEBenchResult, SWEBenchVerification, SWEBenchRunConfig
+        from .swebench_lite.models import SWEBenchRunConfig
     except ImportError as exc:
         print(
             f"Failed to import the swebench_lite suite: {exc}\n"
@@ -186,61 +238,50 @@ def _run_swebench_lite(args: argparse.Namespace) -> int:
         quiet=not args.show_agent_output,
     )
 
+    resume_results: List[Any] = []
+    resume_path: Optional[Path] = args.resume_from_output
+    if args.resume and resume_path is None:
+        if not args.output:
+            print("--resume requires --output or --resume-from-output.", file=sys.stderr)
+            return 2
+        resume_path = args.output
+    if resume_path is not None:
+        if resume_path.exists():
+            try:
+                resume_results = _load_swebench_resume_results(resume_path)
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                print(f"Failed to load resume report {resume_path}: {exc}", file=sys.stderr)
+                return 2
+            selected_ids = {instance.instance_id for instance in instances}
+            reusable = [r for r in resume_results if r.instance_id in selected_ids]
+            ignored = len(resume_results) - len(reusable)
+            resume_results = reusable
+            print(
+                f"Resume: reusing {len(resume_results)} completed result(s)"
+                f"{f'; ignored {ignored} outside current selection' if ignored else ''}.",
+                file=sys.stderr,
+            )
+        elif args.resume:
+            print(f"Resume report {resume_path} does not exist; starting fresh.", file=sys.stderr)
+
+    progress_callback = None
+    if args.output or args.markdown:
+
+        def progress_callback(report: dict[str, Any]) -> None:
+            _write_swebench_outputs(report, output=args.output, markdown=args.markdown)
+
     try:
-        report = run_swebench_lite(instances, config=config)
+        report = run_swebench_lite(
+            instances,
+            config=config,
+            resume_results=resume_results,
+            progress_callback=progress_callback,
+        )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 2
 
-    # Reconstruct typed results for analyzer (results in the report dict are
-    # already serialized; re-hydrate the minimal subset we need).
-    analyzer_results: List[SWEBenchResult] = []
-    for r in report.get("results", []):
-        verif_dict = r["verification"]
-        verif = SWEBenchVerification(
-            patch_applied=verif_dict["patch_applied"],
-            fail_to_pass_pass=verif_dict["fail_to_pass_pass"],
-            fail_to_pass_total=verif_dict["fail_to_pass_total"],
-            pass_to_pass_pass=verif_dict["pass_to_pass_pass"],
-            pass_to_pass_total=verif_dict["pass_to_pass_total"],
-            stdout_tail=verif_dict.get("stdout_tail", ""),
-            stderr_tail=verif_dict.get("stderr_tail", ""),
-            duration_seconds=verif_dict.get("duration_seconds", 0.0),
-            error=verif_dict.get("error"),
-        )
-        analyzer_results.append(
-            SWEBenchResult(
-                instance_id=r["instance_id"],
-                repo=r["repo"],
-                success=r["success"],
-                failure_reason=r.get("failure_reason", ""),
-                final_answer=r.get("final_answer", ""),
-                actions=r.get("actions", []),
-                steps_count=r.get("steps_count", 0),
-                tool_calls=r.get("tool_calls", 0),
-                duration_seconds=r.get("duration_seconds", 0.0),
-                prompt_chars=r.get("prompt_chars", 0),
-                completion_chars=r.get("completion_chars", 0),
-                estimated_tokens=r.get("estimated_tokens", 0),
-                request_count=r.get("request_count", 0),
-                metadata=r.get("metadata", {}),
-                verification=verif,
-                prediction=r.get("prediction", ""),
-                workspace_path=r.get("workspace_path", ""),
-                trial=r.get("trial", 1),
-            )
-        )
-
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with open(args.output, "w", encoding="utf-8") as handle:
-            json.dump(report, handle, indent=2, ensure_ascii=False)
-    if args.markdown:
-        args.markdown.parent.mkdir(parents=True, exist_ok=True)
-        with open(args.markdown, "w", encoding="utf-8") as handle:
-            handle.write(render_markdown_report(report))
-            handle.write("\n")
-            handle.write(render_full_analysis(analyzer_results))
+    _write_swebench_outputs(report, output=args.output, markdown=args.markdown)
 
     print(json.dumps(report["summary"], indent=2, ensure_ascii=False))
     return 0
