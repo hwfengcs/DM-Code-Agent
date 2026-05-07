@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from .models import SWEBenchInstance, SWEBenchVerification
-from .workspace import SWEBenchWorkspace, WorkspaceError, _run_git
+from .workspace import SWEBenchWorkspace, WorkspaceError
 
 
 @dataclass
@@ -101,8 +101,7 @@ def _reset_workspace_to_post_test_patch(workspace: SWEBenchWorkspace) -> None:
     The agent may have left dirty files; we drop them, then ensure no untracked
     files remain.
     """
-    _run_git(["reset", "--hard", "HEAD"], cwd=workspace.path, check=False)
-    _run_git(["clean", "-fdx"], cwd=workspace.path, check=False)
+    workspace.reset_to_clean_head()
 
 
 def verify_prediction(

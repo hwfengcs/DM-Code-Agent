@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- P2 Reflexion implementation scaffold:
+  `dm_agent/core/reflexion.py` with `Reflector`, `EpisodicMemory`, and bounded
+  lessons, plus default-off `ReactAgent(enable_reflexion=True, max_trials=N)`
+  support for retrying failed trials.
+- Trace events for Reflexion runs: `trial_start`, `trial_end`, and `reflexion`.
+- `dm-agent-bench --enable-reflexion --max-trials N` options. SWE-bench Lite
+  uses hidden-test verifier feedback between trials and reports `pass_at_1`,
+  `pass_at_k`, and `avg_trials`.
+- `tests/test_reflexion.py` covering the keyless Reflexion flow.
+
+### Docs
+- Added `docs/research-log/02-reflexion.md` as the Phase 2 implementation log.
+
 ## [1.7.1] - P1 SWE-bench Lite baseline
 
 ### Added

@@ -276,6 +276,11 @@ class SWEBenchWorkspace:
         )
         return result.stdout
 
+    def reset_to_clean_head(self) -> None:
+        """Reset tracked and untracked files back to the post-test-patch HEAD."""
+        _run_git(["reset", "--hard", "HEAD"], cwd=self.path, check=False)
+        _run_git(["clean", "-fdx"], cwd=self.path, check=False)
+
     # ------------------------------------------------------------------ teardown
 
     def discard(self) -> None:

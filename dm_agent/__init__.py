@@ -3,7 +3,7 @@
 一个支持多种 LLM API (DeepSeek、OpenAI、Claude、Gemini) 的 ReAct 智能体实现。
 """
 
-from .core import ReactAgent, Step
+from .core import EpisodicMemory, Lesson, ReactAgent, Reflector, Step
 from .clients import (
     BaseLLMClient,
     LLMError,
@@ -25,6 +25,9 @@ __all__ = [
     # Core
     "ReactAgent",
     "Step",
+    "Reflector",
+    "EpisodicMemory",
+    "Lesson",
     # Clients
     "BaseLLMClient",
     "LLMError",

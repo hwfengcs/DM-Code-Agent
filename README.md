@@ -50,7 +50,7 @@
 | --- | --- | --- | --- |
 | ReAct + Planner + Replan | ✅ v1.5 | 基础 ReAct 循环 + 3-8 步全局计划 + 失败 replan | [00](docs/research-log/00-kickoff.md) |
 | SWE-bench Lite suite | ✅ P1 | 50 题子集，DeepSeek Tier-1 baseline：0.0% resolved / 72.0% patch-applied；含失败模式分析并已说明 host verifier 噪声 | [01](docs/research-log/01-swebench-baseline.md) |
-| Reflexion (episodic memory) | 🔄 P2 | 失败 trial 反思 → lesson → 注入下一次 prompt，支持 pass@k | 02（即将发布） |
+| Reflexion (episodic memory) | ✅ P2 impl | 失败 trial 反思 → lesson → 注入下一次 prompt；ablation 待 Tier-1 子集清理后发布 | [02](docs/research-log/02-reflexion.md) |
 | Hybrid RAG (BM25 + embeddings + RRF) | 🔄 P3 | 函数粒度索引、双路召回、Top-K 注入 prompt | 03（即将发布） |
 | Critic + Self-Consistency | 🔄 P4 | 独立 LLM 同行评审 + N-候选选优（majority vote / critic score / test pass） | 04（即将发布） |
 | Adaptive Replanning + Token economics | 🔄 P5 | 错误类型 → replan 策略，跨模型 cost-per-success 表 | 05（即将发布） |

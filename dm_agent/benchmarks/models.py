@@ -65,6 +65,8 @@ class BenchmarkRunConfig:
     workspace_root: Optional[str] = None
     trace_dir: Optional[str] = None
     quiet: bool = True
+    enable_reflexion: bool = False
+    max_trials: int = 1
 
 
 @dataclass(frozen=True)

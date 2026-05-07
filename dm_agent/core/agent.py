@@ -13,6 +13,7 @@ from ..tools.base import Tool
 from ..prompts import build_code_agent_prompt
 from ..memory.context_compressor import ContextCompressor
 from .planner import TaskPlanner, PlanStep
+from .reflexion import EpisodicMemory, Reflector
 
 
 @dataclass
@@ -59,6 +60,10 @@ class ReactAgent:
         enable_compression: bool = True,  # 是否启用上下文压缩
         skill_manager: Optional[Any] = None,  # 技能管理器
         trace_writer: Optional[Any] = None,
+        enable_reflexion: bool = False,
+        max_trials: int = 3,
+        reflector: Optional[Reflector] = None,
+        reflexion_memory: Optional[EpisodicMemory] = None,
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -88,6 +93,8 @@ class ReactAgent:
         """
         if not tools:
             raise ValueError("必须为 ReactAgent 提供至少一个工具。")
+        if max_trials < 1:
+            raise ValueError("max_trials must be at least 1.")
         self.client = client
 
         self.tools = {tool.name: tool for tool in tools}
@@ -117,8 +124,142 @@ class ReactAgent:
         self._base_system_prompt = self.system_prompt
         self._base_tools = dict(self.tools)
         self._last_parse_repaired = False
+        self.enable_reflexion = enable_reflexion
+        self.max_trials = max_trials
+        self.reflexion_memory = reflexion_memory or EpisodicMemory()
+        self.reflector = reflector or (Reflector(client) if enable_reflexion else None)
 
     def run(self, task: str, *, max_steps: Optional[int] = None) -> Dict[str, Any]:
+        """Execute a task, optionally retrying failed trials with Reflexion."""
+        if not self.enable_reflexion:
+            return self._run_once(task, max_steps=max_steps)
+        return self._run_with_reflexion(task, max_steps=max_steps)
+
+    def _run_with_reflexion(
+        self,
+        task: str,
+        *,
+        max_steps: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("任务必须是非空字符串。")
+
+        trial_limit = self.max_trials
+        initial_history = [dict(message) for message in self.conversation_history]
+        trial_summaries: List[Dict[str, Any]] = []
+        last_result: Optional[Dict[str, Any]] = None
+
+        for trial in range(1, trial_limit + 1):
+            self.conversation_history = [dict(message) for message in initial_history]
+            lesson_prompt = self.reflexion_memory.render_for_prompt()
+            if self.trace_writer:
+                self.trace_writer.record(
+                    "trial_start",
+                    {
+                        "trial": trial,
+                        "max_trials": trial_limit,
+                        "lesson_count": len(self.reflexion_memory),
+                    },
+                )
+
+            result = self._run_once(
+                task,
+                max_steps=max_steps,
+                trial_number=trial,
+                max_trials=trial_limit,
+                reflexion_prompt=lesson_prompt,
+            )
+            metadata = result.get("metadata", {})
+            summary = self._trial_summary(result, trial)
+            trial_summaries.append(summary)
+            metadata["trials"] = list(trial_summaries)
+            metadata["trial_count"] = trial
+            metadata["reflexion_lesson_count"] = len(self.reflexion_memory)
+            last_result = result
+
+            if self.trace_writer:
+                self.trace_writer.record("trial_end", summary)
+
+            if metadata.get("status") == "success":
+                return result
+            if trial >= trial_limit:
+                return result
+
+            lesson = self._reflect_after_failed_trial(task, result, trial)
+            self.reflexion_memory.add(
+                lesson,
+                source="agent_failure",
+                metadata={
+                    "trial": trial,
+                    "status": metadata.get("status"),
+                    "failure_reason": metadata.get("failure_reason", ""),
+                },
+            )
+            metadata["reflexion_lesson_count"] = len(self.reflexion_memory)
+            if self.trace_writer:
+                self.trace_writer.record(
+                    "reflexion",
+                    {
+                        "trial": trial,
+                        "lesson": lesson,
+                        "lesson_count": len(self.reflexion_memory),
+                    },
+                )
+
+        assert last_result is not None
+        return last_result
+
+    def _reflect_after_failed_trial(
+        self,
+        task: str,
+        result: Dict[str, Any],
+        trial: int,
+        *,
+        failure_feedback: Optional[str] = None,
+    ) -> str:
+        metadata = result.get("metadata", {})
+        if self.reflector is None:
+            return self._fallback_lesson(metadata)
+        try:
+            return self.reflector.reflect(
+                task=task,
+                final_answer=str(result.get("final_answer", "")),
+                metadata=metadata,
+                steps=result.get("steps", []),
+                failure_feedback=failure_feedback,
+            )
+        except Exception as exc:  # noqa: BLE001 - reflection should not hide the prior result
+            metadata["reflexion_error"] = f"trial {trial}: {exc}"
+            return self._fallback_lesson(metadata)
+
+    @staticmethod
+    def _fallback_lesson(metadata: Dict[str, Any]) -> str:
+        reason = metadata.get("failure_reason") or metadata.get("status") or "unknown failure"
+        return (
+            f"Previous trial failed with {reason}. Inspect the concrete failure signal first, "
+            "then make a smaller targeted change before finishing."
+        )
+
+    @staticmethod
+    def _trial_summary(result: Dict[str, Any], trial: int) -> Dict[str, Any]:
+        metadata = result.get("metadata", {})
+        return {
+            "trial": trial,
+            "status": metadata.get("status"),
+            "failure_reason": metadata.get("failure_reason", ""),
+            "steps": len(result.get("steps", [])),
+            "final_answer_chars": len(str(result.get("final_answer", ""))),
+        }
+
+    def _run_once(
+        self,
+        task: str,
+        *,
+        max_steps: Optional[int] = None,
+        trial_number: int = 1,
+        max_trials: int = 1,
+        reflexion_prompt: str = "",
+    ) -> Dict[str, Any]:
         """
         执行指定任务
 
@@ -145,6 +286,10 @@ class ReactAgent:
         if not isinstance(task, str) or not task.strip():
             raise ValueError("任务必须是非空字符串。")
 
+        if self.enable_reflexion or reflexion_prompt:
+            self.system_prompt = self._base_system_prompt
+            self.tools = dict(self._base_tools)
+
         started_at = time.perf_counter()
         steps: List[Step] = []
         limit = max_steps or self.max_steps
@@ -163,6 +308,10 @@ class ReactAgent:
             "replan_count": 0,
             "compressed_messages": 0,
             "failure_reason": "",
+            "reflexion_enabled": self.enable_reflexion,
+            "trial": trial_number,
+            "max_trials": max_trials,
+            "reflexion_lesson_count": len(self.reflexion_memory),
         }
         if self.trace_writer:
             self.trace_writer.start_run(
@@ -173,6 +322,10 @@ class ReactAgent:
                     "planning_enabled": self.enable_planning,
                     "compression_enabled": self.enable_compression,
                     "skills_enabled": bool(self.skill_manager),
+                    "reflexion_enabled": self.enable_reflexion,
+                    "trial": trial_number,
+                    "max_trials": max_trials,
+                    "reflexion_lesson_count": len(self.reflexion_memory),
                     "tools": [
                         {"name": tool.name, "description": tool.description}
                         for tool in self.tools_list
@@ -195,6 +348,8 @@ class ReactAgent:
             metadata["activated_skills"] = self._apply_skills_for_task(task)
             if self.trace_writer:
                 self.trace_writer.record_skills(metadata["activated_skills"])
+        if reflexion_prompt:
+            self.system_prompt += "\n\n" + reflexion_prompt
 
         # 第一步：生成计划（如果启用）
         plan: List[PlanStep] = []

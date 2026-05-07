@@ -21,7 +21,7 @@ these entries.
 | --- | --- | --- | --- |
 | [00](00-kickoff.md) | Why this upgrade — motivation, goals, constraints | P0 | active |
 | [01](01-swebench-baseline.md) | SWE-bench Lite harness, sampling, and the road to numbers | P1 | active |
-| 02 | Reflexion: episodic memory across trials | P2 | planned |
+| [02](02-reflexion.md) | Reflexion: episodic memory across trials | P2 | implementation landed; ablation pending |
 | 03 | Hybrid retrieval (BM25 + embeddings) for repository-scale context | P3 | planned |
 | 04 | Critic agent and self-consistency selection | P4 | planned |
 | 05 | Adaptive replanning and cross-model token economics | P5 | planned |

@@ -103,6 +103,10 @@ def run_benchmark_suite(
         "model": config.model or defaults.get("model"),
         "base_url": config.base_url or defaults.get("base_url"),
         "repeat": config.repeat,
+        "reflexion": {
+            "enabled": config.enable_reflexion,
+            "max_trials": config.max_trials,
+        },
         "summary": summarize_benchmark_results(results),
         "results": [result.to_dict() for result in results],
         "tasks": [task.to_public_dict() for task in selected_tasks],
@@ -217,6 +221,7 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
             "total_requests": sum(result.request_count for result in group),
             "avg_duration_seconds": _mean(result.duration_seconds for result in group),
             "hidden_test_passes": len(hidden_passes),
+            "avg_trials": _mean(result.metadata.get("trial_count", 1) for result in group),
         }
 
     hidden_passes = [result for result in results if result.hidden_test.returncode == 0]
@@ -228,6 +233,7 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
         ),
         "overall_hidden_test_pass_rate": len(hidden_passes) / len(results) if results else 0.0,
         "overall_agent_completion_rate": len(completed) / len(results) if results else 0.0,
+        "avg_trials": _mean(result.metadata.get("trial_count", 1) for result in results),
         "variants": variants,
     }
 
@@ -348,6 +354,8 @@ def _run_benchmark_task_in_workspace(
         enable_compression=variant.enable_compression,
         skill_manager=skill_manager,
         trace_writer=trace_writer,
+        enable_reflexion=config.enable_reflexion,
+        max_trials=config.max_trials,
     )
 
     with chdir(workspace):
@@ -394,6 +402,8 @@ def _run_benchmark_task_in_workspace(
             "repeat_index": repeat_index,
             "changed_files": changed_files,
             "trace_path": str(trace_path) if trace_path else "",
+            "reflexion_enabled": config.enable_reflexion,
+            "max_trials": config.max_trials,
         }
     )
 

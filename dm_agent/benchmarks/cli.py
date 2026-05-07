@@ -61,6 +61,17 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature.")
     parser.add_argument("--repeat", type=int, default=1, help="Repeat count per task/variant.")
     parser.add_argument("--max-steps", type=int, help="Override task max steps.")
+    parser.add_argument(
+        "--enable-reflexion",
+        action="store_true",
+        help="Retry failed agent trials with Reflexion lessons. Default is off.",
+    )
+    parser.add_argument(
+        "--max-trials",
+        type=int,
+        default=3,
+        help="Maximum trials when --enable-reflexion is set.",
+    )
     parser.add_argument("--test-timeout", type=int, default=30, help="Hidden test timeout.")
     parser.add_argument(
         "--keep-workspaces",
@@ -222,6 +233,9 @@ def _run_swebench_lite(args: argparse.Namespace) -> int:
     if not instances:
         print("No instances selected.", file=sys.stderr)
         return 2
+    if args.max_trials < 1:
+        print("--max-trials must be at least 1.", file=sys.stderr)
+        return 2
 
     config = SWEBenchRunConfig(
         provider=args.provider,
@@ -236,6 +250,8 @@ def _run_swebench_lite(args: argparse.Namespace) -> int:
         workspace_root=args.workspace_root,
         trace_dir=args.trace_dir,
         quiet=not args.show_agent_output,
+        enable_reflexion=args.enable_reflexion,
+        max_trials=args.max_trials,
     )
 
     resume_results: List[Any] = []
@@ -289,6 +305,9 @@ def _run_swebench_lite(args: argparse.Namespace) -> int:
 
 def main(argv: Any = None) -> int:
     args = parse_args(argv)
+    if args.max_trials < 1:
+        print("--max-trials must be at least 1.", file=sys.stderr)
+        return 2
 
     if args.suite == SWEBENCH_LITE_SUITE:
         if args.list:
@@ -335,6 +354,8 @@ def main(argv: Any = None) -> int:
                 workspace_root=args.workspace_root,
                 trace_dir=args.trace_dir,
                 quiet=not args.show_agent_output,
+                enable_reflexion=args.enable_reflexion,
+                max_trials=args.max_trials,
             ),
         )
     except ValueError as exc:
