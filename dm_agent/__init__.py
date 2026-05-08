@@ -33,7 +33,7 @@ from .memory import BM25Retriever, EmbeddingRetriever, HybridRetriever
 from .skills import BaseSkill, ConfigSkill, SkillMetadata, SkillManager
 from .tracing import TraceWriter
 
-__version__ = "1.7.1"
+__version__ = "2.0.0"
 
 __all__ = [
     # Core

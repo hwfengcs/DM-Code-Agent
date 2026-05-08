@@ -17,8 +17,8 @@
 </div>
 
 > **One line.** DM-Code-Agent is a code-maintenance agent that fits ReAct + Planner + Replan + Trace
-> into ~1500 lines of readable Python. v2 adds an algorithm stack — Reflexion, Hybrid RAG, Critic,
-> Self-Consistency, Adaptive Replanning — and publishes a SWE-bench Lite score.
+> into ~1500 lines of readable Python. v2 has default-off Reflexion, Hybrid RAG, Critic,
+> Self-Consistency, Adaptive Replanning modules, plus a SWE-bench Lite Tier-1 harness.
 >
 > The point is not yet another chat black box. It is a code agent that engineers can read, reproduce,
 > extend, and benchmark against.
@@ -33,13 +33,13 @@
   not directly comparable to the official leaderboard. Every ablation table links to its raw
   `bench_reports/*.json`.
 - **Algorithmic (v2).** Not "call GPT-4 and write a ReAct loop." Reflexion, Hybrid RAG, Critic,
-  Self-Consistency, and Adaptive Replanning are first-class modules with their own ablations. See
-  `docs/research-log/` for the design rationale and the failures behind each one.
+  Self-Consistency, and Adaptive Replanning are first-class default-off modules with keyless tests
+  and research logs. Real SWE-bench ablations stay frozen until a permitted live run.
 - **Extensible.** Built-in skill system + MCP integration: domain prompts and specialized tools
   activate on task signals. Four LLM providers (DeepSeek/OpenAI/Claude/Gemini), plus arbitrary
   `base_url`.
 
-## How it compares (numbers will be filled by v2)
+## How it compares (current public basis)
 
 | Dimension | DM-Code-Agent | Aider | OpenHands | SWE-agent | smolagents |
 | --- | --- | --- | --- | --- | --- |
@@ -53,10 +53,10 @@
 | Core LOC | ~1500 | ~10k | ~50k | ~5k | ~3k |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
-> The P1 SWE-bench Tier-1 baseline is published; a leaderboard-comparable score needs the Tier-2 Docker verifier, and v2 phases 2-5 will add ablation data. Track the progress in
+> The P1 SWE-bench Tier-1 baseline is published; a leaderboard-comparable score needs the Tier-2 Docker verifier. Real SWE-bench, Docker, and cross-model runs are currently frozen, so v2 modules claim code/tests/offline reports only, not real score lift. Track the progress in
 > [docs/research-log/](docs/research-log/) and [CHANGELOG.md](CHANGELOG.md).
 
-## Algorithm Highlights (v2 roadmap)
+## Algorithm Highlights (v2 status)
 
 | Module | Status | What it does | Devlog |
 | --- | --- | --- | --- |
@@ -66,6 +66,7 @@
 | Hybrid RAG (BM25 + embeddings + RRF) | ✅ P3 impl | Lightweight BM25 by default; embeddings live behind the `[rag]` extra; Top-K prompt injection only with `enable_rag=True` | [03](docs/research-log/03-rag.md) |
 | Critic + Self-Consistency | ✅ P4 impl | Peer review gate before acceptance + N-way independent selection (majority vote / critic score / test pass) | [04](docs/research-log/04-critic-and-consistency.md) |
 | Adaptive Replanning + Token economics | ✅ P5 impl | Default-off error-signal-to-strategy replanning plus offline token / cost-per-success reports; real cross-model runs are frozen | [05](docs/research-log/05-adaptive-and-economics.md) |
+| Final write-up + release checklist | ✅ P6 docs | Release narrative, distribution checklist, and interview bullets without unrun evaluation claims | [06](docs/research-log/06-final-writeup.md) |
 
 ## Research Log
 
@@ -80,6 +81,9 @@ Published:
 - [03 — RAG-based context retrieval: BM25 first, embeddings optional](docs/research-log/03-rag.md)
 - [04 — Critic and self-consistency: peer review before acceptance](docs/research-log/04-critic-and-consistency.md)
 - [05 — Adaptive replanning and token economics](docs/research-log/05-adaptive-and-economics.md)
+- [06 — Final write-up: v2 algorithm stack](docs/research-log/06-final-writeup.md)
+- [Distribution checklist](docs/research-log/DISTRIBUTION_CHECKLIST.md)
+- [Interview talking points](docs/research-log/INTERVIEW_TALKING_POINTS.md)
 
 ---
 

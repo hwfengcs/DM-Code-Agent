@@ -25,7 +25,9 @@ these entries.
 | [03](03-rag.md) | Hybrid retrieval (BM25 + embeddings) for repository-scale context | P3 | implementation landed; ablation pending |
 | [04](04-critic-and-consistency.md) | Critic agent and self-consistency selection | P4 | implementation landed; ablation pending |
 | [05](05-adaptive-and-economics.md) | Adaptive replanning and token economics | P5 | implementation landed; real cross-model eval frozen |
-| 06 | Final write-up: what worked, what didn't, what's next | P6 | planned |
+| [06](06-final-writeup.md) | Final write-up: what worked, what didn't, what's next | P6 | published |
+| [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
+| [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 
 ## Conventions
 

@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-05-08
+
 ### Added
+- P6 release materials:
+  `docs/research-log/06-final-writeup.md`,
+  `docs/research-log/DISTRIBUTION_CHECKLIST.md`, and
+  `docs/research-log/INTERVIEW_TALKING_POINTS.md`.
+- README / README_EN final v2 status sections, including the explicit freeze
+  caveat for real SWE-bench, Docker/Tier-2, and cross-model evaluations.
 - P5 Adaptive Replanning + Token Economics:
   `AdaptiveReplanPolicy`, `ReplanSignal`, and `ReplanDecision` classify
   `tool_error`, `parse_error`, `test_failure`, `critic_rejected`, and
@@ -51,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_reflexion.py` covering the keyless Reflexion flow.
 
 ### Docs
+- Added the Phase 6 final write-up, distribution checklist, and interview
+  talking points.
 - Added `docs/research-log/05-adaptive-and-economics.md` as the Phase 5
   implementation log and documented that real cross-model SWE-bench economics
   remain frozen until an allowed live evaluation.
@@ -147,7 +157,8 @@ See `docs/research-log/00-kickoff.md` for the detailed plan.
 - Cross-platform CI on Ubuntu and Windows for Python 3.10/3.11/3.12.
 - Run report Markdown writer with git workspace status before/after.
 
-[Unreleased]: https://github.com/hwfengcs/DM-Code-Agent/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/hwfengcs/DM-Code-Agent/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/hwfengcs/DM-Code-Agent/compare/v1.7.1...v2.0.0
 [1.7.1]: https://github.com/hwfengcs/DM-Code-Agent/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v1.7.0
 [1.6.0]: https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v1.6.0
