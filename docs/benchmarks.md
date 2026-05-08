@@ -38,6 +38,10 @@ dm-agent-bench --suite maintenance \
   --trace-dir bench_reports/traces
 ```
 
+Each JSON report includes a `manifest` block with task fingerprints and a suite signature. Task
+fingerprints include hidden-test content and changed-file constraints, so reports can detect suite
+drift without exposing hidden tests.
+
 Opt-in adaptive replanning and local token accounting:
 
 ```bash
@@ -126,6 +130,7 @@ The report includes:
 - RAG / critic / self-consistency configuration metadata when those default-off switches are used
 - self-consistency uncertainty metadata when multiple candidates are run: vote distribution,
   selected support, support fraction, tie detection, margin to runner-up, and confidence label
+- manifest provenance: task ids, per-task fingerprints, variant names, and suite signature
 
 Pass-rate confidence intervals use Wilson 95% intervals. They are computed from the runs already in
 the report and do not increase the default repeat count.

@@ -194,8 +194,8 @@ dm-agent-bench --suite maintenance --provider deepseek --task config_precedence 
 ```
 
 Reports include hidden-test pass rate, 95% confidence intervals, agent completion rate, average
-steps, tool calls, estimated tokens, changed files, and changed-file constraint violations. See
-[docs/benchmarks.md](docs/benchmarks.md).
+steps, tool calls, estimated tokens, changed files, changed-file constraint violations, and task
+manifest fingerprints. See [docs/benchmarks.md](docs/benchmarks.md).
 
 Generate an offline token economics report without model calls or network access:
 

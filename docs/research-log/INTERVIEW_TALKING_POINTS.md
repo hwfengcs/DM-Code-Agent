@@ -15,6 +15,8 @@ Private prep notes for discussing DM-Code-Agent as an AI agent engineering proje
    support, and confidence without changing the selected output.
 9. Added repeated-failure trace metadata for adaptive replanning, creating a deterministic hook for
    future loop-avoidance policies.
+10. Added benchmark manifest fingerprints that hash hidden-test contracts without revealing them,
+    making local report comparisons more reproducible.
 
 Use the caveat explicitly: current SWE-bench Lite number is Tier-1 host-verifier only and not
 leaderboard-comparable. Do not claim real score improvements for v2 mechanisms until a permitted

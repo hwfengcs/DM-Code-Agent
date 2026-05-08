@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import replace
 
 import pytest
 
@@ -7,6 +8,9 @@ from dm_agent.benchmarks.cli import main as bench_main
 from dm_agent.benchmarks.economics import build_economics_report, render_markdown
 from dm_agent.benchmarks.models import BenchmarkRunConfig, CodingBenchResult, CommandResult
 from dm_agent.benchmarks.runner import (
+    benchmark_task_fingerprint,
+    build_benchmark_manifest,
+    DEFAULT_BENCH_VARIANTS,
     prepare_workspace,
     run_hidden_tests,
     summarize_benchmark_results,
@@ -128,6 +132,40 @@ def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest
     assert report["critic"]["enabled"] is True
     assert report["self_consistency"]["runs"] == 2
     assert report["self_consistency"]["strategy"] == "critic_score"
+    assert report["manifest"]["task_fingerprints"][task.task_id]
+    assert report["manifest"]["suite_signature"]
+
+
+def test_benchmark_task_fingerprint_detects_hidden_contract_drift():
+    task = get_coding_tasks(["slugify_cleanup"])[0]
+    changed = replace(
+        task,
+        hidden_files={
+            **task.hidden_files,
+            "tests/test_hidden_extra.py": "def test_extra():\n    assert True\n",
+        },
+    )
+
+    assert benchmark_task_fingerprint(task) != benchmark_task_fingerprint(changed)
+
+
+def test_benchmark_manifest_is_stable_and_includes_variants():
+    task = get_maintenance_tasks(["config_precedence"])[0]
+
+    first = build_benchmark_manifest(
+        suite="maintenance",
+        tasks=[task],
+        variants=DEFAULT_BENCH_VARIANTS,
+    )
+    second = build_benchmark_manifest(
+        suite="maintenance",
+        tasks=[task],
+        variants=DEFAULT_BENCH_VARIANTS,
+    )
+
+    assert first == second
+    assert first["task_ids"] == ["config_precedence"]
+    assert first["variant_names"] == ["full"]
 
 
 def test_self_consistency_benchmark_uses_fresh_candidate_results(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import statistics
 import subprocess
@@ -131,6 +132,11 @@ def run_benchmark_suite(
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
         },
         "summary": summarize_benchmark_results(results),
+        "manifest": build_benchmark_manifest(
+            suite=suite,
+            tasks=selected_tasks,
+            variants=selected_variants,
+        ),
         "results": [result.to_dict() for result in results],
         "tasks": [task.to_public_dict() for task in selected_tasks],
         "variants": [variant.__dict__ for variant in selected_variants],
@@ -282,6 +288,51 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
         "cost_per_success_usd": _cost_per_success(results),
         "variants": variants,
     }
+
+
+def build_benchmark_manifest(
+    *,
+    suite: str,
+    tasks: Sequence[BenchmarkTask],
+    variants: Sequence[BenchmarkVariant],
+) -> Dict[str, Any]:
+    task_fingerprints = {
+        task.task_id: benchmark_task_fingerprint(task)
+        for task in sorted(tasks, key=lambda item: item.task_id)
+    }
+    variant_names = sorted(variant.name for variant in variants)
+    signature_payload = {
+        "suite": suite,
+        "task_fingerprints": task_fingerprints,
+        "variant_names": variant_names,
+    }
+    return {
+        "suite": suite,
+        "task_count": len(tasks),
+        "task_ids": sorted(task.task_id for task in tasks),
+        "task_fingerprints": task_fingerprints,
+        "variant_names": variant_names,
+        "suite_signature": _stable_hash(signature_payload),
+    }
+
+
+def benchmark_task_fingerprint(task: BenchmarkTask) -> str:
+    """Return a stable task fingerprint including hidden-test content."""
+
+    payload = {
+        "task_id": task.task_id,
+        "name": task.name,
+        "prompt": task.prompt,
+        "setup_files": task.setup_files,
+        "hidden_files": task.hidden_files,
+        "visible_test_command": task.visible_test_command,
+        "hidden_test_command": task.hidden_test_command,
+        "max_steps": task.max_steps,
+        "tags": task.tags,
+        "allowed_changed_files": task.allowed_changed_files,
+        "required_changed_files": task.required_changed_files,
+    }
+    return _stable_hash(payload)
 
 
 def write_json_report(report: Dict[str, Any], path: Path) -> None:
@@ -848,3 +899,8 @@ def _format_ci(interval: Any) -> str:
     low = float(interval.get("low", 0.0))
     high = float(interval.get("high", 0.0))
     return f"[95% CI {low:.1%}-{high:.1%}]"
+
+
+def _stable_hash(payload: Any, *, length: int = 16) -> str:
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:length]
