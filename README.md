@@ -144,8 +144,11 @@ dm-agent "修复 retry.py 的重试边界，并运行测试" \
   --report reports/retry-fix.md
 
 dm-agent-trace view traces/retry-fix.jsonl
+dm-agent-trace analyze traces/retry-fix.jsonl
 dm-agent-trace replay traces/retry-fix.jsonl
 ```
+
+`analyze` 会离线标记首个失败阶段、恢复链路、验证缺口和 trace health，不调用模型也不执行工具。
 
 比较两次 run 的计划、工具调用和最终结果，不调用模型也不执行工具：
 
@@ -316,7 +319,7 @@ SWE-bench Lite Tier-1 baseline → Reflexion → Hybrid RAG → Critic + Self-Co
 
 短期持续在做的非算法方向：
 
-- Trace analyzer：离线归因失败阶段、验证缺口和 replay 风险。
+- Trace completeness：把 trace analyzer 接入 benchmark report，标记缺失 trace、验证缺口和 replay 风险。
 - Tool replay sandbox：为危险工具提供更明确的隔离执行策略。
 - Maintenance benchmark 扩展：加入文档一致性、CI 配置修复、跨文件重构和多轮修复任务。
 - Run report：自动生成改动摘要、验证命令和剩余风险。

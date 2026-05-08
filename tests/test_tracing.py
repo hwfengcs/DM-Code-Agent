@@ -9,6 +9,7 @@ from dm_agent.core.agent import ReactAgent
 from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter, load_trace_events
 from dm_agent.tracing.cli import main as trace_main
+from dm_agent.tracing.cli import analyze_events
 from dm_agent.tracing.cli import diff_events
 from dm_agent.tracing.cli import replay_tools, summarize_events
 
@@ -184,6 +185,116 @@ def test_trace_diff_compares_two_runs_without_replay(tmp_path, capsys):
     assert "Trace diff" in output
     assert "Steps: 2 -> 1 (-1)" in output
     assert "Final answer changed: yes" in output
+
+
+def test_trace_analyzer_reports_verification_gap_for_unverified_finish(tmp_path, capsys):
+    trace_path = tmp_path / "direct.jsonl"
+    writer = TraceWriter(trace_path)
+    agent = ReactAgent(
+        FakeRespondClient(
+            [
+                json.dumps(
+                    {
+                        "thought": "Finish directly.",
+                        "action": "finish",
+                        "action_input": {"answer": "done"},
+                    }
+                )
+            ]
+        ),
+        default_tools(include_mcp=False),
+        enable_planning=False,
+        enable_compression=False,
+        trace_writer=writer,
+    )
+
+    with chdir(tmp_path):
+        agent.run("finish without verification")
+    writer.close()
+
+    analysis = analyze_events(load_trace_events(trace_path))
+
+    assert analysis["status"] == "success"
+    assert analysis["primary_failure_stage"] == "none"
+    assert analysis["final_failure_stage"] == "none"
+    assert analysis["verification"]["gap"] is True
+    assert "verification_gap" in analysis["trace_health"]["issues"]
+
+    assert trace_main(["analyze", str(trace_path)]) == 0
+    output = capsys.readouterr().out
+    assert "Trace analysis" in output
+    assert "Verification: actions=0" in output
+    assert "verification_gap" in output
+
+
+def test_trace_analyzer_attributes_parse_failure_and_recovery():
+    events = [
+        {
+            "run_id": "r1",
+            "event": "run_start",
+            "payload": {"schema_version": "1.0", "task": "repair json"},
+        },
+        {
+            "run_id": "r1",
+            "event": "parse_error",
+            "payload": {"step_number": 1, "error": "not json"},
+        },
+        {
+            "run_id": "r1",
+            "event": "step",
+            "payload": {
+                "step_number": 1,
+                "action": "error",
+                "observation": "Agent response parse failed",
+            },
+        },
+        {
+            "run_id": "r1",
+            "event": "replan",
+            "payload": {"reason": "parse failed", "steps": []},
+        },
+        {
+            "run_id": "r1",
+            "event": "step",
+            "payload": {
+                "step_number": 2,
+                "action": "run_tests",
+                "observation": "passed",
+            },
+        },
+        {
+            "run_id": "r1",
+            "event": "step",
+            "payload": {
+                "step_number": 3,
+                "action": "finish",
+                "observation": "<finished>",
+            },
+        },
+        {
+            "run_id": "r1",
+            "event": "run_end",
+            "payload": {
+                "status": "success",
+                "final_answer": "done",
+                "metadata": {
+                    "status": "success",
+                    "parse_error_count": 1,
+                    "replan_count": 1,
+                },
+            },
+        },
+    ]
+
+    analysis = analyze_events(events)
+
+    assert analysis["primary_failure_stage"] == "parse"
+    assert analysis["final_failure_stage"] == "none"
+    assert analysis["recovery"]["replanned_after_failure"] is True
+    assert analysis["recovery"]["recovered"] is True
+    assert analysis["verification"]["before_finish"] is True
+    assert analysis["verification"]["gap"] is False
+    assert "replanned_after_failure" in analysis["signals"]
 
 
 def test_run_report_writes_human_readable_markdown(tmp_path):

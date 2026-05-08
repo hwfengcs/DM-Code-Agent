@@ -67,8 +67,8 @@ python -m ruff check dm_agent/tracing/cli.py tests/test_tracing.py
 
 ## Open Questions / Next Bets
 
-- Add `dm-agent-trace analyze` or `view --analysis` for failure-stage attribution.
+- Extend `dm-agent-trace analyze` into directory-level aggregate reports for benchmark traces.
 - Add a verification-gap detector: did the run finish without `run_tests`, `run_linter`, or
-  `run_python`?
+  `run_python`? Initial per-trace support landed in entry 08.
 - Compare trace diffs across repeated benchmark samples and summarize common divergence points.
 - Add benchmark report links to trace diffs when both baseline and candidate traces are available.

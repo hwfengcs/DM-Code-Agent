@@ -161,8 +161,12 @@ dm-agent "Fix retry.py retry boundaries and run tests" \
   --report reports/retry-fix.md
 
 dm-agent-trace view traces/retry-fix.jsonl
+dm-agent-trace analyze traces/retry-fix.jsonl
 dm-agent-trace replay traces/retry-fix.jsonl
 ```
+
+`analyze` marks the first failure stage, recovery path, verification gaps, and trace health without
+model calls or tool execution.
 
 Compare two runs without model calls or tool execution:
 

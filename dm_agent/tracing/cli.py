@@ -15,6 +15,7 @@ from dm_agent.tools import default_tools
 from .writer import load_trace_events
 
 EXECUTION_TOOLS = {"run_python", "run_shell", "run_tests", "run_linter"}
+VERIFICATION_TOOLS = {"run_python", "run_tests", "run_linter"}
 
 
 def parse_args(argv: Any = None) -> argparse.Namespace:
@@ -45,6 +46,13 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     )
     replay_parser.add_argument("--json", action="store_true", help="Print replay result as JSON.")
 
+    analyze_parser = subparsers.add_parser(
+        "analyze",
+        help="Analyze failure stage, recovery, and verification gaps in one trace.",
+    )
+    analyze_parser.add_argument("trace", type=Path, help="Path to a JSONL trace file.")
+    analyze_parser.add_argument("--json", action="store_true", help="Print analysis as JSON.")
+
     diff_parser = subparsers.add_parser("diff", help="Compare two trace timelines.")
     diff_parser.add_argument("base_trace", type=Path, help="Baseline JSONL trace file.")
     diff_parser.add_argument("candidate_trace", type=Path, help="Candidate JSONL trace file.")
@@ -71,6 +79,11 @@ def main(argv: Any = None) -> int:
             workspace=args.workspace,
             as_json=args.json,
         )
+    if args.command == "analyze":
+        events = _load_trace_for_cli(args.trace)
+        if events is None:
+            return 2
+        return _analyze(events, as_json=args.json)
     if args.command == "diff":
         base_events = _load_trace_for_cli(args.base_trace)
         candidate_events = _load_trace_for_cli(args.candidate_trace)
@@ -157,6 +170,45 @@ def _replay(
                 print(f"- {marker} {item['action']} step={item['step_number']}")
 
     return 0 if result["status"] == "ok" else 1
+
+
+def _analyze(
+    events: List[Dict[str, Any]],
+    *,
+    as_json: bool,
+) -> int:
+    analysis = analyze_events(events)
+    if as_json:
+        print(json.dumps(analysis, indent=2, ensure_ascii=False))
+        return 0
+
+    recovery = analysis["recovery"]
+    verification = analysis["verification"]
+    health = analysis["trace_health"]
+    print("Trace analysis")
+    print(f"Task: {analysis.get('task', '')}")
+    print(f"Status: {analysis.get('status', '')}")
+    print(f"Primary failure stage: {analysis['primary_failure_stage']}")
+    print(f"Final failure stage: {analysis['final_failure_stage']}")
+    print(
+        "Recovery: "
+        f"failures={recovery['failure_event_count']}, "
+        f"replans={recovery['replan_count']}, "
+        f"replanned_after_failure={str(recovery['replanned_after_failure']).lower()}, "
+        f"recovered={str(recovery['recovered']).lower()}"
+    )
+    print(
+        "Verification: "
+        f"actions={verification['count']}, "
+        f"before_finish={str(verification['before_finish']).lower()}, "
+        f"gap={str(verification['gap']).lower()}"
+    )
+    print(f"Health: {health['grade']} ({health['score']:.2f})")
+    if health["issues"]:
+        print("Issues:")
+        for issue in health["issues"]:
+            print(f"- {issue}")
+    return 0
 
 
 def _diff(
@@ -296,6 +348,74 @@ def diff_events(
             "base": base_plan_actions,
             "candidate": candidate_plan_actions,
         },
+    }
+
+
+def analyze_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Return a deterministic advisory analysis for one trace."""
+
+    summary = summarize_events(events)
+    run_start = _first(events, "run_start")
+    run_end = _last(events, "run_end")
+    metadata = run_end.get("payload", {}).get("metadata", {}) if run_end else {}
+    failures = _failure_events(events, summary)
+    primary_failure = failures[0] if failures else {}
+    primary_stage = str(primary_failure.get("stage") or "none")
+    final_stage = _final_failure_stage(summary, primary_stage)
+    replan_indices = [index for index, event in enumerate(events) if event.get("event") == "replan"]
+    first_failure_index = primary_failure.get("event_index")
+    replanned_after_failure = first_failure_index is not None and any(
+        index > first_failure_index for index in replan_indices
+    )
+    recovered = bool(failures and summary.get("status") == "success")
+    verification = _verification_analysis(summary)
+    signals = _analysis_signals(
+        primary_stage=primary_stage,
+        final_stage=final_stage,
+        verification_gap=verification["gap"],
+        replanned_after_failure=replanned_after_failure,
+        failure_count=len(failures),
+    )
+    health = _trace_health(
+        has_run_start=run_start is not None,
+        has_run_end=run_end is not None,
+        final_stage=final_stage,
+        verification_gap=verification["gap"],
+        failure_count=len(failures),
+        replanned_after_failure=replanned_after_failure,
+        metadata=metadata,
+    )
+
+    return {
+        "run_id": summary.get("run_id", ""),
+        "task": summary.get("task", ""),
+        "status": summary.get("status", ""),
+        "primary_failure_stage": primary_stage,
+        "final_failure_stage": final_stage,
+        "signals": signals,
+        "recovery": {
+            "failure_event_count": len(failures),
+            "first_failure_step": primary_failure.get("step_number"),
+            "first_failure_event": primary_failure.get("event"),
+            "replan_count": summary.get("replan_count", 0),
+            "replanned_after_failure": replanned_after_failure,
+            "recovered": recovered,
+        },
+        "verification": verification,
+        "metadata_counters": {
+            key: metadata.get(key, 0)
+            for key in (
+                "parse_error_count",
+                "parse_repair_count",
+                "tool_error_count",
+                "unknown_tool_count",
+                "argument_error_count",
+                "critic_reject_count",
+                "replan_count",
+            )
+            if key in metadata
+        },
+        "trace_health": health,
     }
 
 
@@ -498,6 +618,181 @@ def _count_delta(
             "delta": candidate_count - base_count,
         }
     return delta
+
+
+def _failure_events(
+    events: Sequence[Dict[str, Any]],
+    summary: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    failures: List[Dict[str, Any]] = []
+    for index, event in enumerate(events):
+        name = event.get("event")
+        payload = event.get("payload", {})
+        if name == "parse_error":
+            failures.append(_failure_item(index, name, "parse", payload))
+        elif name == "llm_error":
+            failures.append(_failure_item(index, name, "llm", payload))
+        elif name == "critic_review" and not payload.get("passed", True):
+            failures.append(_failure_item(index, name, "critic", payload))
+        elif name == "tool_call" and payload.get("failed"):
+            failures.append(_failure_item(index, name, _classify_tool_failure(payload), payload))
+
+    status = str(summary.get("status") or "")
+    if status == "max_steps_exceeded" and not failures:
+        failures.append(
+            {
+                "event_index": len(events),
+                "event": "run_end",
+                "stage": "max_steps",
+                "step_number": None,
+                "action": "",
+            }
+        )
+    return failures
+
+
+def _failure_item(
+    index: int,
+    event: str,
+    stage: str,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        "event_index": index,
+        "event": event,
+        "stage": stage,
+        "step_number": payload.get("step_number"),
+        "action": payload.get("action", ""),
+    }
+
+
+def _classify_tool_failure(payload: Dict[str, Any]) -> str:
+    action = str(payload.get("action") or "")
+    observation = str(payload.get("observation") or "")
+    lowered = observation.lower()
+    if action in {"run_tests", "run_linter"}:
+        return "verification"
+    if "returncode: 1" in lowered or "pytest" in lowered or "assertionerror" in lowered:
+        return "verification"
+    if "unknown tool" in lowered:
+        return "tool_selection"
+    if "tool arguments" in lowered:
+        return "tool_arguments"
+    if "critic rejected" in lowered or "critic review failed" in lowered:
+        return "critic"
+    if "tool execution failed" in lowered:
+        return "tool_execution"
+    return "tool"
+
+
+def _final_failure_stage(summary: Dict[str, Any], primary_stage: str) -> str:
+    status = str(summary.get("status") or "")
+    if status == "success":
+        return "none"
+    if status == "max_steps_exceeded":
+        return "max_steps"
+    if primary_stage != "none":
+        return primary_stage
+    return status or "unknown"
+
+
+def _verification_analysis(summary: Dict[str, Any]) -> Dict[str, Any]:
+    steps = summary.get("steps", [])
+    finish_steps = [
+        int(step.get("step_number") or index + 1)
+        for index, step in enumerate(steps)
+        if step.get("action") in {"finish", "task_complete"}
+    ]
+    finish_step = min(finish_steps) if finish_steps else None
+    actions = [
+        {
+            "step_number": int(step.get("step_number") or index + 1),
+            "action": step.get("action"),
+        }
+        for index, step in enumerate(steps)
+        if step.get("action") in VERIFICATION_TOOLS
+    ]
+    before_finish = bool(
+        actions
+        and (
+            finish_step is None
+            or any(int(action["step_number"]) < finish_step for action in actions)
+        )
+    )
+    status = summary.get("status")
+    return {
+        "actions": actions,
+        "count": len(actions),
+        "finish_step": finish_step,
+        "before_finish": before_finish,
+        "gap": status == "success" and not before_finish,
+    }
+
+
+def _analysis_signals(
+    *,
+    primary_stage: str,
+    final_stage: str,
+    verification_gap: bool,
+    replanned_after_failure: bool,
+    failure_count: int,
+) -> List[str]:
+    signals = []
+    if primary_stage != "none":
+        signals.append(f"primary_failure:{primary_stage}")
+    if final_stage != "none":
+        signals.append(f"final_failure:{final_stage}")
+    if verification_gap:
+        signals.append("verification_gap")
+    if failure_count and replanned_after_failure:
+        signals.append("replanned_after_failure")
+    elif failure_count:
+        signals.append("no_replan_after_failure")
+    return signals
+
+
+def _trace_health(
+    *,
+    has_run_start: bool,
+    has_run_end: bool,
+    final_stage: str,
+    verification_gap: bool,
+    failure_count: int,
+    replanned_after_failure: bool,
+    metadata: Dict[str, Any],
+) -> Dict[str, Any]:
+    score = 1.0
+    issues = []
+    if not has_run_start:
+        score -= 0.2
+        issues.append("missing_run_start")
+    if not has_run_end:
+        score -= 0.4
+        issues.append("missing_run_end")
+    if final_stage != "none":
+        score -= 0.3
+        issues.append(f"final_failure:{final_stage}")
+    if verification_gap:
+        score -= 0.2
+        issues.append("verification_gap")
+    if failure_count and not replanned_after_failure:
+        score -= 0.15
+        issues.append("failure_without_replan")
+    if int(metadata.get("parse_error_count") or 0) > 0 and final_stage != "none":
+        score -= 0.05
+        issues.append("unrecovered_parse_errors")
+    if int(metadata.get("tool_error_count") or 0) > 0 and final_stage != "none":
+        score -= 0.05
+        issues.append("unrecovered_tool_errors")
+
+    score = max(0.0, min(1.0, round(score, 2)))
+    if score >= 0.85:
+        grade = "good"
+    elif score >= 0.65:
+        grade = "warning"
+    else:
+        grade = "risky"
+    return {"score": score, "grade": grade, "issues": issues}
 
 
 def _signed(value: int) -> str:

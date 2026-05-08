@@ -27,6 +27,17 @@ dm-agent-trace view traces/retry-fix.jsonl
 dm-agent-trace view traces/retry-fix.jsonl --json
 ```
 
+Analyze one trace for failure stage, recovery, and verification gaps:
+
+```bash
+dm-agent-trace analyze traces/retry-fix.jsonl
+dm-agent-trace analyze traces/retry-fix.jsonl --json
+```
+
+Trace analysis is advisory and read-only. It reports the primary failure stage, final failure
+stage, whether a replan happened after the first failure, whether the run finished without a local
+verification action, and a small trace-health grade.
+
 Compare two traces without replaying tools:
 
 ```bash
@@ -82,6 +93,19 @@ The current schema records these event types:
 - `replan`: regenerated plan after a failure.
 - `run_end`: final answer, status, duration, and agent metadata.
 - `run_error`: unhandled runtime error.
+
+## Trace Analysis
+
+`dm-agent-trace analyze` converts one trace into a small review checklist:
+
+- `primary_failure_stage`: first observed failure source such as `parse`, `tool_execution`,
+  `verification`, `critic`, or `max_steps`.
+- `final_failure_stage`: the stage that still blocked the run, or `none` if the run recovered.
+- `recovery`: failure count, first failure step, replan count, and whether a replan occurred after
+  the first failure.
+- `verification`: `run_tests`, `run_linter`, and `run_python` actions before finish, plus a
+  `gap` flag for successful runs that finished without local verification.
+- `trace_health`: a compact `good` / `warning` / `risky` grade with issue labels.
 
 ## Trace Diff
 

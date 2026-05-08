@@ -27,6 +27,7 @@ these entries.
 | [05](05-adaptive-and-economics.md) | Adaptive replanning and token economics | P5 | implementation landed; real cross-model eval frozen |
 | [06](06-final-writeup.md) | Final write-up: what worked, what didn't, what's next | P6 | published |
 | [07](07-trace-diff.md) | Trace diff for offline behavioral comparison | post-v2 | implementation landed |
+| [08](08-trace-analyzer.md) | Trace analyzer for failure attribution and verification gaps | post-v2 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

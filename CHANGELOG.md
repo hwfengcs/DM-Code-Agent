@@ -8,11 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `dm-agent-trace analyze` for offline failure-stage attribution, recovery
+  inspection, verification-gap detection, and advisory trace-health grades.
 - `dm-agent-trace diff` for offline comparison of two JSONL traces, including
   status changes, step/tool/replan deltas, action-sequence divergence,
   tool-usage deltas, plan changes, and final-answer changes.
 - `docs/research-log/07-trace-diff.md` documenting the trace-diff design and
   the next trace-analysis bets.
+- `docs/research-log/08-trace-analyzer.md` documenting the analyzer rules and
+  why the output remains advisory.
 
 ## [2.0.0] - 2026-05-08
 
