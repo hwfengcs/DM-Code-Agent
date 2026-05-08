@@ -53,6 +53,18 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     analyze_parser.add_argument("trace", type=Path, help="Path to a JSONL trace file.")
     analyze_parser.add_argument("--json", action="store_true", help="Print analysis as JSON.")
 
+    analyze_dir_parser = subparsers.add_parser(
+        "analyze-dir",
+        help="Analyze all trace files in a directory and print aggregate counts.",
+    )
+    analyze_dir_parser.add_argument("directory", type=Path, help="Directory containing traces.")
+    analyze_dir_parser.add_argument(
+        "--pattern",
+        default="*.jsonl",
+        help="Glob pattern relative to the directory. Default: *.jsonl.",
+    )
+    analyze_dir_parser.add_argument("--json", action="store_true", help="Print analysis as JSON.")
+
     diff_parser = subparsers.add_parser("diff", help="Compare two trace timelines.")
     diff_parser.add_argument("base_trace", type=Path, help="Baseline JSONL trace file.")
     diff_parser.add_argument("candidate_trace", type=Path, help="Candidate JSONL trace file.")
@@ -84,6 +96,8 @@ def main(argv: Any = None) -> int:
         if events is None:
             return 2
         return _analyze(events, as_json=args.json)
+    if args.command == "analyze-dir":
+        return _analyze_dir(args.directory, pattern=args.pattern, as_json=args.json)
     if args.command == "diff":
         base_events = _load_trace_for_cli(args.base_trace)
         candidate_events = _load_trace_for_cli(args.candidate_trace)
@@ -209,6 +223,28 @@ def _analyze(
         for issue in health["issues"]:
             print(f"- {issue}")
     return 0
+
+
+def _analyze_dir(directory: Path, *, pattern: str, as_json: bool) -> int:
+    report = analyze_trace_directory(directory, pattern=pattern)
+    if as_json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0 if not report["errors"] else 1
+
+    summary = report["summary"]
+    print("Trace directory analysis")
+    print(f"Directory: {report['directory']}")
+    print(f"Pattern: {report['pattern']}")
+    print(f"Traces: {summary['analyzed_traces']}/{summary['total_files']} analyzed")
+    print(f"Errors: {summary['error_count']}")
+    print(f"Verification gaps: {summary['verification_gap_count']}")
+    print("Trace health:")
+    for grade, count in summary["trace_health_counts"].items():
+        print(f"- {grade}: {count}")
+    print("Final failure stages:")
+    for stage, count in summary["final_failure_stage_counts"].items():
+        print(f"- {stage}: {count}")
+    return 0 if not report["errors"] else 1
 
 
 def _diff(
@@ -416,6 +452,30 @@ def analyze_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
             if key in metadata
         },
         "trace_health": health,
+    }
+
+
+def analyze_trace_directory(directory: Path, *, pattern: str = "*.jsonl") -> Dict[str, Any]:
+    """Analyze a directory of trace JSONL files without replaying tools."""
+
+    paths = sorted(path for path in directory.glob(pattern) if path.is_file())
+    analyses = []
+    errors = []
+    for path in paths:
+        try:
+            analysis = analyze_events(load_trace_events(path))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append({"path": str(path), "error": str(exc)})
+            continue
+        analyses.append({"path": str(path), "analysis": analysis})
+
+    return {
+        "mode": "trace_directory_analysis",
+        "directory": str(directory),
+        "pattern": pattern,
+        "summary": _trace_directory_summary(paths, analyses, errors),
+        "analyses": analyses,
+        "errors": errors,
     }
 
 
@@ -793,6 +853,40 @@ def _trace_health(
     else:
         grade = "risky"
     return {"score": score, "grade": grade, "issues": issues}
+
+
+def _trace_directory_summary(
+    paths: Sequence[Path],
+    analyses: Sequence[Dict[str, Any]],
+    errors: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    analysis_payloads = [item["analysis"] for item in analyses]
+    return {
+        "total_files": len(paths),
+        "analyzed_traces": len(analyses),
+        "error_count": len(errors),
+        "verification_gap_count": sum(
+            1 for analysis in analysis_payloads if analysis.get("verification", {}).get("gap")
+        ),
+        "trace_health_counts": _count_values(
+            analysis.get("trace_health", {}).get("grade", "unknown")
+            for analysis in analysis_payloads
+        ),
+        "primary_failure_stage_counts": _count_values(
+            analysis.get("primary_failure_stage", "none") for analysis in analysis_payloads
+        ),
+        "final_failure_stage_counts": _count_values(
+            analysis.get("final_failure_stage", "none") for analysis in analysis_payloads
+        ),
+    }
+
+
+def _count_values(values: Iterable[str]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for value in values:
+        key = str(value or "unknown")
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _signed(value: int) -> str:

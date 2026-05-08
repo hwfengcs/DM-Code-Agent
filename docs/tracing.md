@@ -32,11 +32,13 @@ Analyze one trace for failure stage, recovery, and verification gaps:
 ```bash
 dm-agent-trace analyze traces/retry-fix.jsonl
 dm-agent-trace analyze traces/retry-fix.jsonl --json
+dm-agent-trace analyze-dir bench_reports/traces
 ```
 
 Trace analysis is advisory and read-only. It reports the primary failure stage, final failure
 stage, whether a replan happened after the first failure, whether the run finished without a local
-verification action, and a small trace-health grade.
+verification action, and a small trace-health grade. `analyze-dir` aggregates those signals across
+trace directories.
 
 Compare two traces without replaying tools:
 
@@ -106,6 +108,10 @@ The current schema records these event types:
 - `verification`: `run_tests`, `run_linter`, and `run_python` actions before finish, plus a
   `gap` flag for successful runs that finished without local verification.
 - `trace_health`: a compact `good` / `warning` / `risky` grade with issue labels.
+
+`dm-agent-trace analyze-dir` applies the same analyzer to every matching trace in a directory and
+summarizes health grades, verification gaps, and failure-stage counts. It accepts `--pattern` for
+non-default file names and `--json` for machine-readable output.
 
 ## Trace Diff
 

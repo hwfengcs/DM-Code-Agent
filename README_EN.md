@@ -162,6 +162,7 @@ dm-agent "Fix retry.py retry boundaries and run tests" \
 
 dm-agent-trace view traces/retry-fix.jsonl
 dm-agent-trace analyze traces/retry-fix.jsonl
+dm-agent-trace analyze-dir bench_reports/traces
 dm-agent-trace replay traces/retry-fix.jsonl
 ```
 

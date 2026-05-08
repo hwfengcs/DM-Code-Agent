@@ -10,6 +10,7 @@ from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter, load_trace_events
 from dm_agent.tracing.cli import main as trace_main
 from dm_agent.tracing.cli import analyze_events
+from dm_agent.tracing.cli import analyze_trace_directory
 from dm_agent.tracing.cli import diff_events
 from dm_agent.tracing.cli import replay_tools, summarize_events
 
@@ -295,6 +296,63 @@ def test_trace_analyzer_attributes_parse_failure_and_recovery():
     assert analysis["verification"]["before_finish"] is True
     assert analysis["verification"]["gap"] is False
     assert "replanned_after_failure" in analysis["signals"]
+
+
+def test_trace_analyze_dir_aggregates_health_and_verification_gaps(tmp_path, capsys):
+    gap_trace = tmp_path / "gap.jsonl"
+    verified_trace = tmp_path / "verified.jsonl"
+    for path, include_verification in [(gap_trace, False), (verified_trace, True)]:
+        writer = TraceWriter(path)
+        writer.start_run(f"trace {path.stem}")
+        if include_verification:
+            writer.record_step(
+                step_number=1,
+                step=type(
+                    "Step",
+                    (),
+                    {
+                        "thought": "verify",
+                        "action": "run_tests",
+                        "action_input": {},
+                        "observation": "passed",
+                    },
+                )(),
+            )
+            finish_step = 2
+        else:
+            finish_step = 1
+        writer.record_step(
+            step_number=finish_step,
+            step=type(
+                "Step",
+                (),
+                {
+                    "thought": "finish",
+                    "action": "finish",
+                    "action_input": {"answer": "ok"},
+                    "observation": "<finished>",
+                },
+            )(),
+        )
+        writer.finish_run(
+            {
+                "final_answer": "ok",
+                "metadata": {"status": "success", "duration_seconds": 0.1},
+            }
+        )
+        writer.close()
+
+    report = analyze_trace_directory(tmp_path)
+
+    assert report["summary"]["total_files"] == 2
+    assert report["summary"]["analyzed_traces"] == 2
+    assert report["summary"]["verification_gap_count"] == 1
+    assert report["summary"]["trace_health_counts"] == {"good": 1, "warning": 1}
+
+    assert trace_main(["analyze-dir", str(tmp_path)]) == 0
+    output = capsys.readouterr().out
+    assert "Trace directory analysis" in output
+    assert "Verification gaps: 1" in output
 
 
 def test_run_report_writes_human_readable_markdown(tmp_path):

@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fingerprints, variant names, and suite signature.
 - Compact per-run `trace_analysis` metadata in coding/maintenance benchmark
   reports when `--trace-dir` is enabled.
+- `dm-agent-trace analyze-dir` for offline aggregation of trace-health,
+  verification-gap, and failure-stage counts across trace directories.
 - `dm-agent-trace diff` for offline comparison of two JSONL traces, including
   status changes, step/tool/replan deltas, action-sequence divergence,
   tool-usage deltas, plan changes, and final-answer changes.
@@ -43,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fingerprints and suite signatures.
 - `docs/research-log/14-benchmark-trace-analysis.md` documenting trace
   analyzer integration in benchmark reports.
+- `docs/research-log/15-trace-analysis-aggregation.md` documenting directory
+  aggregation for trace review.
 
 ## [2.0.0] - 2026-05-08
 

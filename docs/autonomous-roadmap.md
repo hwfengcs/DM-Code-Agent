@@ -16,17 +16,18 @@ that improve DM-Code-Agent as an auditable code-agent baseline.
 | 2026-05-08 | Adaptive replanning repeated-failure signals | `ReactAgent` adaptive metadata, `replan_decision` trace fields, `docs/research-log/12-repeated-failure-signals.md` |
 | 2026-05-08 | Benchmark manifest provenance and suite signatures | `benchmark_task_fingerprint`, report `manifest`, `docs/research-log/13-benchmark-provenance.md` |
 | 2026-05-08 | Benchmark trace-analysis metadata | `load_trace_analysis_for_report`, per-run `metadata.trace_analysis`, `docs/research-log/14-benchmark-trace-analysis.md` |
+| 2026-05-08 | Trace directory analysis aggregation | `dm-agent-trace analyze-dir`, `analyze_trace_directory`, `docs/research-log/15-trace-analysis-aggregation.md` |
 
 ## Highest ROI Backlog
 
 | Priority | Opportunity | Why it matters | Constraints |
 | ---: | --- | --- | --- |
-| 1 | Trace analyzer aggregation over benchmark trace directories | Turns per-trace health into suite-level debugging and release-review signal | Must stay separate from hidden-test pass/fail scoring |
-| 2 | Additional maintenance realism tasks: packaging/CI repair and behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI consistency | Hidden tests must stay deterministic and keyless |
-| 3 | Economics report uncertainty | Carries confidence-aware interpretation into cost-per-success comparisons | Should use existing JSON reports only |
-| 4 | Patch fingerprint voting for self-consistency | Makes file-editing candidates comparable beyond final-answer strings | Must be deterministic and workspace-local |
-| 5 | Repeated-failure policy experiments | Uses recorded repeated-failure signals to test escalation strategies | Keep default off until deterministic evidence exists |
-| 6 | Benchmark manifest diff CLI | Compares two reports' suite signatures before comparing scores | Should not require rerunning benchmarks |
+| 1 | Additional maintenance realism tasks: packaging/CI repair and behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI consistency | Hidden tests must stay deterministic and keyless |
+| 2 | Economics report uncertainty | Carries confidence-aware interpretation into cost-per-success comparisons | Should use existing JSON reports only |
+| 3 | Patch fingerprint voting for self-consistency | Makes file-editing candidates comparable beyond final-answer strings | Must be deterministic and workspace-local |
+| 4 | Repeated-failure policy experiments | Uses recorded repeated-failure signals to test escalation strategies | Keep default off until deterministic evidence exists |
+| 5 | Benchmark manifest diff CLI | Compares two reports' suite signatures before comparing scores | Should not require rerunning benchmarks |
+| 6 | Trace analysis Markdown reports | Produces shareable trace-health summaries from directories | Avoid leaking full trace contents |
 
 ## Frozen Unless Authorized
 

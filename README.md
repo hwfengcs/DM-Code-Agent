@@ -145,6 +145,7 @@ dm-agent "修复 retry.py 的重试边界，并运行测试" \
 
 dm-agent-trace view traces/retry-fix.jsonl
 dm-agent-trace analyze traces/retry-fix.jsonl
+dm-agent-trace analyze-dir bench_reports/traces
 dm-agent-trace replay traces/retry-fix.jsonl
 ```
 
