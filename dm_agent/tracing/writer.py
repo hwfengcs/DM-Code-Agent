@@ -180,6 +180,11 @@ class TraceWriter:
             )
         self.record("replan", {"reason": reason, "steps": plan})
 
+    def record_critic_review(self, *, step_number: int, review: Dict[str, Any]) -> None:
+        payload = {"step_number": step_number}
+        payload.update(review)
+        self.record("critic_review", payload)
+
     def record(self, event: str, payload: Dict[str, Any]) -> None:
         self.open()
         assert self._handle is not None

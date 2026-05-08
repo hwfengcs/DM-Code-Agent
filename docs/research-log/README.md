@@ -23,7 +23,7 @@ these entries.
 | [01](01-swebench-baseline.md) | SWE-bench Lite harness, sampling, and the road to numbers | P1 | active |
 | [02](02-reflexion.md) | Reflexion: episodic memory across trials | P2 | implementation landed; ablation pending |
 | [03](03-rag.md) | Hybrid retrieval (BM25 + embeddings) for repository-scale context | P3 | implementation landed; ablation pending |
-| 04 | Critic agent and self-consistency selection | P4 | planned |
+| [04](04-critic-and-consistency.md) | Critic agent and self-consistency selection | P4 | implementation landed; ablation pending |
 | 05 | Adaptive replanning and cross-model token economics | P5 | planned |
 | 06 | Final write-up: what worked, what didn't, what's next | P6 | planned |
 

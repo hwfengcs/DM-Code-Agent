@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- P4 Critic + Self-Consistency core:
+  `dm_agent/core/critic.py` with `CriticAgent` / `CriticReview`, plus
+  `dm_agent/core/self_consistency.py` with `SelfConsistencyRunner` and
+  candidate summaries.
+- `ReactAgent(critic=...)` opt-in completion gate, `critic_review` trace
+  events, and critic pass/fail counters in run metadata.
+- `tests/test_critic.py` and `tests/test_self_consistency.py` covering the
+  keyless critic gate and the three selection strategies.
+- `docs/research-log/04-critic-and-consistency.md` as the Phase 4 log.
 - P3 RAG context retrieval:
   `dm_agent/memory/retriever.py` with `BM25Retriever`, optional
   `EmbeddingRetriever`, and `HybridRetriever` using Reciprocal Rank Fusion.
@@ -27,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_reflexion.py` covering the keyless Reflexion flow.
 
 ### Docs
+- Added `docs/research-log/04-critic-and-consistency.md` as the Phase 4 implementation log.
 - Added `docs/research-log/03-rag.md` as the Phase 3 implementation log.
 - Added `docs/research-log/02-reflexion.md` as the Phase 2 implementation log.
 

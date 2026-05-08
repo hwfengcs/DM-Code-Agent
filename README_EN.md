@@ -64,7 +64,7 @@
 | SWE-bench Lite suite | ✅ P1 | 50-instance DeepSeek Tier-1 baseline: 0.0% resolved / 72.0% patch-applied, with failure-mode analysis and host-verifier noise notes | [01](docs/research-log/01-swebench-baseline.md) |
 | Reflexion (episodic memory) | ✅ P2 impl | Failed trial → lesson → next-trial prompt; ablation waits for a cleaner Tier-1 slice | [02](docs/research-log/02-reflexion.md) |
 | Hybrid RAG (BM25 + embeddings + RRF) | ✅ P3 impl | Lightweight BM25 by default; embeddings live behind the `[rag]` extra; Top-K prompt injection only with `enable_rag=True` | [03](docs/research-log/03-rag.md) |
-| Critic + Self-Consistency | 🔄 P4 | Independent peer-review LLM + N-candidate selection (majority vote / critic score / test pass) | 04 (soon) |
+| Critic + Self-Consistency | ✅ P4 impl | Peer review gate before acceptance + N-way independent selection (majority vote / critic score / test pass) | [04](docs/research-log/04-critic-and-consistency.md) |
 | Adaptive Replanning + Token economics | 🔄 P5 | Error-type-aware replan strategy, cross-model cost-per-success table | 05 (soon) |
 
 ## Research Log
@@ -78,6 +78,7 @@ Published:
 - [01 — SWE-bench Lite baseline: harness, sampling, and the road to numbers](docs/research-log/01-swebench-baseline.md)
 - [02 — Reflexion: episodic memory across trials](docs/research-log/02-reflexion.md)
 - [03 — RAG-based context retrieval: BM25 first, embeddings optional](docs/research-log/03-rag.md)
+- [04 — Critic and self-consistency: peer review before acceptance](docs/research-log/04-critic-and-consistency.md)
 
 ---
 

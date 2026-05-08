@@ -13,6 +13,7 @@ from ..tools.base import Tool
 from ..prompts import build_code_agent_prompt
 from ..memory.context_compressor import ContextCompressor
 from ..memory.retriever import DEFAULT_TOP_K, format_retrieved_context
+from .critic import CriticAgent, CriticReview
 from .planner import TaskPlanner, PlanStep
 from .reflexion import EpisodicMemory, Reflector
 
@@ -65,6 +66,7 @@ class ReactAgent:
         max_trials: int = 3,
         reflector: Optional[Reflector] = None,
         reflexion_memory: Optional[EpisodicMemory] = None,
+        critic: Optional[CriticAgent] = None,
         enable_rag: bool = False,
         retriever: Optional[Any] = None,
         rag_top_k: int = DEFAULT_TOP_K,
@@ -132,6 +134,7 @@ class ReactAgent:
         self.max_trials = max_trials
         self.reflexion_memory = reflexion_memory or EpisodicMemory()
         self.reflector = reflector or (Reflector(client) if enable_reflexion else None)
+        self.critic = critic
         self.enable_rag = enable_rag
         self.retriever = retriever
         self.rag_top_k = rag_top_k
@@ -318,6 +321,11 @@ class ReactAgent:
             "compressed_messages": 0,
             "failure_reason": "",
             "reflexion_enabled": self.enable_reflexion,
+            "critic_enabled": self.critic is not None,
+            "critic_review_count": 0,
+            "critic_pass_count": 0,
+            "critic_fail_count": 0,
+            "critic_reject_count": 0,
             "rag_enabled": self.enable_rag,
             "rag_retrieval_count": 0,
             "trial": trial_number,
@@ -334,6 +342,7 @@ class ReactAgent:
                     "compression_enabled": self.enable_compression,
                     "skills_enabled": bool(self.skill_manager),
                     "reflexion_enabled": self.enable_reflexion,
+                    "critic_enabled": self.critic is not None,
                     "rag_enabled": self.enable_rag,
                     "rag_top_k": self.rag_top_k,
                     "trial": trial_number,
@@ -479,25 +488,45 @@ class ReactAgent:
             # 检查是否完成
             if action == "finish":
                 final = self._format_final_answer(action_input)
+                accepted, observation, _review = self._review_completion(
+                    task=task,
+                    completion_text=final,
+                    steps=steps,
+                    metadata=metadata,
+                    step_num=step_num,
+                    action=action,
+                )
                 step = Step(
                     thought=thought,
                     action=action,
                     action_input=action_input,
-                    observation="<finished>",
+                    observation="<finished>" if accepted else observation,
                     raw=raw,
                 )
                 steps.append(step)
 
-                # 添加完成标记到历史记录
-                self.conversation_history.append({"role": "user", "content": f"任务完成：{final}"})
+                if accepted:
+                    metadata["status"] = "success"
+                    metadata["failure_reason"] = ""
+                    metadata["duration_seconds"] = time.perf_counter() - started_at
+                    # 添加完成标记到历史记录
+                    self.conversation_history.append(
+                        {"role": "user", "content": f"任务完成：{final}"}
+                    )
+                else:
+                    self.conversation_history.append(
+                        {"role": "user", "content": f"观察：{observation}"}
+                    )
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
                 if self.trace_writer:
                     self.trace_writer.record_step(step_number=step_num, step=step)
-                metadata["status"] = "success"
-                metadata["duration_seconds"] = time.perf_counter() - started_at
-                return finish_result(final)
+                if accepted:
+                    return finish_result(final)
+                if plan and self.planner:
+                    plan = self._try_replan(task, plan, observation, metadata)
+                continue
 
             # 检查工具
             tool = self.tools.get(action)
@@ -536,6 +565,7 @@ class ReactAgent:
 
             # task_complete 工具可以接受字符串或空参数
             if action == "task_complete":
+                accepted = False
                 if action_input is None:
                     action_input = {}
                 elif isinstance(action_input, str):
@@ -548,6 +578,15 @@ class ReactAgent:
                     metadata["tool_error_count"] += 1
                     metadata["failure_reason"] = str(exc)
                     observation = f"Tool execution failed: {exc}"
+                else:
+                    accepted, observation, _review = self._review_completion(
+                        task=task,
+                        completion_text=str(observation),
+                        steps=steps,
+                        metadata=metadata,
+                        step_num=step_num,
+                        action=action,
+                    )
             elif action_input is None:
                 metadata["argument_error_count"] += 1
                 metadata["failure_reason"] = "Tool arguments missing"
@@ -603,8 +642,13 @@ class ReactAgent:
                 plan = self._try_replan(task, plan, observation, metadata)
 
             # 检查是否调用了 task_complete 工具
-            if action == "task_complete" and not self._is_failure_observation(observation):
+            if (
+                action == "task_complete"
+                and accepted
+                and not self._is_failure_observation(observation)
+            ):
                 metadata["status"] = "success"
+                metadata["failure_reason"] = ""
                 metadata["duration_seconds"] = time.perf_counter() - started_at
                 return finish_result(observation)
 
@@ -748,6 +792,93 @@ class ReactAgent:
             f"{format_retrieved_context(results)}"
         )
 
+    def _review_completion(
+        self,
+        *,
+        task: str,
+        completion_text: str,
+        steps: List[Step],
+        metadata: Dict[str, Any],
+        step_num: int,
+        action: str,
+    ) -> tuple[bool, str, Optional[CriticReview]]:
+        if self.critic is None:
+            return True, completion_text, None
+
+        try:
+            review = self.critic.review(
+                task=task,
+                candidate_answer=completion_text,
+                metadata=metadata,
+                steps=[step.__dict__ for step in steps],
+                failure_feedback=metadata.get("failure_reason", ""),
+            )
+        except Exception as exc:  # noqa: BLE001 - critic should not hide the candidate result
+            metadata["critic_error"] = str(exc)
+            failure_observation = f"Critic review failed: {exc}"
+            if self.trace_writer:
+                self.trace_writer.record_critic_review(
+                    step_number=step_num,
+                    review={
+                        "action": action,
+                        "passed": False,
+                        "score": 0.0,
+                        "summary": failure_observation,
+                        "reasons": [str(exc)],
+                        "suggested_fixes": [],
+                        "error": type(exc).__name__,
+                    },
+                )
+            return False, failure_observation, None
+
+        metadata["critic_review_count"] += 1
+        metadata["critic_last_score"] = review.score
+        metadata["critic_last_passed"] = review.passed
+        if review.passed:
+            metadata["critic_pass_count"] += 1
+        else:
+            metadata["critic_fail_count"] += 1
+            metadata["critic_reject_count"] += 1
+            metadata["failure_reason"] = review.summary or (
+                review.reasons[0] if review.reasons else "Critic rejected completion"
+            )
+
+        if self.trace_writer:
+            self.trace_writer.record_critic_review(
+                step_number=step_num,
+                review=self._critic_review_trace_payload(review, action=action),
+            )
+
+        if review.passed:
+            return True, completion_text, review
+        return False, self._format_critic_observation(review, completion_text), review
+
+    @staticmethod
+    def _format_critic_observation(review: CriticReview, completion_text: str) -> str:
+        details = []
+        if review.summary:
+            details.append(review.summary)
+        if review.reasons:
+            details.append("Reasons: " + "; ".join(review.reasons))
+        if review.suggested_fixes:
+            details.append("Fixes: " + "; ".join(review.suggested_fixes))
+        details.append(f"Candidate completion: {completion_text}")
+        return "Critic rejected completion.\n" + "\n".join(details)
+
+    def _critic_review_trace_payload(self, review: CriticReview, *, action: str) -> Dict[str, Any]:
+        payload = {
+            "passed": review.passed,
+            "score": review.score,
+            "summary": review.summary,
+            "reasons": list(review.reasons),
+            "suggested_fixes": list(review.suggested_fixes),
+            "action": action,
+        }
+        if self.trace_writer and getattr(self.trace_writer, "capture_llm_io", False):
+            payload["raw"] = review.raw
+            payload["metadata"] = review.metadata
+        return payload
+
     def _parse_agent_response(self, raw: str) -> Dict[str, Any]:
         """
         解析智能体响应
@@ -833,6 +964,8 @@ class ReactAgent:
             "Unknown tool",
             "Tool arguments",
             "parse failed",
+            "Critic rejected",
+            "Critic review failed",
             "returncode: 1",
             "error",
             "Error",
