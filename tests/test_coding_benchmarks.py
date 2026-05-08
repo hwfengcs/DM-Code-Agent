@@ -1,7 +1,11 @@
 from pathlib import Path
 
+import pytest
+
+from dm_agent.benchmarks import runner as runner_module
 from dm_agent.benchmarks.cli import main as bench_main
 from dm_agent.benchmarks.economics import build_economics_report, render_markdown
+from dm_agent.benchmarks.models import BenchmarkRunConfig, CodingBenchResult, CommandResult
 from dm_agent.benchmarks.runner import prepare_workspace, run_hidden_tests, write_markdown_report
 from dm_agent.benchmarks.tasks import get_benchmark_tasks, get_coding_tasks, get_maintenance_tasks
 
@@ -19,6 +23,44 @@ def test_coding_benchmark_cli_lists_without_api_key():
     assert bench_main(["--list"]) == 0
 
 
+def test_benchmark_feature_flags_parse_without_api_key():
+    assert (
+        bench_main(
+            [
+                "--list",
+                "--enable-rag",
+                "--rag-top-k",
+                "3",
+                "--enable-critic",
+                "--self-consistency-runs",
+                "2",
+                "--self-consistency-strategy",
+                "critic_score",
+            ]
+        )
+        == 0
+    )
+
+
+def test_swebench_self_consistency_is_explicitly_frozen(
+    capsys: pytest.CaptureFixture[str],
+):
+    assert (
+        bench_main(
+            [
+                "--suite",
+                "swebench_lite",
+                "--self-consistency-runs",
+                "2",
+                "--snapshot-path",
+                "missing.jsonl",
+            ]
+        )
+        == 2
+    )
+    assert "self-consistency is intentionally not wired" in capsys.readouterr().err
+
+
 def test_maintenance_benchmark_manifest_is_realistic_and_keyless():
     tasks = get_maintenance_tasks()
 
@@ -34,6 +76,81 @@ def test_benchmark_suite_selector_filters_tasks():
     tasks = get_benchmark_tasks("maintenance", ["config_precedence"])
 
     assert [task.task_id for task in tasks] == ["config_precedence"]
+
+
+def _bench_result(task_id: str, *, success: bool, final_answer: str, tokens: int):
+    return CodingBenchResult(
+        task_id=task_id,
+        task_name="Task",
+        variant="full",
+        success=success,
+        failure_reason="" if success else "failed",
+        final_answer=final_answer,
+        actions=["finish"],
+        steps_count=1,
+        tool_calls=0,
+        duration_seconds=0.1,
+        prompt_chars=10,
+        completion_chars=5,
+        estimated_tokens=tokens,
+        estimated_cost_usd=tokens / 1000,
+        request_count=1,
+        metadata={"status": "success" if success else "failure"},
+        hidden_test=CommandResult(["pytest"], 0 if success else 1, "", "", 0.1),
+    )
+
+
+def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest.MonkeyPatch):
+    def fake_run_benchmark_task(task, variant, config, *, repeat_index=0, suite="coding"):
+        return _bench_result(task.task_id, success=True, final_answer="ok", tokens=100)
+
+    monkeypatch.setattr(runner_module, "run_benchmark_task", fake_run_benchmark_task)
+    task = get_coding_tasks(["slugify_cleanup"])[0]
+
+    report = runner_module.run_benchmark_suite(
+        tasks=[task],
+        config=BenchmarkRunConfig(
+            enable_rag=True,
+            rag_top_k=3,
+            enable_critic=True,
+            self_consistency_runs=2,
+            self_consistency_strategy="critic_score",
+        ),
+    )
+
+    assert report["rag"]["enabled"] is True
+    assert report["rag"]["top_k"] == 3
+    assert report["critic"]["enabled"] is True
+    assert report["self_consistency"]["runs"] == 2
+    assert report["self_consistency"]["strategy"] == "critic_score"
+
+
+def test_self_consistency_benchmark_uses_fresh_candidate_results(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    task = get_coding_tasks(["slugify_cleanup"])[0]
+    candidates = [
+        _bench_result(task.task_id, success=False, final_answer="bad", tokens=200),
+        _bench_result(task.task_id, success=True, final_answer="good", tokens=300),
+    ]
+
+    def fake_run_in_workspace(*args, **kwargs):
+        repeat_index = kwargs["repeat_index"]
+        return candidates[repeat_index]
+
+    monkeypatch.setattr(runner_module, "_run_benchmark_task_in_workspace", fake_run_in_workspace)
+
+    result = runner_module.run_benchmark_task(
+        task,
+        runner_module.DEFAULT_BENCH_VARIANTS[0],
+        BenchmarkRunConfig(self_consistency_runs=2, self_consistency_strategy="test_pass"),
+    )
+
+    assert result.success is True
+    assert result.final_answer == "good"
+    assert result.estimated_tokens == 500
+    assert result.metadata["self_consistency"]["runs"] == 2
+    assert result.metadata["self_consistency"]["selected_index"] == 2
 
 
 def test_hidden_tests_fail_on_initial_slugify_workspace(tmp_path):

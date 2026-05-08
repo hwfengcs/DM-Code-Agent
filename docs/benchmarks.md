@@ -62,6 +62,24 @@ dm-agent-economics bench_reports/maintenance.json \
 `dm-agent-economics` never runs a model, downloads a dataset, or queries live pricing. Prices are
 explicit inputs for local accounting.
 
+Default-off v2 plumbing for coding/maintenance benchmark experiments:
+
+```bash
+dm-agent-bench --suite maintenance \
+  --enable-rag \
+  --rag-top-k 5 \
+  --enable-critic \
+  --self-consistency-runs 3 \
+  --self-consistency-strategy test_pass
+```
+
+RAG builds a local BM25 index for each candidate workspace. Critic review uses the same configured
+LLM client as the main run unless future code supplies a separate client. Self-consistency creates
+fresh workspaces per candidate and then selects by majority vote, critic score, or test pass. These
+features are disabled by default and are not used by CI live runs.
+
+SWE-bench Lite self-consistency is intentionally blocked while real SWE-bench evaluation is frozen.
+
 ## Maintenance Suite
 
 The maintenance suite currently includes:
@@ -100,6 +118,7 @@ The report includes:
 - agent metadata such as replan, parse repair, and tool error counts
 - adaptive replanning metadata when enabled: signal kind, selected strategy, skipped replans,
   and replan budget exhaustion
+- RAG / critic / self-consistency configuration metadata when those default-off switches are used
 
 ## Changed-File Constraints
 

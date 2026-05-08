@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/research-log/INTERVIEW_TALKING_POINTS.md`.
 - README / README_EN final v2 status sections, including the explicit freeze
   caveat for real SWE-bench, Docker/Tier-2, and cross-model evaluations.
+- Release hardening docs in `docs/release-v2.0.0.md`.
+- Default-off benchmark plumbing flags for coding/maintenance runs:
+  `--enable-rag`, `--rag-top-k`, `--rag-granularity`, `--rag-max-files`,
+  `--enable-critic`, `--self-consistency-runs`, and
+  `--self-consistency-strategy`.
+- Fresh-workspace self-consistency selection for coding/maintenance benchmark
+  runs, with SWE-bench Lite self-consistency explicitly blocked while real
+  SWE-bench evaluation is frozen.
 - P5 Adaptive Replanning + Token Economics:
   `AdaptiveReplanPolicy`, `ReplanSignal`, and `ReplanDecision` classify
   `tool_error`, `parse_error`, `test_failure`, `critic_rejected`, and

@@ -10,13 +10,15 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager, redirect_stdout
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
-from dm_agent.core import ReactAgent
+from dm_agent.core import CriticAgent, ReactAgent
 from dm_agent.evals.real_runner import PROVIDER_API_KEY_ENV, UsageTrackingClient
+from dm_agent.memory import HybridRetriever
 from dm_agent.skills import SkillManager
 from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter
@@ -75,6 +77,7 @@ def run_benchmark_suite(
 
     if config.repeat < 1:
         raise ValueError("repeat must be at least 1")
+    _validate_benchmark_config(config)
     if not selected_tasks:
         raise ValueError("no benchmark tasks selected")
     if not selected_variants:
@@ -111,6 +114,19 @@ def run_benchmark_suite(
             "enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
         },
+        "rag": {
+            "enabled": config.enable_rag,
+            "top_k": config.rag_top_k,
+            "granularity": config.rag_granularity,
+            "max_files": config.rag_max_files,
+        },
+        "critic": {
+            "enabled": config.enable_critic,
+        },
+        "self_consistency": {
+            "runs": config.self_consistency_runs,
+            "strategy": config.self_consistency_strategy,
+        },
         "token_economics": {
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
         },
@@ -129,6 +145,16 @@ def run_benchmark_task(
     repeat_index: int = 0,
     suite: str = "coding",
 ) -> CodingBenchResult:
+    _validate_benchmark_config(config)
+    if config.self_consistency_runs > 1:
+        return _run_self_consistency_benchmark_task(
+            task,
+            variant,
+            config,
+            repeat_index=repeat_index,
+            suite=suite,
+        )
+
     if config.keep_workspaces:
         root = Path(config.workspace_root) if config.workspace_root else None
         if root:
@@ -379,6 +405,10 @@ def _run_benchmark_task_in_workspace(
         max_trials=config.max_trials,
         enable_adaptive_replanning=config.enable_adaptive_replanning,
         max_replans=config.max_replans,
+        enable_rag=config.enable_rag,
+        retriever=_build_benchmark_retriever(workspace, config) if config.enable_rag else None,
+        rag_top_k=config.rag_top_k,
+        critic=CriticAgent(client) if config.enable_critic else None,
     )
 
     with chdir(workspace):
@@ -430,6 +460,11 @@ def _run_benchmark_task_in_workspace(
             "adaptive_replanning_enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
+            "rag_enabled": config.enable_rag,
+            "rag_top_k": config.rag_top_k,
+            "critic_enabled": config.enable_critic,
+            "self_consistency_runs": config.self_consistency_runs,
+            "self_consistency_strategy": config.self_consistency_strategy,
         }
     )
 
@@ -458,6 +493,98 @@ def _run_benchmark_task_in_workspace(
         changed_files=changed_files,
         workspace_path=str(workspace) if not cleanup else "",
     )
+
+
+def _run_self_consistency_benchmark_task(
+    task: BenchmarkTask,
+    variant: BenchmarkVariant,
+    config: BenchmarkRunConfig,
+    *,
+    repeat_index: int,
+    suite: str,
+) -> CodingBenchResult:
+    single_config = replace(config, self_consistency_runs=1)
+    candidates = [
+        run_benchmark_task(
+            task,
+            variant,
+            single_config,
+            repeat_index=repeat_index * config.self_consistency_runs + index,
+            suite=suite,
+        )
+        for index in range(config.self_consistency_runs)
+    ]
+    selected = _select_self_consistency_candidate(candidates, config.self_consistency_strategy)
+    selected_index = next(
+        index for index, candidate in enumerate(candidates, start=1) if candidate is selected
+    )
+    metadata = dict(selected.metadata)
+    metadata["self_consistency"] = {
+        "runs": config.self_consistency_runs,
+        "strategy": config.self_consistency_strategy,
+        "selected_index": selected_index,
+        "candidates": [
+            {
+                "run_index": index,
+                "success": candidate.success,
+                "failure_reason": candidate.failure_reason,
+                "final_answer": candidate.final_answer,
+                "estimated_tokens": candidate.estimated_tokens,
+                "estimated_cost_usd": candidate.estimated_cost_usd,
+                "steps_count": candidate.steps_count,
+            }
+            for index, candidate in enumerate(candidates, start=1)
+        ],
+    }
+
+    return replace(
+        selected,
+        actions=[action for candidate in candidates for action in candidate.actions],
+        steps_count=sum(candidate.steps_count for candidate in candidates),
+        tool_calls=sum(candidate.tool_calls for candidate in candidates),
+        duration_seconds=sum(candidate.duration_seconds for candidate in candidates),
+        prompt_chars=sum(candidate.prompt_chars for candidate in candidates),
+        completion_chars=sum(candidate.completion_chars for candidate in candidates),
+        estimated_tokens=sum(candidate.estimated_tokens for candidate in candidates),
+        estimated_cost_usd=sum(candidate.estimated_cost_usd for candidate in candidates),
+        request_count=sum(candidate.request_count for candidate in candidates),
+        metadata=metadata,
+    )
+
+
+def _select_self_consistency_candidate(
+    candidates: Sequence[CodingBenchResult],
+    strategy: str,
+) -> CodingBenchResult:
+    if not candidates:
+        raise ValueError("self-consistency produced no candidates")
+    if strategy == "test_pass":
+        return max(candidates, key=lambda item: (item.success, -item.estimated_tokens))
+    if strategy == "critic_score":
+        return max(
+            candidates,
+            key=lambda item: (
+                float(item.metadata.get("critic_last_score", 0.0)),
+                item.success,
+                -item.estimated_tokens,
+            ),
+        )
+    if strategy == "majority_vote":
+        groups: Dict[str, List[CodingBenchResult]] = {}
+        for candidate in candidates:
+            key = candidate.final_answer.strip()
+            groups.setdefault(key, []).append(candidate)
+        ranked_groups = sorted(
+            groups.values(),
+            key=lambda group: (
+                len(group),
+                sum(1 for candidate in group if candidate.success),
+                -sum(candidate.estimated_tokens for candidate in group),
+            ),
+            reverse=True,
+        )
+        return max(ranked_groups[0], key=lambda item: (item.success, -item.estimated_tokens))
+    raise ValueError(f"Unsupported self-consistency strategy: {strategy}")
 
 
 def _score_run(
@@ -504,6 +631,37 @@ def _build_tracking_client(config: BenchmarkRunConfig) -> UsageTrackingClient:
         timeout=config.timeout,
     )
     return UsageTrackingClient(client)
+
+
+def _build_benchmark_retriever(workspace: Path, config: BenchmarkRunConfig) -> HybridRetriever:
+    return HybridRetriever.from_repository(
+        workspace,
+        granularity=config.rag_granularity,
+        max_files=config.rag_max_files,
+        include_tests=True,
+        enable_embeddings=False,
+    )
+
+
+def _validate_benchmark_config(config: BenchmarkRunConfig) -> None:
+    if config.max_trials < 1:
+        raise ValueError("max_trials must be at least 1")
+    if config.max_replans < -1:
+        raise ValueError("max_replans must be -1 or greater")
+    if config.rag_top_k < 1:
+        raise ValueError("rag_top_k must be at least 1")
+    if config.rag_max_files < 1:
+        raise ValueError("rag_max_files must be at least 1")
+    if config.rag_granularity not in {"symbol", "file", "both"}:
+        raise ValueError("rag_granularity must be one of: symbol, file, both")
+    if config.self_consistency_runs < 1:
+        raise ValueError("self_consistency_runs must be at least 1")
+    if config.self_consistency_strategy not in {"majority_vote", "critic_score", "test_pass"}:
+        raise ValueError(
+            "self_consistency_strategy must be one of: majority_vote, critic_score, test_pass"
+        )
+    if config.self_consistency_strategy == "critic_score" and not config.enable_critic:
+        raise ValueError("critic_score self-consistency requires --enable-critic")
 
 
 def _write_files(workspace: Path, files: Dict[str, str]) -> None:

@@ -56,6 +56,16 @@ python -m ruff check dm_agent tests
 python -m black --check .
 ```
 
+## Release Hardening Addendum
+
+The v2 release pass also wires the default-off algorithm modules into the generic coding and
+maintenance benchmark CLI. `--enable-rag`, `--enable-critic`, and `--self-consistency-runs` are
+available for local smoke experiments, but they do not affect default runs.
+
+SWE-bench Lite keeps the stricter freeze boundary: self-consistency is rejected before instance
+loading so a missing snapshot or dataset cannot mask the policy decision. This prevents accidental
+new SWE-bench claims during the frozen evaluation window.
+
 The economics smoke report can be regenerated without model calls:
 
 ```bash

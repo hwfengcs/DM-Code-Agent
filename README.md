@@ -194,6 +194,19 @@ dm-agent-economics bench_reports/swebench_lite_baseline.json \
 
 `--cost-per-1k-tokens` 是显式输入的本地会计参数，不是实时价格查询。
 
+默认关闭的算法模块也可以接入 coding / maintenance benchmark plumbing，用于本地 smoke 或后续真实实验：
+
+```bash
+dm-agent-bench --suite maintenance \
+  --enable-rag \
+  --rag-top-k 5 \
+  --enable-critic \
+  --self-consistency-runs 3 \
+  --self-consistency-strategy test_pass
+```
+
+这些开关只在真实 benchmark run 时触发额外模型调用；CI 只验证 keyless 参数解析和 fake-result plumbing。SWE-bench Lite 的 self-consistency 在真实评测冻结期会明确拒绝运行，避免误报新分数。
+
 ## RAG Context Retrieval
 
 RAG 默认关闭，不会改变普通 `dm-agent` 行为。先构建或查询本地 Python 符号索引：
@@ -280,6 +293,7 @@ python -m black --check .
 ## 文档
 
 - [docs/research-log/](docs/research-log/)：v2 算法升级的设计动机、实验、ablation 与踩坑记录
+- [docs/release-v2.0.0.md](docs/release-v2.0.0.md)：v2 发布说明和 smoke checklist
 - [docs/product.md](docs/product.md)：产品定位和落地场景
 - [docs/tracing.md](docs/tracing.md)：trace schema、view、replay 和隐私边界
 - [docs/benchmarks.md](docs/benchmarks.md)：benchmark suite、评分和报告字段

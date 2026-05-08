@@ -198,6 +198,22 @@ dm-agent-economics bench_reports/swebench_lite_baseline.json \
 
 `--cost-per-1k-tokens` is an explicit local accounting input, not a live pricing lookup.
 
+Default-off algorithm modules can also be wired into coding / maintenance benchmark plumbing for
+local smoke checks or future live experiments:
+
+```bash
+dm-agent-bench --suite maintenance \
+  --enable-rag \
+  --rag-top-k 5 \
+  --enable-critic \
+  --self-consistency-runs 3 \
+  --self-consistency-strategy test_pass
+```
+
+These switches only trigger extra model calls during a live benchmark run. CI covers keyless
+argument parsing and fake-result plumbing. SWE-bench Lite self-consistency is explicitly blocked
+while real SWE-bench evaluation is frozen.
+
 ## RAG Context Retrieval
 
 RAG is opt-in and does not change normal `dm-agent` behavior. Build or query a local Python symbol
@@ -258,6 +274,7 @@ python -m black --check .
 ## Docs
 
 - [docs/research-log/](docs/research-log/) — design rationale, ablations, and lessons for the v2 upgrade
+- [docs/release-v2.0.0.md](docs/release-v2.0.0.md) — release notes and smoke checklist
 - [docs/product.md](docs/product.md)
 - [docs/tracing.md](docs/tracing.md)
 - [docs/benchmarks.md](docs/benchmarks.md)

@@ -29,8 +29,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
-from dm_agent.core import EpisodicMemory, ReactAgent, Reflector
+from dm_agent.core import CriticAgent, EpisodicMemory, ReactAgent, Reflector
 from dm_agent.evals.real_runner import PROVIDER_API_KEY_ENV, UsageTrackingClient
+from dm_agent.memory import HybridRetriever
 from dm_agent.prompts import build_code_agent_prompt
 from dm_agent.skills import SkillManager
 from dm_agent.tools import default_tools
@@ -73,6 +74,7 @@ def _build_agent(
     enable_compression: bool = True,
     trace_writer: Optional[TraceWriter] = None,
     system_prompt_addition: str = "",
+    workspace_path: Optional[Path] = None,
 ) -> tuple[ReactAgent, UsageTrackingClient]:
     provider = config.provider.lower()
     defaults = PROVIDER_DEFAULTS.get(provider, {})
@@ -112,6 +114,20 @@ def _build_agent(
         trace_writer=trace_writer,
         enable_adaptive_replanning=config.enable_adaptive_replanning,
         max_replans=config.max_replans,
+        enable_rag=config.enable_rag,
+        retriever=(
+            HybridRetriever.from_repository(
+                workspace_path,
+                granularity=config.rag_granularity,
+                max_files=config.rag_max_files,
+                include_tests=True,
+                enable_embeddings=False,
+            )
+            if config.enable_rag and workspace_path is not None
+            else None
+        ),
+        rag_top_k=config.rag_top_k,
+        critic=CriticAgent(client) if config.enable_critic else None,
     )
     return agent, client
 
@@ -259,6 +275,7 @@ def _run_single_trial(
             system_prompt_addition=(
                 reflexion_memory.render_for_prompt() if reflexion_memory is not None else ""
             ),
+            workspace_path=workspace.path,
         )
 
         task_prompt = _build_task_prompt(instance)
@@ -276,6 +293,11 @@ def _run_single_trial(
                 "max_trials": config.max_trials,
                 "reflexion_enabled": config.enable_reflexion,
                 "reflexion_lesson_count": len(reflexion_memory or []),
+                "rag_enabled": config.enable_rag,
+                "rag_top_k": config.rag_top_k,
+                "critic_enabled": config.enable_critic,
+                "self_consistency_runs": config.self_consistency_runs,
+                "self_consistency_strategy": config.self_consistency_strategy,
             }
         )
         actions: List[str] = [step.get("action", "") for step in steps]
@@ -600,6 +622,13 @@ def build_report(
             "max_trials": config.max_trials,
             "enable_adaptive_replanning": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
+            "enable_rag": config.enable_rag,
+            "rag_top_k": config.rag_top_k,
+            "rag_granularity": config.rag_granularity,
+            "rag_max_files": config.rag_max_files,
+            "enable_critic": config.enable_critic,
+            "self_consistency_runs": config.self_consistency_runs,
+            "self_consistency_strategy": config.self_consistency_strategy,
         },
         "token_economics": {
             "cost_per_1k_tokens": config.cost_per_1k_tokens,

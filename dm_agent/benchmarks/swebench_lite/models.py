@@ -209,6 +209,13 @@ class SWEBenchRunConfig:
     enable_adaptive_replanning: bool = False
     max_replans: int = -1
     cost_per_1k_tokens: float = 0.0
+    enable_rag: bool = False
+    rag_top_k: int = 5
+    rag_granularity: str = "symbol"
+    rag_max_files: int = 200
+    enable_critic: bool = False
+    self_consistency_runs: int = 1
+    self_consistency_strategy: str = "majority_vote"
 
 
 class FailureCategory(str, Enum):
