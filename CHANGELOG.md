@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- P3 RAG context retrieval:
+  `dm_agent/memory/retriever.py` with `BM25Retriever`, optional
+  `EmbeddingRetriever`, and `HybridRetriever` using Reciprocal Rank Fusion.
+- `ReactAgent(enable_rag=True, retriever=...)` opt-in prompt injection of
+  per-step `<retrieved_context>` blocks, plus `retrieval` trace events.
+- `dm-agent-index` CLI for local index build/query workflows.
+- `tests/test_retriever.py` and keyless Agent tests covering default-off RAG
+  behavior and prompt injection.
 - P2 Reflexion implementation scaffold:
   `dm_agent/core/reflexion.py` with `Reflector`, `EpisodicMemory`, and bounded
   lessons, plus default-off `ReactAgent(enable_reflexion=True, max_trials=N)`
@@ -19,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_reflexion.py` covering the keyless Reflexion flow.
 
 ### Docs
+- Added `docs/research-log/03-rag.md` as the Phase 3 implementation log.
 - Added `docs/research-log/02-reflexion.md` as the Phase 2 implementation log.
 
 ## [1.7.1] - P1 SWE-bench Lite baseline

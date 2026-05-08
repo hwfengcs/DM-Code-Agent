@@ -16,6 +16,7 @@ from .clients import (
 )
 from .tools import Tool, default_tools
 from .prompts import build_code_agent_prompt
+from .memory import BM25Retriever, EmbeddingRetriever, HybridRetriever
 from .skills import BaseSkill, ConfigSkill, SkillMetadata, SkillManager
 from .tracing import TraceWriter
 
@@ -42,6 +43,10 @@ __all__ = [
     "default_tools",
     # Prompts
     "build_code_agent_prompt",
+    # Memory
+    "BM25Retriever",
+    "EmbeddingRetriever",
+    "HybridRetriever",
     # Skills
     "BaseSkill",
     "ConfigSkill",

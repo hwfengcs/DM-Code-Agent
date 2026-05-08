@@ -12,6 +12,7 @@ from ..clients.base_client import BaseLLMClient
 from ..tools.base import Tool
 from ..prompts import build_code_agent_prompt
 from ..memory.context_compressor import ContextCompressor
+from ..memory.retriever import DEFAULT_TOP_K, format_retrieved_context
 from .planner import TaskPlanner, PlanStep
 from .reflexion import EpisodicMemory, Reflector
 
@@ -64,6 +65,9 @@ class ReactAgent:
         max_trials: int = 3,
         reflector: Optional[Reflector] = None,
         reflexion_memory: Optional[EpisodicMemory] = None,
+        enable_rag: bool = False,
+        retriever: Optional[Any] = None,
+        rag_top_k: int = DEFAULT_TOP_K,
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -128,6 +132,11 @@ class ReactAgent:
         self.max_trials = max_trials
         self.reflexion_memory = reflexion_memory or EpisodicMemory()
         self.reflector = reflector or (Reflector(client) if enable_reflexion else None)
+        self.enable_rag = enable_rag
+        self.retriever = retriever
+        self.rag_top_k = rag_top_k
+        if self.enable_rag and self.retriever is None:
+            raise ValueError("enable_rag=True requires a retriever instance.")
 
     def run(self, task: str, *, max_steps: Optional[int] = None) -> Dict[str, Any]:
         """Execute a task, optionally retrying failed trials with Reflexion."""
@@ -309,6 +318,8 @@ class ReactAgent:
             "compressed_messages": 0,
             "failure_reason": "",
             "reflexion_enabled": self.enable_reflexion,
+            "rag_enabled": self.enable_rag,
+            "rag_retrieval_count": 0,
             "trial": trial_number,
             "max_trials": max_trials,
             "reflexion_lesson_count": len(self.reflexion_memory),
@@ -323,6 +334,8 @@ class ReactAgent:
                     "compression_enabled": self.enable_compression,
                     "skills_enabled": bool(self.skill_manager),
                     "reflexion_enabled": self.enable_reflexion,
+                    "rag_enabled": self.enable_rag,
+                    "rag_top_k": self.rag_top_k,
                     "trial": trial_number,
                     "max_trials": max_trials,
                     "reflexion_lesson_count": len(self.reflexion_memory),
@@ -373,8 +386,17 @@ class ReactAgent:
 
         for step_num in range(1, limit + 1):
             # 第二步：压缩上下文（如果需要）
+            retrieved_context = self._build_retrieved_context(
+                task=task,
+                step_num=step_num,
+                steps=steps,
+                metadata=metadata,
+            )
+            system_content = self.system_prompt
+            if retrieved_context:
+                system_content += "\n\n" + retrieved_context
             messages_to_send = [
-                {"role": "system", "content": self.system_prompt}
+                {"role": "system", "content": system_content}
             ] + self.conversation_history
 
             if self.enable_compression and self.compressor:
@@ -382,7 +404,7 @@ class ReactAgent:
                     print(f"\n🗜️ 压缩对话历史以节省 token...")
                     compressed_history = self.compressor.compress(self.conversation_history)
                     messages_to_send = [
-                        {"role": "system", "content": self.system_prompt}
+                        {"role": "system", "content": system_content}
                     ] + compressed_history
 
                     # 显示压缩统计
@@ -662,6 +684,69 @@ class ReactAgent:
             '\n用 JSON 对象回应：{"thought": string, "action": string, "action_input": object|string}。'
         )
         return "\n".join(lines)
+
+    def _build_retrieved_context(
+        self,
+        *,
+        task: str,
+        step_num: int,
+        steps: List[Step],
+        metadata: Dict[str, Any],
+    ) -> Optional[str]:
+        if not self.enable_rag or self.retriever is None:
+            return None
+
+        recent_observations = [
+            step.observation for step in steps[-3:] if isinstance(step.observation, str)
+        ]
+        query = "\n".join([task.strip()] + recent_observations).strip()
+        if not query:
+            return None
+
+        try:
+            results = self.retriever.retrieve(query, top_k=self.rag_top_k)
+        except Exception as exc:  # noqa: BLE001 - retrieval is optional context, not task logic
+            metadata["rag_error"] = str(exc)
+            if self.trace_writer:
+                self.trace_writer.record(
+                    "retrieval",
+                    {
+                        "step_number": step_num,
+                        "query": query,
+                        "error": str(exc),
+                    },
+                )
+            return None
+
+        if self.trace_writer:
+            self.trace_writer.record(
+                "retrieval",
+                {
+                    "step_number": step_num,
+                    "query": query,
+                    "results": [
+                        {
+                            "doc_id": result.document.doc_id,
+                            "path": result.document.path,
+                            "kind": result.document.kind,
+                            "symbol": result.document.symbol,
+                            "score": result.score,
+                            "source": result.source,
+                            "rank": result.rank,
+                        }
+                        for result in results
+                    ],
+                },
+            )
+        if not results:
+            return None
+
+        metadata["rag_retrieval_count"] += 1
+        return (
+            "Retrieved repository context for this step. Use it only if it is relevant; "
+            "prefer direct tool inspection before editing.\n"
+            f"{format_retrieved_context(results)}"
+        )
 
     def _parse_agent_response(self, raw: str) -> Dict[str, Any]:
         """

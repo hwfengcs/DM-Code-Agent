@@ -63,7 +63,7 @@
 | ReAct + Planner + Replan | ✅ v1.5 | Base loop, 3-8 step plan, replan on failure | [00](docs/research-log/00-kickoff.md) |
 | SWE-bench Lite suite | ✅ P1 | 50-instance DeepSeek Tier-1 baseline: 0.0% resolved / 72.0% patch-applied, with failure-mode analysis and host-verifier noise notes | [01](docs/research-log/01-swebench-baseline.md) |
 | Reflexion (episodic memory) | ✅ P2 impl | Failed trial → lesson → next-trial prompt; ablation waits for a cleaner Tier-1 slice | [02](docs/research-log/02-reflexion.md) |
-| Hybrid RAG (BM25 + embeddings + RRF) | 🔄 P3 | Function-granularity index, dual recall, top-K injection | 03 (soon) |
+| Hybrid RAG (BM25 + embeddings + RRF) | ✅ P3 impl | Lightweight BM25 by default; embeddings live behind the `[rag]` extra; Top-K prompt injection only with `enable_rag=True` | [03](docs/research-log/03-rag.md) |
 | Critic + Self-Consistency | 🔄 P4 | Independent peer-review LLM + N-candidate selection (majority vote / critic score / test pass) | 04 (soon) |
 | Adaptive Replanning + Token economics | 🔄 P5 | Error-type-aware replan strategy, cross-model cost-per-success table | 05 (soon) |
 
@@ -76,6 +76,8 @@ Published:
 
 - [00 — Kickoff: Why a v2 algorithm-track upgrade?](docs/research-log/00-kickoff.md)
 - [01 — SWE-bench Lite baseline: harness, sampling, and the road to numbers](docs/research-log/01-swebench-baseline.md)
+- [02 — Reflexion: episodic memory across trials](docs/research-log/02-reflexion.md)
+- [03 — RAG-based context retrieval: BM25 first, embeddings optional](docs/research-log/03-rag.md)
 
 ---
 
@@ -99,6 +101,8 @@ It is designed to be a developer tool you can audit rather than a black-box codi
 | --- | --- |
 | ReAct Agent | The model emits `thought/action/action_input`; the agent executes tools and feeds observations back |
 | Task Planner | Generates a 3-8 step plan and can replan after failures |
+| Reflexion | Default-off trial lessons can be injected into the next attempt |
+| RAG Retrieval | Default-off BM25 + optional embeddings + RRF, injected as `<retrieved_context>` |
 | Tool System | File IO, search, Python/Shell execution, tests, linting, AST, and code metrics |
 | Code Index | Repository-level Python symbol index, symbol search, and local dependency graph |
 | Trace / Replay | JSONL traces for run, plan, LLM-call summary, tool call, step, replan, and final result |
@@ -175,6 +179,33 @@ Reports include hidden-test pass rate, agent completion rate, average steps, too
 estimated tokens, changed files, and changed-file constraint violations. See
 [docs/benchmarks.md](docs/benchmarks.md).
 
+## RAG Context Retrieval
+
+RAG is opt-in and does not change normal `dm-agent` behavior. Build or query a local Python symbol
+index with:
+
+```bash
+dm-agent-index build --root . --persist
+dm-agent-index query "where is token validation handled" --top-k 5 --json
+```
+
+Embedding retrieval is available only when the optional extra is installed:
+
+```bash
+pip install -e ".[rag]"
+dm-agent-index query "find similar retry handling" --mode hybrid --embeddings
+```
+
+Programmatic use:
+
+```python
+from dm_agent import ReactAgent
+from dm_agent.memory import HybridRetriever
+
+retriever = HybridRetriever.from_repository(".", persist=True)
+agent = ReactAgent(client, tools, enable_rag=True, retriever=retriever)
+```
+
 ## Architecture
 
 ![DM-Code-Agent architecture](docs/architecture.drawio.png)
@@ -187,6 +218,7 @@ flowchart LR
     Agent --> Tools[Built-in Tools]
     Agent --> Skills[SkillManager]
     Agent --> Memory[ContextCompressor]
+    Agent --> Retrieval[HybridRetriever]
     Agent --> Trace[TraceWriter]
     Tools --> Workspace[Local Workspace]
     Tools --> MCP[MCPManager]
