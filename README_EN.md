@@ -49,7 +49,7 @@
 | Reflexion / Critic / Self-Consistency | ✅ v2 | ❌ | partial | ❌ | ❌ |
 | Hybrid BM25 + embedding RAG | ✅ v2 (opt-in) | repo-map | partial | retrieval | ❌ |
 | MCP integration | ✅ | ❌ | ✅ | ❌ | ❌ |
-| In-tree maintenance benchmark | ✅ 5+ tasks | ❌ | ❌ | SWE-bench | ❌ |
+| In-tree maintenance benchmark | ✅ 6+ tasks | ❌ | ❌ | SWE-bench | ❌ |
 | Public SWE-bench Lite score | ⚠️ Tier-1: 0.0% (50/300 subset, not official) | ❌ | ✅ | ✅ | ❌ |
 | Core LOC | ~1500 | ~10k | ~50k | ~5k | ~3k |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |

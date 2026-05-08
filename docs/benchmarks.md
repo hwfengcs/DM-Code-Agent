@@ -89,6 +89,8 @@ The maintenance suite currently includes:
 - `retry_regression_tests`: retry policy fix with required regression-test changes.
 - `safe_workspace_join`: path traversal protection for workspace file access.
 - `cross_file_user_contract`: cross-file API contract repair for a serializer/model pair.
+- `cli_config_docs_contract`: multi-file CLI/docs/test consistency repair for configuration
+  documentation.
 
 These tasks are intentionally closer to repository upkeep than puzzle-style algorithms. They
 include hidden tests, edge cases, and changed-file constraints.
@@ -134,7 +136,7 @@ or fail a run that edits unrelated files to game the score.
 
 Future benchmark work should add:
 
-- multi-file refactors with behavior-preserving hidden tests
+- more multi-file refactors with behavior-preserving hidden tests
 - documentation/CLI consistency tasks
 - CI and packaging repair tasks
 - trace completeness checks

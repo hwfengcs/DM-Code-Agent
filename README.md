@@ -36,7 +36,7 @@
 | Reflexion / Critic / Self-Consistency | ✅ v2 | ❌ | partial | ❌ | ❌ |
 | Hybrid BM25+Embedding RAG | ✅ v2（opt-in） | repo-map | partial | retrieval | ❌ |
 | MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
-| 自带 maintenance benchmark | ✅ 5+ tasks | ❌ | ❌ | SWE-bench | ❌ |
+| 自带 maintenance benchmark | ✅ 6+ tasks | ❌ | ❌ | SWE-bench | ❌ |
 | 公开 SWE-bench Lite 分数 | ⚠️ Tier-1：0.0%（50/300 子集，非官方口径） | ❌ | ✅ | ✅ | ❌ |
 | 代码体积（核心 LOC） | ~1500 | ~10k | ~50k | ~5k | ~3k |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |

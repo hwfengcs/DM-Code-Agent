@@ -28,6 +28,7 @@ these entries.
 | [06](06-final-writeup.md) | Final write-up: what worked, what didn't, what's next | P6 | published |
 | [07](07-trace-diff.md) | Trace diff for offline behavioral comparison | post-v2 | implementation landed |
 | [08](08-trace-analyzer.md) | Trace analyzer for failure attribution and verification gaps | post-v2 | implementation landed |
+| [09](09-maintenance-realism.md) | More realistic maintenance benchmark tasks | post-v2 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

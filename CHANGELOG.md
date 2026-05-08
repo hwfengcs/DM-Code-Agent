@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `dm-agent-trace analyze` for offline failure-stage attribution, recovery
   inspection, verification-gap detection, and advisory trace-health grades.
+- `cli_config_docs_contract`, a multi-file maintenance benchmark task that
+  requires implementation, docs, and regression-test changes for CLI
+  configuration documentation.
 - `dm-agent-trace diff` for offline comparison of two JSONL traces, including
   status changes, step/tool/replan deltas, action-sequence divergence,
   tool-usage deltas, plan changes, and final-answer changes.
@@ -17,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the next trace-analysis bets.
 - `docs/research-log/08-trace-analyzer.md` documenting the analyzer rules and
   why the output remains advisory.
+- `docs/research-log/09-maintenance-realism.md` documenting the benchmark task
+  design and hidden-test contract.
 
 ## [2.0.0] - 2026-05-08
 

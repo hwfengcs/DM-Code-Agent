@@ -603,6 +603,114 @@ BUILTIN_MAINTENANCE_TASKS: List[BenchmarkTask] = [
         allowed_changed_files=["users.py", "serializers.py"],
         required_changed_files=["users.py", "serializers.py"],
     ),
+    BenchmarkTask(
+        task_id="cli_config_docs_contract",
+        name="CLI configuration docs contract",
+        prompt=(
+            "Fix the CLI configuration documentation flow across cli_docs.py, "
+            "docs/configuration.md, and tests/test_public_cli_docs.py. "
+            "render_config_table should include every CONFIG_OPTIONS entry, sorted by flag, "
+            "with option/env/default values rendered as code. The docs page must embed the "
+            "same generated table under the CONFIG_TABLE marker. Add regression coverage in "
+            "tests/test_public_cli_docs.py so future config options cannot silently disappear."
+            + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "cli_docs.py": (
+                "CONFIG_OPTIONS = [\n"
+                "    {\n"
+                '        "flag": "--provider",\n'
+                '        "env": "DM_PROVIDER",\n'
+                '        "default": "deepseek",\n'
+                '        "description": "LLM provider name.",\n'
+                "    },\n"
+                "    {\n"
+                '        "flag": "--timeout",\n'
+                '        "env": "DM_TIMEOUT",\n'
+                '        "default": 120,\n'
+                '        "description": "Provider request timeout in seconds.",\n'
+                "    },\n"
+                "    {\n"
+                '        "flag": "--model",\n'
+                '        "env": "DM_MODEL",\n'
+                '        "default": "deepseek-chat",\n'
+                '        "description": "Model identifier passed to the provider.",\n'
+                "    },\n"
+                "    {\n"
+                '        "flag": "--retries",\n'
+                '        "env": "DM_RETRIES",\n'
+                '        "default": 2,\n'
+                '        "description": "Retry count for transient provider failures.",\n'
+                "    },\n"
+                "]\n\n\n"
+                "def render_config_table(options=None):\n"
+                "    options = options or CONFIG_OPTIONS\n"
+                "    visible = [item for item in options if item['flag'] in {'--provider', '--timeout'}]\n"
+                "    lines = [\n"
+                '        "| Option | Env | Default | Description |",\n'
+                '        "| --- | --- | --- | --- |",\n'
+                "    ]\n"
+                "    for item in visible:\n"
+                "        lines.append(\n"
+                "            f\"| {item['flag']} | {item['env']} | {item['default']} | {item['description']} |\"\n"
+                "        )\n"
+                '    return "\\n".join(lines)\n'
+            ),
+            "docs/configuration.md": (
+                "# Configuration\n\n"
+                "DM-Code-Agent can be configured with CLI flags or environment variables.\n\n"
+                "<!-- CONFIG_TABLE -->\n"
+                "| Option | Env | Default | Description |\n"
+                "| --- | --- | --- | --- |\n"
+                "| --provider | DM_PROVIDER | deepseek | LLM provider name. |\n"
+                "| --timeout | DM_TIMEOUT | 120 | Provider request timeout in seconds. |\n"
+                "<!-- /CONFIG_TABLE -->\n"
+            ),
+            "tests/test_public_cli_docs.py": (
+                "from cli_docs import render_config_table\n\n\n"
+                "def test_config_table_mentions_provider_and_timeout():\n"
+                "    table = render_config_table()\n"
+                '    assert "--provider" in table\n'
+                '    assert "--timeout" in table\n'
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_cli_docs.py": (
+                "from pathlib import Path\n\n"
+                "from cli_docs import CONFIG_OPTIONS, render_config_table\n\n\n"
+                "def _table_flags(table):\n"
+                "    rows = [line for line in table.splitlines() if line.startswith('| `--')]\n"
+                "    return [row.split('|')[1].strip().strip('`') for row in rows]\n\n\n"
+                "def test_all_config_options_are_documented_and_sorted():\n"
+                "    table = render_config_table()\n"
+                "    expected_flags = sorted(item['flag'] for item in CONFIG_OPTIONS)\n"
+                "    assert _table_flags(table) == expected_flags\n"
+                "    for item in CONFIG_OPTIONS:\n"
+                "        assert f\"`{item['flag']}`\" in table\n"
+                "        assert f\"`{item['env']}`\" in table\n"
+                "        assert f\"`{item['default']}`\" in table\n\n\n"
+                "def test_docs_embed_generated_table_between_markers():\n"
+                "    docs = Path('docs/configuration.md').read_text(encoding='utf-8')\n"
+                "    expected = render_config_table()\n"
+                "    assert '<!-- CONFIG_TABLE -->' in docs\n"
+                "    assert '<!-- /CONFIG_TABLE -->' in docs\n"
+                "    assert expected in docs\n"
+                "    assert 'DM_RETRIES' in docs\n"
+            )
+        },
+        max_steps=18,
+        tags=["maintenance", "docs", "cli", "regression", "multi-file"],
+        allowed_changed_files=[
+            "cli_docs.py",
+            "docs/configuration.md",
+            "tests/test_public_cli_docs.py",
+        ],
+        required_changed_files=[
+            "cli_docs.py",
+            "docs/configuration.md",
+            "tests/test_public_cli_docs.py",
+        ],
+    ),
 ]
 
 BENCHMARK_SUITES = {

@@ -224,6 +224,100 @@ def test_maintenance_hidden_tests_pass_for_known_config_solution(tmp_path):
     assert result.returncode == 0
 
 
+def test_maintenance_hidden_tests_fail_on_initial_cli_docs_workspace(tmp_path):
+    task = get_maintenance_tasks(["cli_config_docs_contract"])[0]
+    prepare_workspace(task, tmp_path, include_hidden=True)
+
+    result = run_hidden_tests(task, tmp_path)
+
+    assert result.returncode != 0
+    assert "test_all_config_options_are_documented_and_sorted" in result.stdout
+
+
+def test_maintenance_hidden_tests_pass_for_known_cli_docs_solution(tmp_path):
+    task = get_maintenance_tasks(["cli_config_docs_contract"])[0]
+    prepare_workspace(task, tmp_path, include_hidden=True)
+    Path(tmp_path / "cli_docs.py").write_text(
+        (
+            "CONFIG_OPTIONS = [\n"
+            "    {\n"
+            '        "flag": "--provider",\n'
+            '        "env": "DM_PROVIDER",\n'
+            '        "default": "deepseek",\n'
+            '        "description": "LLM provider name.",\n'
+            "    },\n"
+            "    {\n"
+            '        "flag": "--timeout",\n'
+            '        "env": "DM_TIMEOUT",\n'
+            '        "default": 120,\n'
+            '        "description": "Provider request timeout in seconds.",\n'
+            "    },\n"
+            "    {\n"
+            '        "flag": "--model",\n'
+            '        "env": "DM_MODEL",\n'
+            '        "default": "deepseek-chat",\n'
+            '        "description": "Model identifier passed to the provider.",\n'
+            "    },\n"
+            "    {\n"
+            '        "flag": "--retries",\n'
+            '        "env": "DM_RETRIES",\n'
+            '        "default": 2,\n'
+            '        "description": "Retry count for transient provider failures.",\n'
+            "    },\n"
+            "]\n\n\n"
+            "def render_config_table(options=None):\n"
+            "    options = options or CONFIG_OPTIONS\n"
+            "    lines = [\n"
+            '        "| Option | Env | Default | Description |",\n'
+            '        "| --- | --- | --- | --- |",\n'
+            "    ]\n"
+            "    for item in sorted(options, key=lambda option: option['flag']):\n"
+            "        lines.append(\n"
+            "            f\"| `{item['flag']}` | `{item['env']}` | "
+            "`{item['default']}` | {item['description']} |\"\n"
+            "        )\n"
+            '    return "\\n".join(lines)\n'
+        ),
+        encoding="utf-8",
+    )
+    table = (
+        "| Option | Env | Default | Description |\n"
+        "| --- | --- | --- | --- |\n"
+        "| `--model` | `DM_MODEL` | `deepseek-chat` | Model identifier passed to the provider. |\n"
+        "| `--provider` | `DM_PROVIDER` | `deepseek` | LLM provider name. |\n"
+        "| `--retries` | `DM_RETRIES` | `2` | Retry count for transient provider failures. |\n"
+        "| `--timeout` | `DM_TIMEOUT` | `120` | Provider request timeout in seconds. |"
+    )
+    Path(tmp_path / "docs" / "configuration.md").write_text(
+        (
+            "# Configuration\n\n"
+            "DM-Code-Agent can be configured with CLI flags or environment variables.\n\n"
+            "<!-- CONFIG_TABLE -->\n"
+            f"{table}\n"
+            "<!-- /CONFIG_TABLE -->\n"
+        ),
+        encoding="utf-8",
+    )
+    Path(tmp_path / "tests" / "test_public_cli_docs.py").write_text(
+        (
+            "from pathlib import Path\n\n"
+            "from cli_docs import CONFIG_OPTIONS, render_config_table\n\n\n"
+            "def test_config_table_mentions_every_option():\n"
+            "    table = render_config_table()\n"
+            "    for item in CONFIG_OPTIONS:\n"
+            "        assert f\"`{item['flag']}`\" in table\n\n\n"
+            "def test_docs_embed_generated_table():\n"
+            "    docs = Path('docs/configuration.md').read_text(encoding='utf-8')\n"
+            "    assert render_config_table() in docs\n"
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_hidden_tests(task, tmp_path)
+
+    assert result.returncode == 0
+
+
 def test_benchmark_markdown_report_includes_run_details(tmp_path):
     report_path = tmp_path / "bench.md"
     report = {
