@@ -50,12 +50,14 @@ class SelfConsistencyResult:
     strategy: str
     selected_index: int
     candidates: List[SelfConsistencyCandidate] = field(default_factory=list)
+    uncertainty: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "strategy": self.strategy,
             "selected_index": self.selected_index,
             "candidates": [candidate.summary() for candidate in self.candidates],
+            "uncertainty": self.uncertainty,
         }
 
 
@@ -96,6 +98,7 @@ class SelfConsistencyRunner:
             strategy=self.strategy,
             selected_index=selected.run_index,
             candidates=candidates,
+            uncertainty=self._uncertainty_summary(candidates, selected),
         ).to_dict()
         return result
 
@@ -225,6 +228,48 @@ class SelfConsistencyRunner:
             key=lambda candidate: (candidate.score, candidate.passed, -candidate.run_index),
         )
 
+    def _uncertainty_summary(
+        self,
+        candidates: List[SelfConsistencyCandidate],
+        selected: SelfConsistencyCandidate,
+    ) -> Dict[str, Any]:
+        vote_distribution = _vote_distribution(candidates)
+        selected_key = _display_vote_key(selected.vote_key)
+        selected_support = vote_distribution.get(selected_key, 0)
+        support_fraction = selected_support / len(candidates) if candidates else 0.0
+        runner_up_score = max(
+            (
+                candidate.score
+                for candidate in candidates
+                if candidate.run_index != selected.run_index
+            ),
+            default=None,
+        )
+        margin = selected.score - runner_up_score if runner_up_score is not None else None
+        top_support = max(vote_distribution.values(), default=0)
+        tie_detected = sum(1 for count in vote_distribution.values() if count == top_support) > 1
+        disagreement_reason = _disagreement_reason(
+            unique_votes=len(vote_distribution),
+            tie_detected=tie_detected,
+        )
+        confidence_score = support_fraction
+        if margin is not None and margin > 0:
+            confidence_score = max(confidence_score, min(1.0, 0.5 + (margin / 2)))
+        return {
+            "strategy": self.strategy,
+            "num_candidates": len(candidates),
+            "unique_votes": len(vote_distribution),
+            "vote_distribution": vote_distribution,
+            "selected_vote_key": selected_key,
+            "selected_support": selected_support,
+            "support_fraction": support_fraction,
+            "selected_score": selected.score,
+            "margin_to_runner_up": margin,
+            "tie_detected": tie_detected,
+            "disagreement_reason": disagreement_reason,
+            "runner_confidence": _confidence_label(confidence_score),
+        }
+
 
 def _normalise_vote_key(result: Dict[str, Any]) -> str:
     answer = str(result.get("final_answer", "")).strip()
@@ -234,6 +279,35 @@ def _normalise_vote_key(result: Dict[str, Any]) -> str:
     if isinstance(metadata, dict) and metadata.get("prediction"):
         return str(metadata["prediction"]).strip()
     return ""
+
+
+def _vote_distribution(candidates: Iterable[SelfConsistencyCandidate]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for candidate in candidates:
+        key = _display_vote_key(candidate.vote_key)
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _display_vote_key(value: str) -> str:
+    text = str(value or "").strip()
+    return text if text else "<empty>"
+
+
+def _disagreement_reason(*, unique_votes: int, tie_detected: bool) -> str:
+    if tie_detected:
+        return "selection_tie"
+    if unique_votes > 1:
+        return "candidate_outputs_disagree"
+    return "none"
+
+
+def _confidence_label(score: float) -> str:
+    if score >= 0.8:
+        return "high"
+    if score >= 0.5:
+        return "medium"
+    return "low"
 
 
 def _is_success(result: Dict[str, Any]) -> bool:

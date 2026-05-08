@@ -156,6 +156,10 @@ def test_self_consistency_benchmark_uses_fresh_candidate_results(
     assert result.estimated_tokens == 500
     assert result.metadata["self_consistency"]["runs"] == 2
     assert result.metadata["self_consistency"]["selected_index"] == 2
+    uncertainty = result.metadata["self_consistency"]["uncertainty"]
+    assert uncertainty["vote_distribution"] == {"bad": 1, "good": 1}
+    assert uncertainty["selected_support"] == 1
+    assert uncertainty["runner_confidence"] == "high"
 
 
 def test_benchmark_summary_includes_wilson_confidence_intervals():

@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configuration documentation.
 - Wilson 95% confidence intervals for benchmark strict pass, hidden-test pass,
   and agent completion rates in JSON summaries and Markdown reports.
+- Self-consistency uncertainty metadata for core and benchmark multi-candidate
+  selection, including vote distribution, selected support, score margin,
+  tie detection, disagreement reason, and confidence label.
 - `dm-agent-trace diff` for offline comparison of two JSONL traces, including
   status changes, step/tool/replan deltas, action-sequence divergence,
   tool-usage deltas, plan changes, and final-answer changes.
@@ -26,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   design and hidden-test contract.
 - `docs/research-log/10-benchmark-confidence.md` documenting the interval
   design and interpretation limits.
+- `docs/research-log/11-self-consistency-uncertainty.md` documenting the
+  selection-explainability metadata.
 
 ## [2.0.0] - 2026-05-08
 

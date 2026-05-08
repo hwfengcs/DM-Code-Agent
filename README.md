@@ -52,7 +52,7 @@
 | SWE-bench Lite suite | ✅ P1 | 50 题子集，DeepSeek Tier-1 baseline：0.0% resolved / 72.0% patch-applied；含失败模式分析并已说明 host verifier 噪声 | [01](docs/research-log/01-swebench-baseline.md) |
 | Reflexion (episodic memory) | ✅ P2 impl | 失败 trial 反思 → lesson → 注入下一次 prompt；ablation 待 Tier-1 子集清理后发布 | [02](docs/research-log/02-reflexion.md) |
 | Hybrid RAG (BM25 + embeddings + RRF) | ✅ P3 impl | BM25 默认轻量可用；embedding 走 `[rag]` optional extra；`enable_rag=True` 时才把 Top-K 注入 prompt | [03](docs/research-log/03-rag.md) |
-| Critic + Self-Consistency | ✅ P4 impl | 完成前加 peer-review 门卫 + N 路独立试跑选优（majority vote / critic score / test pass） | [04](docs/research-log/04-critic-and-consistency.md) |
+| Critic + Self-Consistency | ✅ P4 impl | 完成前加 peer-review 门卫 + N 路独立试跑选优（majority vote / critic score / test pass），并记录候选分歧与置信度 | [04](docs/research-log/04-critic-and-consistency.md) |
 | Adaptive Replanning + Token economics | ✅ P5 impl | 默认关闭；错误信号映射到 replan 策略，离线统计 token / cost-per-success；真实跨模型跑分冻结 | [05](docs/research-log/05-adaptive-and-economics.md) |
 | Final write-up + release checklist | ✅ P6 docs | 发布叙事、社区分发清单和面试 bullet；不包含未运行的真实评测声明 | [06](docs/research-log/06-final-writeup.md) |
 

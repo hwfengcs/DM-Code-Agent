@@ -12,17 +12,18 @@ that improve DM-Code-Agent as an auditable code-agent baseline.
 | 2026-05-08 | Trace analyzer for failure attribution and verification gaps | `dm-agent-trace analyze`, `tests/test_tracing.py`, `docs/research-log/08-trace-analyzer.md` |
 | 2026-05-08 | Multi-file maintenance benchmark for CLI/docs/test consistency | `cli_config_docs_contract`, `tests/test_coding_benchmarks.py`, `docs/research-log/09-maintenance-realism.md` |
 | 2026-05-08 | Benchmark Wilson 95% confidence intervals | `summarize_benchmark_results`, `tests/test_coding_benchmarks.py`, `docs/research-log/10-benchmark-confidence.md` |
+| 2026-05-08 | Self-consistency uncertainty metadata | `SelfConsistencyRunner`, benchmark self-consistency metadata, `docs/research-log/11-self-consistency-uncertainty.md` |
 
 ## Highest ROI Backlog
 
 | Priority | Opportunity | Why it matters | Constraints |
 | ---: | --- | --- | --- |
-| 1 | Self-consistency uncertainty metadata | Explains whether a selected candidate was 3-0 obvious or 2-1 fragile | Do not change selected candidate semantics |
-| 2 | Adaptive replanning repeated-failure signal | Records loops where replanning returns to the same failing action | First pass should add metadata only, not change decisions |
-| 3 | Benchmark provenance and trace completeness checks | Detects task manifest drift and missing trace artifacts in reports | Hashing must canonicalize task metadata carefully |
-| 4 | Trace analyzer aggregation over benchmark trace directories | Turns per-trace health into suite-level debugging and release-review signal | Must stay separate from hidden-test pass/fail scoring |
-| 5 | Additional maintenance realism tasks: packaging/CI repair and behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI consistency | Hidden tests must stay deterministic and keyless |
-| 6 | Economics report uncertainty | Carries confidence-aware interpretation into cost-per-success comparisons | Should use existing JSON reports only |
+| 1 | Adaptive replanning repeated-failure signal | Records loops where replanning returns to the same failing action | First pass should add metadata only, not change decisions |
+| 2 | Benchmark provenance and trace completeness checks | Detects task manifest drift and missing trace artifacts in reports | Hashing must canonicalize task metadata carefully |
+| 3 | Trace analyzer aggregation over benchmark trace directories | Turns per-trace health into suite-level debugging and release-review signal | Must stay separate from hidden-test pass/fail scoring |
+| 4 | Additional maintenance realism tasks: packaging/CI repair and behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI consistency | Hidden tests must stay deterministic and keyless |
+| 5 | Economics report uncertainty | Carries confidence-aware interpretation into cost-per-success comparisons | Should use existing JSON reports only |
+| 6 | Patch fingerprint voting for self-consistency | Makes file-editing candidates comparable beyond final-answer strings | Must be deterministic and workspace-local |
 
 ## Frozen Unless Authorized
 

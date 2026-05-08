@@ -124,6 +124,8 @@ The report includes:
 - adaptive replanning metadata when enabled: signal kind, selected strategy, skipped replans,
   and replan budget exhaustion
 - RAG / critic / self-consistency configuration metadata when those default-off switches are used
+- self-consistency uncertainty metadata when multiple candidates are run: vote distribution,
+  selected support, support fraction, tie detection, margin to runner-up, and confidence label
 
 Pass-rate confidence intervals use Wilson 95% intervals. They are computed from the runs already in
 the report and do not increase the default repeat count.

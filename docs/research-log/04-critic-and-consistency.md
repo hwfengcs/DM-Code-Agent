@@ -30,6 +30,7 @@ tasks benefit from multiple noisy attempts rather than a single deterministic pa
   - `SelfConsistencyRunner`
   - `SelfConsistencyCandidate`
   - `SelfConsistencyResult`
+  - selection uncertainty metadata for support, disagreement, ties, and confidence
 - `dm_agent/core/agent.py`
   - Optional `critic` parameter
   - Completion gate before accepting `finish` / `task_complete`
@@ -47,6 +48,10 @@ can continue or replan.
 Self-consistency is kept generic: it operates on a callable that runs one candidate and returns a
 dict-shaped result. That keeps it usable for local agent runs, benchmark wrappers, or future tool
 pipelines without hard-wiring it to one particular workspace manager.
+
+Post-v2 addendum: self-consistency summaries now include an advisory `uncertainty` block. This does
+not change which candidate is selected; it records whether the selection was strongly supported or
+the candidates disagreed.
 
 ## Keyless Checks
 

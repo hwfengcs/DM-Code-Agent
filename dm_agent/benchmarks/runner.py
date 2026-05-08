@@ -533,6 +533,11 @@ def _run_self_consistency_benchmark_task(
         "runs": config.self_consistency_runs,
         "strategy": config.self_consistency_strategy,
         "selected_index": selected_index,
+        "uncertainty": _benchmark_self_consistency_uncertainty(
+            candidates,
+            selected,
+            strategy=config.self_consistency_strategy,
+        ),
         "candidates": [
             {
                 "run_index": index,
@@ -595,6 +600,87 @@ def _select_self_consistency_candidate(
         )
         return max(ranked_groups[0], key=lambda item: (item.success, -item.estimated_tokens))
     raise ValueError(f"Unsupported self-consistency strategy: {strategy}")
+
+
+def _benchmark_self_consistency_uncertainty(
+    candidates: Sequence[CodingBenchResult],
+    selected: CodingBenchResult,
+    *,
+    strategy: str,
+) -> Dict[str, Any]:
+    vote_distribution = _final_answer_distribution(candidates)
+    selected_key = _display_vote_key(selected.final_answer)
+    selected_support = vote_distribution.get(selected_key, 0)
+    support_fraction = selected_support / len(candidates) if candidates else 0.0
+    selected_score = _benchmark_candidate_score(selected, strategy)
+    runner_up_score = max(
+        (
+            _benchmark_candidate_score(candidate, strategy)
+            for candidate in candidates
+            if candidate is not selected
+        ),
+        default=None,
+    )
+    margin = selected_score - runner_up_score if runner_up_score is not None else None
+    top_support = max(vote_distribution.values(), default=0)
+    tie_detected = sum(1 for count in vote_distribution.values() if count == top_support) > 1
+    confidence_score = support_fraction
+    if margin is not None and margin > 0:
+        confidence_score = max(confidence_score, min(1.0, 0.5 + (margin / 2)))
+    return {
+        "strategy": strategy,
+        "num_candidates": len(candidates),
+        "unique_votes": len(vote_distribution),
+        "vote_distribution": vote_distribution,
+        "selected_vote_key": selected_key,
+        "selected_support": selected_support,
+        "support_fraction": support_fraction,
+        "selected_score": selected_score,
+        "margin_to_runner_up": margin,
+        "tie_detected": tie_detected,
+        "disagreement_reason": _benchmark_disagreement_reason(
+            unique_votes=len(vote_distribution),
+            tie_detected=tie_detected,
+        ),
+        "runner_confidence": _benchmark_confidence_label(confidence_score),
+    }
+
+
+def _final_answer_distribution(candidates: Sequence[CodingBenchResult]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for candidate in candidates:
+        key = _display_vote_key(candidate.final_answer)
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _display_vote_key(value: str) -> str:
+    text = str(value or "").strip()
+    return text if text else "<empty>"
+
+
+def _benchmark_candidate_score(candidate: CodingBenchResult, strategy: str) -> float:
+    if strategy == "critic_score":
+        return float(candidate.metadata.get("critic_last_score", 0.0))
+    if strategy == "test_pass":
+        return 1.0 if candidate.success else 0.0
+    return 1.0 if candidate.success else 0.0
+
+
+def _benchmark_disagreement_reason(*, unique_votes: int, tie_detected: bool) -> str:
+    if tie_detected:
+        return "selection_tie"
+    if unique_votes > 1:
+        return "candidate_outputs_disagree"
+    return "none"
+
+
+def _benchmark_confidence_label(score: float) -> str:
+    if score >= 0.8:
+        return "high"
+    if score >= 0.5:
+        return "medium"
+    return "low"
 
 
 def _score_run(
