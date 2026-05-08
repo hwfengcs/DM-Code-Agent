@@ -33,6 +33,7 @@ these entries.
 | [11](11-self-consistency-uncertainty.md) | Self-consistency uncertainty metadata | post-v2 | implementation landed |
 | [12](12-repeated-failure-signals.md) | Adaptive replanning repeated-failure signals | post-v2 | implementation landed |
 | [13](13-benchmark-provenance.md) | Benchmark manifest provenance and suite signatures | post-v2 | implementation landed |
+| [14](14-benchmark-trace-analysis.md) | Benchmark trace-analysis metadata | post-v2 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

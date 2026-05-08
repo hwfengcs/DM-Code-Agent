@@ -22,7 +22,7 @@ from dm_agent.evals.real_runner import PROVIDER_API_KEY_ENV, UsageTrackingClient
 from dm_agent.memory import HybridRetriever
 from dm_agent.skills import SkillManager
 from dm_agent.tools import default_tools
-from dm_agent.tracing import TraceWriter
+from dm_agent.tracing import TraceWriter, analyze_events, load_trace_events
 
 from .models import (
     BenchmarkRunConfig,
@@ -413,6 +413,23 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def load_trace_analysis_for_report(trace_path: Path) -> tuple[Dict[str, Any], str]:
+    """Load compact trace analysis for benchmark report metadata."""
+
+    try:
+        analysis = analyze_events(load_trace_events(trace_path))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {}, str(exc)
+    return {
+        "primary_failure_stage": analysis.get("primary_failure_stage", "none"),
+        "final_failure_stage": analysis.get("final_failure_stage", "none"),
+        "signals": analysis.get("signals", []),
+        "recovery": analysis.get("recovery", {}),
+        "verification": analysis.get("verification", {}),
+        "trace_health": analysis.get("trace_health", {}),
+    }, ""
+
+
 def _run_benchmark_task_in_workspace(
     task: BenchmarkTask,
     variant: BenchmarkVariant,
@@ -528,6 +545,12 @@ def _run_benchmark_task_in_workspace(
             "self_consistency_strategy": config.self_consistency_strategy,
         }
     )
+    if trace_path:
+        trace_analysis, trace_analysis_error = load_trace_analysis_for_report(trace_path)
+        if trace_analysis:
+            metadata["trace_analysis"] = trace_analysis
+        if trace_analysis_error:
+            metadata["trace_analysis_error"] = trace_analysis_error
 
     success, failure_reason = _score_run(task, raw_result, hidden_result, changed_files)
     steps = raw_result.get("steps", [])

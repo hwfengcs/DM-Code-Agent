@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fields for consecutive identical action/error/observation failures.
 - Benchmark report `manifest` provenance with hidden-contract task
   fingerprints, variant names, and suite signature.
+- Compact per-run `trace_analysis` metadata in coding/maintenance benchmark
+  reports when `--trace-dir` is enabled.
 - `dm-agent-trace diff` for offline comparison of two JSONL traces, including
   status changes, step/tool/replan deltas, action-sequence divergence,
   tool-usage deltas, plan changes, and final-answer changes.
@@ -39,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loop-detection signal and why it does not change replanning decisions yet.
 - `docs/research-log/13-benchmark-provenance.md` documenting task
   fingerprints and suite signatures.
+- `docs/research-log/14-benchmark-trace-analysis.md` documenting trace
+  analyzer integration in benchmark reports.
 
 ## [2.0.0] - 2026-05-08
 

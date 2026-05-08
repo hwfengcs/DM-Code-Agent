@@ -42,6 +42,10 @@ Each JSON report includes a `manifest` block with task fingerprints and a suite 
 fingerprints include hidden-test content and changed-file constraints, so reports can detect suite
 drift without exposing hidden tests.
 
+When `--trace-dir` is enabled, each run metadata also includes compact `trace_analysis` fields:
+primary/final failure stage, recovery, verification gap, and trace-health grade. This is advisory
+debugging metadata and does not affect hidden-test scoring.
+
 Opt-in adaptive replanning and local token accounting:
 
 ```bash
@@ -131,6 +135,7 @@ The report includes:
 - self-consistency uncertainty metadata when multiple candidates are run: vote distribution,
   selected support, support fraction, tie detection, margin to runner-up, and confidence label
 - manifest provenance: task ids, per-task fingerprints, variant names, and suite signature
+- compact trace analysis when `--trace-dir` is enabled
 
 Pass-rate confidence intervals use Wilson 95% intervals. They are computed from the runs already in
 the report and do not increase the default repeat count.

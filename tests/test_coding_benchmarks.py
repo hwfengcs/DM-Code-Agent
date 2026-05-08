@@ -11,12 +11,14 @@ from dm_agent.benchmarks.runner import (
     benchmark_task_fingerprint,
     build_benchmark_manifest,
     DEFAULT_BENCH_VARIANTS,
+    load_trace_analysis_for_report,
     prepare_workspace,
     run_hidden_tests,
     summarize_benchmark_results,
     write_markdown_report,
 )
 from dm_agent.benchmarks.tasks import get_benchmark_tasks, get_coding_tasks, get_maintenance_tasks
+from dm_agent.tracing import TraceWriter
 
 
 def test_coding_benchmark_manifest_is_hidden_test_based():
@@ -427,6 +429,39 @@ def test_benchmark_markdown_report_includes_run_details(tmp_path):
     assert "Cost/success" in text
     assert "`config_loader.py`" in text
     assert "`traces/config.jsonl`" in text
+
+
+def test_benchmark_trace_analysis_loader_is_keyless(tmp_path):
+    trace_path = tmp_path / "run.jsonl"
+    writer = TraceWriter(trace_path)
+    writer.start_run("finish directly")
+    writer.record_step(
+        step_number=1,
+        step=type(
+            "Step",
+            (),
+            {
+                "thought": "done",
+                "action": "finish",
+                "action_input": {"answer": "ok"},
+                "observation": "<finished>",
+            },
+        )(),
+    )
+    writer.finish_run(
+        {
+            "final_answer": "ok",
+            "metadata": {"status": "success", "duration_seconds": 0.1},
+        }
+    )
+    writer.close()
+
+    analysis, error = load_trace_analysis_for_report(trace_path)
+
+    assert error == ""
+    assert analysis["primary_failure_stage"] == "none"
+    assert analysis["verification"]["gap"] is True
+    assert analysis["trace_health"]["grade"] == "warning"
 
 
 def test_benchmark_economics_report_is_deterministic_and_keyless():
