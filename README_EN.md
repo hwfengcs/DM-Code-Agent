@@ -108,7 +108,7 @@ It is designed to be a developer tool you can audit rather than a black-box codi
 | --- | --- |
 | ReAct Agent | The model emits `thought/action/action_input`; the agent executes tools and feeds observations back |
 | Task Planner | Generates a 3-8 step plan and can replan after failures |
-| Adaptive Replanning | Default-off mapping from tool/parse/test/critic/max-step failures to recovery strategies |
+| Adaptive Replanning | Default-off mapping from tool/parse/test/critic/max-step failures to recovery strategies, with repeated-failure signals |
 | Reflexion | Default-off trial lessons can be injected into the next attempt |
 | RAG Retrieval | Default-off BM25 + optional embeddings + RRF, injected as `<retrieved_context>` |
 | Tool System | File IO, search, Python/Shell execution, tests, linting, AST, and code metrics |

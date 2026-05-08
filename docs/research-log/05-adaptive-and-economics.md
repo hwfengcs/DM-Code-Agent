@@ -37,6 +37,8 @@ cost-per-success.
   - `replan_decision` trace events
   - metadata fields: `replan_signals`, `replan_strategy_counts`, `replan_skipped_count`,
     `replan_maxed_count`
+  - post-v2 repeated-failure metadata: `last_failure_signature`,
+    `repeated_failure_count`, and `repeated_failures`
 - `dm_agent/benchmarks/economics.py`
   - offline JSON report reader
   - Markdown/JSON economics report rendering
@@ -47,6 +49,10 @@ cost-per-success.
   - `--cost-per-1k-tokens`
 
 All new behavior is opt-in. With the default flags, existing planner/replan behavior stays the same.
+
+Post-v2 addendum: adaptive replanning now records when consecutive failures repeat the same
+`action + error kind + observation` signature. The signal is metadata-only and trace-only for now;
+it does not alter the replanning decision.
 
 ## Strategy Map
 

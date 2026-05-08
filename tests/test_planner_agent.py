@@ -7,6 +7,7 @@ from dm_agent.core.planner import AdaptiveReplanPolicy
 from dm_agent.memory.retriever import RetrievalDocument, RetrievalResult
 from dm_agent.core.planner import TaskPlanner
 from dm_agent.tools.base import Tool
+from dm_agent.tracing import TraceWriter, load_trace_events
 
 
 class FakeRespondClient:
@@ -441,3 +442,66 @@ def test_react_agent_adaptive_replan_handles_parse_error():
     assert result["metadata"]["parse_error_count"] == 1
     assert result["metadata"]["replan_signals"][0]["signal"]["kind"] == "parse_error"
     assert result["metadata"]["replan_strategy"] == "repair_response_format"
+
+
+def test_react_agent_adaptive_replan_records_repeated_failures(tmp_path):
+    trace_path = tmp_path / "repeat.jsonl"
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "explode", "reason": "trigger failure"},
+                        {"step": 2, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            json.dumps({"thought": "Try once.", "action": "explode", "action_input": {}}),
+            json.dumps({"plan": [{"step": 1, "action": "explode", "reason": "retry"}]}),
+            json.dumps({"thought": "Try twice.", "action": "explode", "action_input": {}}),
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "task_complete", "reason": "recover"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "thought": "Recover.",
+                    "action": "task_complete",
+                    "action_input": {"message": "done"},
+                }
+            ),
+        ]
+    )
+    writer = TraceWriter(trace_path)
+    agent = ReactAgent(
+        client,
+        [
+            Tool("explode", "Fail", lambda arguments: (_ for _ in ()).throw(RuntimeError("boom"))),
+            Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done")),
+        ],
+        enable_planning=True,
+        enable_compression=False,
+        enable_adaptive_replanning=True,
+        max_replans=2,
+        trace_writer=writer,
+    )
+
+    result = agent.run("recover from a repeated failure")
+    writer.close()
+
+    assert result["final_answer"] == "done"
+    assert result["metadata"]["replan_count"] == 2
+    assert result["metadata"]["repeated_failure_count"] == 1
+    assert result["metadata"]["repeated_failures"][0]["action"] == "explode"
+    assert result["metadata"]["repeated_failures"][0]["kind"] == "tool_error"
+
+    decisions = [
+        event["payload"]
+        for event in load_trace_events(trace_path)
+        if event["event"] == "replan_decision"
+    ]
+    assert [decision["repeated_failure"] for decision in decisions] == [False, True]
+    assert decisions[1]["repeated_failure_details"]["action"] == "explode"

@@ -342,6 +342,9 @@ class ReactAgent:
             "replan_strategy": "",
             "replan_strategy_counts": {},
             "replan_signals": [],
+            "last_failure_signature": "",
+            "repeated_failure_count": 0,
+            "repeated_failures": [],
             "trial": trial_number,
             "max_trials": max_trials,
             "reflexion_lesson_count": len(self.reflexion_memory),
@@ -1048,7 +1051,16 @@ class ReactAgent:
         completed_steps = [step for step in plan if step.completed]
         signal = None
         decision = None
+        repeated_failure = False
+        repeated_failure_payload = None
         if self.enable_adaptive_replanning:
+            repeated_failure, repeated_failure_payload = self._record_failure_signature(
+                observation,
+                metadata,
+                action=action,
+                error_kind=error_kind,
+                step_number=step_number,
+            )
             signal = self.replan_policy.classify(
                 observation,
                 action=action,
@@ -1066,14 +1078,15 @@ class ReactAgent:
             strategy_counts[decision.strategy] = strategy_counts.get(decision.strategy, 0) + 1
             metadata.setdefault("replan_signals", []).append(decision.to_dict())
             if self.trace_writer:
-                self.trace_writer.record(
-                    "replan_decision",
-                    {
-                        "step_number": step_number,
-                        "action": action,
-                        **decision.to_dict(),
-                    },
-                )
+                payload = {
+                    "step_number": step_number,
+                    "action": action,
+                    "repeated_failure": repeated_failure,
+                    **decision.to_dict(),
+                }
+                if repeated_failure_payload:
+                    payload["repeated_failure_details"] = repeated_failure_payload
+                self.trace_writer.record("replan_decision", payload)
             if not decision.should_replan:
                 metadata["replan_skipped_count"] += 1
                 if decision.strategy == "replan_budget_exhausted":
@@ -1115,6 +1128,40 @@ class ReactAgent:
             )
             return new_plan
         return plan
+
+    def _record_failure_signature(
+        self,
+        observation: str,
+        metadata: Dict[str, Any],
+        *,
+        action: str,
+        error_kind: Optional[str],
+        step_number: Optional[int],
+    ) -> tuple[bool, Optional[Dict[str, Any]]]:
+        signature = self._failure_signature(action, error_kind, observation)
+        previous = str(metadata.get("last_failure_signature") or "")
+        metadata["last_failure_signature"] = signature
+        if not signature or signature != previous:
+            return False, None
+
+        payload = {
+            "step_number": step_number,
+            "action": action,
+            "kind": error_kind or "unknown",
+            "signature": signature,
+        }
+        metadata["repeated_failure_count"] = int(metadata.get("repeated_failure_count", 0)) + 1
+        metadata.setdefault("repeated_failures", []).append(payload)
+        return True, payload
+
+    @staticmethod
+    def _failure_signature(
+        action: str,
+        error_kind: Optional[str],
+        observation: str,
+    ) -> str:
+        compact_observation = " ".join(str(observation or "").split())[:160]
+        return "|".join([str(action or ""), str(error_kind or "unknown"), compact_observation])
 
     def reset_conversation(self) -> None:
         """重置对话历史

@@ -13,6 +13,8 @@ Private prep notes for discussing DM-Code-Agent as an AI agent engineering proje
    instead of only point estimates.
 8. Added self-consistency uncertainty metadata so multi-candidate selection reports disagreement,
    support, and confidence without changing the selected output.
+9. Added repeated-failure trace metadata for adaptive replanning, creating a deterministic hook for
+   future loop-avoidance policies.
 
 Use the caveat explicitly: current SWE-bench Lite number is Tier-1 host-verifier only and not
 leaderboard-comparable. Do not claim real score improvements for v2 mechanisms until a permitted
