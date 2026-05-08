@@ -206,21 +206,19 @@ class MCPClient:
                 # 刷新缓冲区确保消息立即发送
                 self.process.stdin.flush()
 
-                # 等待响应
                 timeout_count = 0
                 while timeout_count < 50:  # 5 秒超时
                     try:
                         response_line = self._stdout_queue.get(timeout=0.1)
                         response = json.loads(response_line)
 
-                        # 检查是否是我们的响应
                         if response.get("id") == self._message_id:
                             if "error" in response:
                                 print(f"❌ MCP 错误: {response['error']}")
                                 return None
                             return response.get("result")
 
-                        # 不是我们的响应，放回队列
+                        # Keep unrelated server notifications available for the next read.
                         self._stdout_queue.put(response_line)
                     except Empty:
                         timeout_count += 1

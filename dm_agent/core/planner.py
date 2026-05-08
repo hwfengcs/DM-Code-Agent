@@ -21,6 +21,167 @@ class PlanStep:
     result: Optional[str] = None  # 返回结果
 
 
+@dataclass(frozen=True)
+class ReplanSignal:
+    """Structured error signal used by adaptive replanning."""
+
+    kind: str
+    strategy: str
+    message: str
+    severity: str = "medium"
+    action: str = ""
+    step_number: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "strategy": self.strategy,
+            "message": self.message,
+            "severity": self.severity,
+            "action": self.action,
+            "step_number": self.step_number,
+        }
+
+
+@dataclass(frozen=True)
+class ReplanDecision:
+    """Decision made before invoking the LLM planner again."""
+
+    should_replan: bool
+    strategy: str
+    reason: str
+    signal: ReplanSignal
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "should_replan": self.should_replan,
+            "strategy": self.strategy,
+            "reason": self.reason,
+            "signal": self.signal.to_dict(),
+        }
+
+
+class AdaptiveReplanPolicy:
+    """Deterministic policy that maps failure observations to replan strategies."""
+
+    STRATEGIES = {
+        "tool_error": "simplify_plan_skip_failed_tool",
+        "unknown_tool": "select_available_tool",
+        "parse_error": "repair_response_format",
+        "invalid_arguments": "repair_tool_arguments",
+        "test_failure": "inject_test_failure_context",
+        "critic_rejected": "address_critic_feedback",
+        "max_steps": "coarsen_plan_after_budget",
+        "unknown": "continue_with_failure_context",
+    }
+
+    def classify(
+        self,
+        observation: str,
+        *,
+        action: str = "",
+        step_number: Optional[int] = None,
+        error_kind: Optional[str] = None,
+    ) -> ReplanSignal:
+        text = str(observation or "")
+        lowered = text.lower()
+        kind = error_kind or "unknown"
+
+        if kind == "unknown":
+            if "agent response parse failed" in lowered or "valid json" in lowered:
+                kind = "parse_error"
+            elif "unknown tool" in lowered:
+                kind = "unknown_tool"
+            elif "tool arguments" in lowered:
+                kind = "invalid_arguments"
+            elif "critic rejected" in lowered or "critic review failed" in lowered:
+                kind = "critic_rejected"
+            elif "tool execution failed" in lowered or "traceback" in lowered or "error" in text:
+                kind = "tool_error"
+            elif (
+                "pytest" in lowered
+                or "assertionerror" in lowered
+                or "returncode: 1" in lowered
+                or "failed" in lowered
+            ):
+                kind = "test_failure"
+            elif "max steps" in lowered or "step limit" in lowered:
+                kind = "max_steps"
+
+        strategy = self.STRATEGIES.get(kind, self.STRATEGIES["unknown"])
+        severity = "low" if kind == "unknown" else "medium"
+        if kind in {"tool_error", "test_failure", "critic_rejected", "max_steps"}:
+            severity = "high"
+        return ReplanSignal(
+            kind=kind,
+            strategy=strategy,
+            message=_compact_message(text),
+            severity=severity,
+            action=action,
+            step_number=step_number,
+        )
+
+    def decide(
+        self,
+        signal: ReplanSignal,
+        *,
+        replan_count: int,
+        max_replans: int,
+    ) -> ReplanDecision:
+        if max_replans >= 0 and replan_count >= max_replans:
+            return ReplanDecision(
+                should_replan=False,
+                strategy="replan_budget_exhausted",
+                reason=f"Replan budget exhausted ({replan_count}/{max_replans}).",
+                signal=signal,
+            )
+        if signal.kind == "unknown" and signal.severity == "low":
+            return ReplanDecision(
+                should_replan=False,
+                strategy="skip_low_confidence_signal",
+                reason="Failure signal is too weak to justify another planning call.",
+                signal=signal,
+            )
+        return ReplanDecision(
+            should_replan=True,
+            strategy=signal.strategy,
+            reason=f"Adaptive replanning selected strategy: {signal.strategy}.",
+            signal=signal,
+        )
+
+
+def _compact_message(text: str, *, limit: int = 500) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
+def normalize_replan_signal(
+    error_signal: Any, fallback_error: Optional[str] = None
+) -> ReplanSignal:
+    """Coerce caller-provided error metadata into a ReplanSignal."""
+
+    if isinstance(error_signal, ReplanSignal):
+        return error_signal
+    if isinstance(error_signal, dict):
+        kind = str(error_signal.get("kind") or "unknown")
+        strategy = str(
+            error_signal.get("strategy")
+            or AdaptiveReplanPolicy.STRATEGIES.get(kind, AdaptiveReplanPolicy.STRATEGIES["unknown"])
+        )
+        return ReplanSignal(
+            kind=kind,
+            strategy=strategy,
+            message=_compact_message(str(error_signal.get("message") or fallback_error or "")),
+            severity=str(error_signal.get("severity") or "medium"),
+            action=str(error_signal.get("action") or ""),
+            step_number=error_signal.get("step_number"),
+        )
+    policy = AdaptiveReplanPolicy()
+    return policy.classify(str(error_signal or fallback_error or ""))
+
+
 class TaskPlanner:
     """任务规划器：在执行前生成全局计划"""
 
@@ -220,7 +381,12 @@ class TaskPlanner:
         return progress_text
 
     def replan(
-        self, task: str, completed_steps: List[PlanStep], error: Optional[str] = None
+        self,
+        task: str,
+        completed_steps: List[PlanStep],
+        error: Optional[str] = None,
+        *,
+        error_signal: Any = None,
     ) -> List[PlanStep]:
         """
         遇到问题时重新规划
@@ -250,6 +416,8 @@ class TaskPlanner:
         )
 
         error_info = f"\n{error}" if error else ""
+        signal = normalize_replan_signal(error_signal, fallback_error=error)
+        strategy_guidance = _strategy_guidance(signal)
 
         prompt = f"""任务执行遇到问题，需要重新规划。
 
@@ -259,6 +427,15 @@ class TaskPlanner:
 {completed_summary}
 错误信息：
 {error_info}
+
+错误信号：
+- kind: {signal.kind}
+- strategy: {signal.strategy}
+- severity: {signal.severity}
+- action: {signal.action or "unknown"}
+
+策略提示：
+{strategy_guidance}
 
 请生成新的执行计划，继续完成剩余任务。返回 JSON 格式：
 {{
@@ -319,3 +496,40 @@ class TaskPlanner:
             False
         """
         self.current_plan = []
+
+
+def _strategy_guidance(signal: ReplanSignal) -> str:
+    guidance = {
+        "tool_error": (
+            "Simplify the next plan, avoid repeating the failed tool call blindly, "
+            "and inspect the concrete error before retrying."
+        ),
+        "unknown_tool": (
+            "Use only tools listed in the available tool set; replace unavailable tools "
+            "with the closest supported inspection or edit action."
+        ),
+        "parse_error": (
+            "Add an explicit response-format checkpoint. The next agent step must return "
+            "a strict JSON object with thought/action/action_input."
+        ),
+        "invalid_arguments": (
+            "Repair the tool argument shape before using the tool again; action_input must "
+            "match the target tool schema."
+        ),
+        "test_failure": (
+            "Inject the failing test output into the next plan and prioritize a small "
+            "behavioral fix over broad refactors."
+        ),
+        "critic_rejected": (
+            "Treat the critic feedback as a review blocker and add a concrete verification "
+            "step before finishing again."
+        ),
+        "max_steps": (
+            "Coarsen the plan: merge low-value inspection steps and move directly toward "
+            "the smallest verifiable fix."
+        ),
+    }
+    return guidance.get(
+        signal.kind,
+        "Continue with the failure context, but keep the new plan short and directly verifiable.",
+    )

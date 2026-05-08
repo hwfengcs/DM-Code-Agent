@@ -12,7 +12,7 @@ class Tool:
 
     name: str  # 工具名称
     description: str  # 工具描述
-    runner: Callable[[Dict[str, Any]], str]  # 工具执行函数(名称能否改为function?)
+    runner: Callable[[Dict[str, Any]], str]  # 工具执行函数
 
     def execute(self, arguments: Dict[str, Any]) -> str:
         """
@@ -39,7 +39,6 @@ def _require_str(arguments: Dict[str, Any], key: str) -> str:
             - 参数值不是字符串类型
             - 参数值为空字符串
     """
-    # 我猜,arguments在之前已经有非空判断了
     if not isinstance(arguments, dict):
         raise ValueError("参数必须是一个字典")
 

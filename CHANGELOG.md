@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- P5 Adaptive Replanning + Token Economics:
+  `AdaptiveReplanPolicy`, `ReplanSignal`, and `ReplanDecision` classify
+  `tool_error`, `parse_error`, `test_failure`, `critic_rejected`, and
+  `max_steps` into deterministic replan strategies.
+- `ReactAgent(enable_adaptive_replanning=True, max_replans=N)` opt-in strategy
+  metadata plus `replan_decision` trace events. Existing replan behavior remains
+  unchanged by default.
+- `dm_agent/benchmarks/economics.py` and the `dm-agent-economics` CLI for
+  offline pass-rate / token / cost-per-success reports from existing benchmark
+  JSON files.
+- Benchmark CLI fields: `--enable-adaptive-replanning`, `--max-replans`, and
+  `--cost-per-1k-tokens`.
+- `bench_reports/economics.json` and `bench_reports/economics.md` generated
+  from the frozen P1 Tier-1 baseline without running new live evaluations.
+- `docs/research-log/05-adaptive-and-economics.md` as the Phase 5 log.
 - P4 Critic + Self-Consistency core:
   `dm_agent/core/critic.py` with `CriticAgent` / `CriticReview`, plus
   `dm_agent/core/self_consistency.py` with `SelfConsistencyRunner` and
@@ -36,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_reflexion.py` covering the keyless Reflexion flow.
 
 ### Docs
+- Added `docs/research-log/05-adaptive-and-economics.md` as the Phase 5
+  implementation log and documented that real cross-model SWE-bench economics
+  remain frozen until an allowed live evaluation.
 - Added `docs/research-log/04-critic-and-consistency.md` as the Phase 4 implementation log.
 - Added `docs/research-log/03-rag.md` as the Phase 3 implementation log.
 - Added `docs/research-log/02-reflexion.md` as the Phase 2 implementation log.

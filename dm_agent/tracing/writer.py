@@ -168,7 +168,14 @@ class TraceWriter:
             payload["raw"] = getattr(step, "raw", "")
         self.record("step", payload)
 
-    def record_replan(self, *, reason: str, steps: Iterable[Any]) -> None:
+    def record_replan(
+        self,
+        *,
+        reason: str,
+        steps: Iterable[Any],
+        strategy: str = "",
+        signal: Optional[Dict[str, Any]] = None,
+    ) -> None:
         plan = []
         for step in steps:
             plan.append(
@@ -178,7 +185,12 @@ class TraceWriter:
                     "reason": getattr(step, "reason", None),
                 }
             )
-        self.record("replan", {"reason": reason, "steps": plan})
+        payload: Dict[str, Any] = {"reason": reason, "steps": plan}
+        if strategy:
+            payload["strategy"] = strategy
+        if signal:
+            payload["signal"] = signal
+        self.record("replan", payload)
 
     def record_critic_review(self, *, step_number: int, review: Dict[str, Any]) -> None:
         payload = {"step_number": step_number}

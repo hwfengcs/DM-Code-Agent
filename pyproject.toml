@@ -71,6 +71,7 @@ dm-agent-eval = "dm_agent.evals.cli:main"
 dm-agent-bench = "dm_agent.benchmarks.cli:main"
 dm-agent-trace = "dm_agent.tracing.cli:main"
 dm-agent-index = "dm_agent.memory.index_cli:main"
+dm-agent-economics = "dm_agent.benchmarks.economics:main"
 
 [tool.setuptools]
 py-modules = ["main"]

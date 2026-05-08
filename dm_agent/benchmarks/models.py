@@ -67,6 +67,9 @@ class BenchmarkRunConfig:
     quiet: bool = True
     enable_reflexion: bool = False
     max_trials: int = 1
+    enable_adaptive_replanning: bool = False
+    max_replans: int = -1
+    cost_per_1k_tokens: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -102,6 +105,7 @@ class CodingBenchResult:
     prompt_chars: int
     completion_chars: int
     estimated_tokens: int
+    estimated_cost_usd: float
     request_count: int
     metadata: Dict[str, Any]
     hidden_test: CommandResult
@@ -123,6 +127,7 @@ class CodingBenchResult:
             "prompt_chars": self.prompt_chars,
             "completion_chars": self.completion_chars,
             "estimated_tokens": self.estimated_tokens,
+            "estimated_cost_usd": self.estimated_cost_usd,
             "request_count": self.request_count,
             "metadata": self.metadata,
             "hidden_test": self.hidden_test.to_dict(),

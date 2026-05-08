@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from dm_agent.benchmarks.cli import main as bench_main
+from dm_agent.benchmarks.economics import build_economics_report, render_markdown
 from dm_agent.benchmarks.runner import prepare_workspace, run_hidden_tests, write_markdown_report
 from dm_agent.benchmarks.tasks import get_benchmark_tasks, get_coding_tasks, get_maintenance_tasks
 
@@ -147,5 +148,36 @@ def test_benchmark_markdown_report_includes_run_details(tmp_path):
 
     text = report_path.read_text(encoding="utf-8")
     assert "Run Details" in text
+    assert "Cost/success" in text
     assert "`config_loader.py`" in text
     assert "`traces/config.jsonl`" in text
+
+
+def test_benchmark_economics_report_is_deterministic_and_keyless():
+    report = {
+        "suite": "maintenance",
+        "provider": "scripted",
+        "model": "fake",
+        "token_economics": {"cost_per_1k_tokens": 0.002},
+        "summary": {
+            "total_runs": 2,
+            "overall_pass_rate": 0.5,
+            "total_estimated_tokens": 3000,
+        },
+        "results": [
+            {"success": True, "estimated_tokens": 1000},
+            {"success": False, "estimated_tokens": 2000},
+        ],
+    }
+
+    economics = build_economics_report([report], labels=["scripted-smoke"])
+
+    entry = economics["entries"][0]
+    assert entry["label"] == "scripted-smoke"
+    assert entry["successes"] == 1
+    assert entry["total_estimated_tokens"] == 3000
+    assert entry["estimated_cost_usd"] == 0.006
+    assert entry["cost_per_success_usd"] == 0.006
+    markdown = render_markdown(economics)
+    assert "Benchmark Token Economics" in markdown
+    assert "scripted-smoke" in markdown

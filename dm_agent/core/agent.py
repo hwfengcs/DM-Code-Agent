@@ -14,7 +14,7 @@ from ..prompts import build_code_agent_prompt
 from ..memory.context_compressor import ContextCompressor
 from ..memory.retriever import DEFAULT_TOP_K, format_retrieved_context
 from .critic import CriticAgent, CriticReview
-from .planner import TaskPlanner, PlanStep
+from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
 
 
@@ -70,6 +70,9 @@ class ReactAgent:
         enable_rag: bool = False,
         retriever: Optional[Any] = None,
         rag_top_k: int = DEFAULT_TOP_K,
+        enable_adaptive_replanning: bool = False,
+        replan_policy: Optional[AdaptiveReplanPolicy] = None,
+        max_replans: int = -1,
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -138,6 +141,9 @@ class ReactAgent:
         self.enable_rag = enable_rag
         self.retriever = retriever
         self.rag_top_k = rag_top_k
+        self.enable_adaptive_replanning = enable_adaptive_replanning
+        self.replan_policy = replan_policy or AdaptiveReplanPolicy()
+        self.max_replans = max_replans
         if self.enable_rag and self.retriever is None:
             raise ValueError("enable_rag=True requires a retriever instance.")
 
@@ -328,6 +334,14 @@ class ReactAgent:
             "critic_reject_count": 0,
             "rag_enabled": self.enable_rag,
             "rag_retrieval_count": 0,
+            "adaptive_replanning_enabled": self.enable_adaptive_replanning,
+            "max_replans": self.max_replans,
+            "replan_decision_count": 0,
+            "replan_skipped_count": 0,
+            "replan_maxed_count": 0,
+            "replan_strategy": "",
+            "replan_strategy_counts": {},
+            "replan_signals": [],
             "trial": trial_number,
             "max_trials": max_trials,
             "reflexion_lesson_count": len(self.reflexion_memory),
@@ -345,6 +359,8 @@ class ReactAgent:
                     "critic_enabled": self.critic is not None,
                     "rag_enabled": self.enable_rag,
                     "rag_top_k": self.rag_top_k,
+                    "adaptive_replanning_enabled": self.enable_adaptive_replanning,
+                    "max_replans": self.max_replans,
                     "trial": trial_number,
                     "max_trials": max_trials,
                     "reflexion_lesson_count": len(self.reflexion_memory),
@@ -476,6 +492,16 @@ class ReactAgent:
                     self.step_callback(step_num, step)
                 if self.trace_writer:
                     self.trace_writer.record_step(step_number=step_num, step=step)
+                if plan and self.planner and self.enable_adaptive_replanning:
+                    plan = self._try_replan(
+                        task,
+                        plan,
+                        observation,
+                        metadata,
+                        action="error",
+                        step_number=step_num,
+                        error_kind="parse_error",
+                    )
                 continue
             if self._last_parse_repaired:
                 metadata["parse_repair_count"] += 1
@@ -525,7 +551,15 @@ class ReactAgent:
                 if accepted:
                     return finish_result(final)
                 if plan and self.planner:
-                    plan = self._try_replan(task, plan, observation, metadata)
+                    plan = self._try_replan(
+                        task,
+                        plan,
+                        observation,
+                        metadata,
+                        action=action,
+                        step_number=step_num,
+                        error_kind="critic_rejected",
+                    )
                 continue
 
             # 检查工具
@@ -560,8 +594,18 @@ class ReactAgent:
                     )
                     self.trace_writer.record_step(step_number=step_num, step=step)
                 if plan and self.planner:
-                    plan = self._try_replan(task, plan, observation, metadata)
+                    plan = self._try_replan(
+                        task,
+                        plan,
+                        observation,
+                        metadata,
+                        action=action,
+                        step_number=step_num,
+                        error_kind="unknown_tool",
+                    )
                 continue
+
+            error_kind = ""
 
             # task_complete 工具可以接受字符串或空参数
             if action == "task_complete":
@@ -578,6 +622,7 @@ class ReactAgent:
                     metadata["tool_error_count"] += 1
                     metadata["failure_reason"] = str(exc)
                     observation = f"Tool execution failed: {exc}"
+                    error_kind = "tool_error"
                 else:
                     accepted, observation, _review = self._review_completion(
                         task=task,
@@ -587,14 +632,18 @@ class ReactAgent:
                         step_num=step_num,
                         action=action,
                     )
+                    if not accepted:
+                        error_kind = "critic_rejected"
             elif action_input is None:
                 metadata["argument_error_count"] += 1
                 metadata["failure_reason"] = "Tool arguments missing"
                 observation = "Tool arguments missing: action_input is null."
+                error_kind = "invalid_arguments"
             elif not isinstance(action_input, dict):
                 metadata["argument_error_count"] += 1
                 metadata["failure_reason"] = "Tool arguments must be a JSON object"
                 observation = "Tool arguments must be a JSON object."
+                error_kind = "invalid_arguments"
             else:
                 try:
                     observation = tool.execute(action_input)
@@ -602,6 +651,7 @@ class ReactAgent:
                     metadata["tool_error_count"] += 1
                     metadata["failure_reason"] = str(exc)
                     observation = f"Tool execution failed: {exc}"
+                    error_kind = "tool_error"
 
             step = Step(
                 thought=thought,
@@ -639,7 +689,15 @@ class ReactAgent:
                 self.trace_writer.record_step(step_number=step_num, step=step)
 
             if self._is_failure_observation(observation) and plan and self.planner:
-                plan = self._try_replan(task, plan, observation, metadata)
+                plan = self._try_replan(
+                    task,
+                    plan,
+                    observation,
+                    metadata,
+                    action=action,
+                    step_number=step_num,
+                    error_kind=error_kind or None,
+                )
 
             # 检查是否调用了 task_complete 工具
             if (
@@ -982,11 +1040,56 @@ class ReactAgent:
         plan: List[PlanStep],
         observation: str,
         metadata: Dict[str, Any],
+        *,
+        action: str = "",
+        step_number: Optional[int] = None,
+        error_kind: Optional[str] = None,
     ) -> List[PlanStep]:
         completed_steps = [step for step in plan if step.completed]
+        signal = None
+        decision = None
+        if self.enable_adaptive_replanning:
+            signal = self.replan_policy.classify(
+                observation,
+                action=action,
+                step_number=step_number,
+                error_kind=error_kind,
+            )
+            decision = self.replan_policy.decide(
+                signal,
+                replan_count=int(metadata.get("replan_count", 0)),
+                max_replans=self.max_replans,
+            )
+            metadata["replan_decision_count"] += 1
+            metadata["replan_strategy"] = decision.strategy
+            strategy_counts = metadata.setdefault("replan_strategy_counts", {})
+            strategy_counts[decision.strategy] = strategy_counts.get(decision.strategy, 0) + 1
+            metadata.setdefault("replan_signals", []).append(decision.to_dict())
+            if self.trace_writer:
+                self.trace_writer.record(
+                    "replan_decision",
+                    {
+                        "step_number": step_number,
+                        "action": action,
+                        **decision.to_dict(),
+                    },
+                )
+            if not decision.should_replan:
+                metadata["replan_skipped_count"] += 1
+                if decision.strategy == "replan_budget_exhausted":
+                    metadata["replan_maxed_count"] += 1
+                return plan
+
         try:
             new_plan = (
-                self.planner.replan(task, completed_steps, observation) if self.planner else []
+                self.planner.replan(
+                    task,
+                    completed_steps,
+                    observation,
+                    error_signal=signal,
+                )
+                if self.planner
+                else []
             )
         except Exception as exc:  # noqa: BLE001
             metadata["failure_reason"] = f"Replan failed: {exc}"
@@ -995,7 +1098,12 @@ class ReactAgent:
         if new_plan:
             metadata["replan_count"] += 1
             if self.trace_writer:
-                self.trace_writer.record_replan(reason=observation, steps=new_plan)
+                self.trace_writer.record_replan(
+                    reason=observation,
+                    steps=new_plan,
+                    strategy=decision.strategy if decision else "",
+                    signal=signal.to_dict() if signal else None,
+                )
             self.conversation_history.append(
                 {
                     "role": "user",

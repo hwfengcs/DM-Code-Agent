@@ -107,6 +107,13 @@ def run_benchmark_suite(
             "enabled": config.enable_reflexion,
             "max_trials": config.max_trials,
         },
+        "adaptive_replanning": {
+            "enabled": config.enable_adaptive_replanning,
+            "max_replans": config.max_replans,
+        },
+        "token_economics": {
+            "cost_per_1k_tokens": config.cost_per_1k_tokens,
+        },
         "summary": summarize_benchmark_results(results),
         "results": [result.to_dict() for result in results],
         "tasks": [task.to_public_dict() for task in selected_tasks],
@@ -218,6 +225,10 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
             "avg_tool_calls": _mean(result.tool_calls for result in group),
             "avg_changed_files": _mean(len(result.changed_files) for result in group),
             "avg_estimated_tokens": _mean(result.estimated_tokens for result in group),
+            "total_estimated_tokens": sum(result.estimated_tokens for result in group),
+            "tokens_per_success": _tokens_per_success(group),
+            "estimated_cost_usd": sum(result.estimated_cost_usd for result in group),
+            "cost_per_success_usd": _cost_per_success(group),
             "total_requests": sum(result.request_count for result in group),
             "avg_duration_seconds": _mean(result.duration_seconds for result in group),
             "hidden_test_passes": len(hidden_passes),
@@ -234,6 +245,10 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
         "overall_hidden_test_pass_rate": len(hidden_passes) / len(results) if results else 0.0,
         "overall_agent_completion_rate": len(completed) / len(results) if results else 0.0,
         "avg_trials": _mean(result.metadata.get("trial_count", 1) for result in results),
+        "total_estimated_tokens": sum(result.estimated_tokens for result in results),
+        "tokens_per_success": _tokens_per_success(results),
+        "estimated_cost_usd": sum(result.estimated_cost_usd for result in results),
+        "cost_per_success_usd": _cost_per_success(results),
         "variants": variants,
     }
 
@@ -256,16 +271,22 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
         "",
         "## Variant Summary",
         "",
-        "| Variant | Strict pass | Hidden pass | Agent done | Avg steps | Avg tools | Avg changed | Avg tokens | Requests |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Variant | Strict pass | Hidden pass | Agent done | Avg steps | Avg tools | Avg changed | Avg tokens | Cost | Cost/success | Requests |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
     for name, data in summary["variants"].items():
+        data = {
+            "estimated_cost_usd": 0.0,
+            "cost_per_success_usd": 0.0,
+            **data,
+        }
         lines.append(
             "| {name} | {pass_rate:.1%} ({successes}/{tasks}) | "
             "{hidden_test_pass_rate:.1%} | {agent_completion_rate:.1%} | "
             "{avg_steps:.2f} | {avg_tool_calls:.2f} | {avg_changed_files:.2f} | "
             "{avg_estimated_tokens:.0f} | "
+            "${estimated_cost_usd:.4f} | ${cost_per_success_usd:.4f} | "
             "{total_requests} |".format(name=name, **data)
         )
 
@@ -356,6 +377,8 @@ def _run_benchmark_task_in_workspace(
         trace_writer=trace_writer,
         enable_reflexion=config.enable_reflexion,
         max_trials=config.max_trials,
+        enable_adaptive_replanning=config.enable_adaptive_replanning,
+        max_replans=config.max_replans,
     )
 
     with chdir(workspace):
@@ -404,6 +427,9 @@ def _run_benchmark_task_in_workspace(
             "trace_path": str(trace_path) if trace_path else "",
             "reflexion_enabled": config.enable_reflexion,
             "max_trials": config.max_trials,
+            "adaptive_replanning_enabled": config.enable_adaptive_replanning,
+            "max_replans": config.max_replans,
+            "cost_per_1k_tokens": config.cost_per_1k_tokens,
         }
     )
 
@@ -425,6 +451,7 @@ def _run_benchmark_task_in_workspace(
         prompt_chars=client.usage.prompt_chars,
         completion_chars=client.usage.completion_chars,
         estimated_tokens=client.usage.estimated_tokens,
+        estimated_cost_usd=_estimated_cost(client.usage.estimated_tokens, config),
         request_count=client.usage.request_count,
         metadata=metadata,
         hidden_test=hidden_result,
@@ -526,3 +553,23 @@ def _tail(text: str, *, limit: int = 4000) -> str:
 def _mean(values: Iterable[float]) -> float:
     data = list(values)
     return statistics.fmean(data) if data else 0.0
+
+
+def _estimated_cost(estimated_tokens: int, config: BenchmarkRunConfig) -> float:
+    if config.cost_per_1k_tokens <= 0:
+        return 0.0
+    return (estimated_tokens / 1000.0) * config.cost_per_1k_tokens
+
+
+def _tokens_per_success(results: Sequence[CodingBenchResult]) -> float:
+    successes = sum(1 for result in results if result.success)
+    if successes <= 0:
+        return 0.0
+    return sum(result.estimated_tokens for result in results) / successes
+
+
+def _cost_per_success(results: Sequence[CodingBenchResult]) -> float:
+    successes = sum(1 for result in results if result.success)
+    if successes <= 0:
+        return 0.0
+    return sum(result.estimated_cost_usd for result in results) / successes

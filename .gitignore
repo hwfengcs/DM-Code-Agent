@@ -38,6 +38,7 @@ virtualenv/
 test_output/
 eval_reports/
 bench_reports/
+.dm-agent-cache/
 test_*.txt
 demo*.txt
 random*.txt

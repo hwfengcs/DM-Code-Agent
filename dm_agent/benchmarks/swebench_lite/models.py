@@ -206,6 +206,9 @@ class SWEBenchRunConfig:
     quiet: bool = True
     enable_reflexion: bool = False
     max_trials: int = 1
+    enable_adaptive_replanning: bool = False
+    max_replans: int = -1
+    cost_per_1k_tokens: float = 0.0
 
 
 class FailureCategory(str, Enum):

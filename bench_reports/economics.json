@@ -1,0 +1,28 @@
+{
+  "mode": "benchmark_economics",
+  "summary": {
+    "reports": 1,
+    "best_cost_per_success": "",
+    "best_pass_rate": 0.0
+  },
+  "entries": [
+    {
+      "label": "swebench-tier1-baseline",
+      "suite": "swebench_lite",
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "total_runs": 50,
+      "successes": 0,
+      "pass_rate": 0.0,
+      "total_estimated_tokens": 24194287,
+      "cost_per_1k_tokens": 0.00027,
+      "estimated_cost_usd": 6.5324574900000005,
+      "cost_per_success_usd": null,
+      "avg_tokens_per_run": 483885.74,
+      "tokens_per_success": null
+    }
+  ],
+  "ranking": [
+    "swebench-tier1-baseline"
+  ]
+}

@@ -72,6 +72,23 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         default=3,
         help="Maximum trials when --enable-reflexion is set.",
     )
+    parser.add_argument(
+        "--enable-adaptive-replanning",
+        action="store_true",
+        help="Enable deterministic error-signal-aware replanning. Default is off.",
+    )
+    parser.add_argument(
+        "--max-replans",
+        type=int,
+        default=-1,
+        help="Maximum replans when adaptive replanning is enabled; -1 means unlimited.",
+    )
+    parser.add_argument(
+        "--cost-per-1k-tokens",
+        type=float,
+        default=0.0,
+        help="Estimated provider cost per 1K tokens for local economics reports.",
+    )
     parser.add_argument("--test-timeout", type=int, default=30, help="Hidden test timeout.")
     parser.add_argument(
         "--keep-workspaces",
@@ -236,6 +253,9 @@ def _run_swebench_lite(args: argparse.Namespace) -> int:
     if args.max_trials < 1:
         print("--max-trials must be at least 1.", file=sys.stderr)
         return 2
+    if args.max_replans < -1:
+        print("--max-replans must be -1 or greater.", file=sys.stderr)
+        return 2
 
     config = SWEBenchRunConfig(
         provider=args.provider,
@@ -252,6 +272,9 @@ def _run_swebench_lite(args: argparse.Namespace) -> int:
         quiet=not args.show_agent_output,
         enable_reflexion=args.enable_reflexion,
         max_trials=args.max_trials,
+        enable_adaptive_replanning=args.enable_adaptive_replanning,
+        max_replans=args.max_replans,
+        cost_per_1k_tokens=args.cost_per_1k_tokens,
     )
 
     resume_results: List[Any] = []
@@ -308,6 +331,9 @@ def main(argv: Any = None) -> int:
     if args.max_trials < 1:
         print("--max-trials must be at least 1.", file=sys.stderr)
         return 2
+    if args.max_replans < -1:
+        print("--max-replans must be -1 or greater.", file=sys.stderr)
+        return 2
 
     if args.suite == SWEBENCH_LITE_SUITE:
         if args.list:
@@ -356,6 +382,9 @@ def main(argv: Any = None) -> int:
                 quiet=not args.show_agent_output,
                 enable_reflexion=args.enable_reflexion,
                 max_trials=args.max_trials,
+                enable_adaptive_replanning=args.enable_adaptive_replanning,
+                max_replans=args.max_replans,
+                cost_per_1k_tokens=args.cost_per_1k_tokens,
             ),
         )
     except ValueError as exc:

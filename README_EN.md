@@ -65,7 +65,7 @@
 | Reflexion (episodic memory) | ✅ P2 impl | Failed trial → lesson → next-trial prompt; ablation waits for a cleaner Tier-1 slice | [02](docs/research-log/02-reflexion.md) |
 | Hybrid RAG (BM25 + embeddings + RRF) | ✅ P3 impl | Lightweight BM25 by default; embeddings live behind the `[rag]` extra; Top-K prompt injection only with `enable_rag=True` | [03](docs/research-log/03-rag.md) |
 | Critic + Self-Consistency | ✅ P4 impl | Peer review gate before acceptance + N-way independent selection (majority vote / critic score / test pass) | [04](docs/research-log/04-critic-and-consistency.md) |
-| Adaptive Replanning + Token economics | 🔄 P5 | Error-type-aware replan strategy, cross-model cost-per-success table | 05 (soon) |
+| Adaptive Replanning + Token economics | ✅ P5 impl | Default-off error-signal-to-strategy replanning plus offline token / cost-per-success reports; real cross-model runs are frozen | [05](docs/research-log/05-adaptive-and-economics.md) |
 
 ## Research Log
 
@@ -79,6 +79,7 @@ Published:
 - [02 — Reflexion: episodic memory across trials](docs/research-log/02-reflexion.md)
 - [03 — RAG-based context retrieval: BM25 first, embeddings optional](docs/research-log/03-rag.md)
 - [04 — Critic and self-consistency: peer review before acceptance](docs/research-log/04-critic-and-consistency.md)
+- [05 — Adaptive replanning and token economics](docs/research-log/05-adaptive-and-economics.md)
 
 ---
 
@@ -102,6 +103,7 @@ It is designed to be a developer tool you can audit rather than a black-box codi
 | --- | --- |
 | ReAct Agent | The model emits `thought/action/action_input`; the agent executes tools and feeds observations back |
 | Task Planner | Generates a 3-8 step plan and can replan after failures |
+| Adaptive Replanning | Default-off mapping from tool/parse/test/critic/max-step failures to recovery strategies |
 | Reflexion | Default-off trial lessons can be injected into the next attempt |
 | RAG Retrieval | Default-off BM25 + optional embeddings + RRF, injected as `<retrieved_context>` |
 | Tool System | File IO, search, Python/Shell execution, tests, linting, AST, and code metrics |
@@ -179,6 +181,18 @@ dm-agent-bench --suite maintenance --provider deepseek --task config_precedence 
 Reports include hidden-test pass rate, agent completion rate, average steps, tool calls,
 estimated tokens, changed files, and changed-file constraint violations. See
 [docs/benchmarks.md](docs/benchmarks.md).
+
+Generate an offline token economics report without model calls or network access:
+
+```bash
+dm-agent-economics bench_reports/swebench_lite_baseline.json \
+  --label swebench-tier1-baseline \
+  --cost-per-1k-tokens 0.00027 \
+  --output-json bench_reports/economics.json \
+  --output-md bench_reports/economics.md
+```
+
+`--cost-per-1k-tokens` is an explicit local accounting input, not a live pricing lookup.
 
 ## RAG Context Retrieval
 

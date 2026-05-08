@@ -3,6 +3,7 @@ import json
 import pytest
 
 from dm_agent.core.agent import ReactAgent
+from dm_agent.core.planner import AdaptiveReplanPolicy
 from dm_agent.memory.retriever import RetrievalDocument, RetrievalResult
 from dm_agent.core.planner import TaskPlanner
 from dm_agent.tools.base import Tool
@@ -281,3 +282,162 @@ def test_react_agent_replans_after_tool_failure():
     assert result["final_answer"] == "recovered"
     assert result["metadata"]["tool_error_count"] == 1
     assert result["metadata"]["replan_count"] == 1
+
+
+def test_adaptive_replan_policy_classifies_failure_signals():
+    policy = AdaptiveReplanPolicy()
+
+    tool_signal = policy.classify("Tool execution failed: boom", action="run_shell")
+    parse_signal = policy.classify("Agent response parse failed: Response is not valid JSON")
+    test_signal = policy.classify("pytest returncode: 1\nAssertionError")
+
+    assert tool_signal.kind == "tool_error"
+    assert tool_signal.strategy == "simplify_plan_skip_failed_tool"
+    assert parse_signal.kind == "parse_error"
+    assert parse_signal.strategy == "repair_response_format"
+    assert test_signal.kind == "test_failure"
+    assert test_signal.strategy == "inject_test_failure_context"
+
+
+def test_react_agent_adaptive_replan_records_strategy_metadata():
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "explode", "reason": "trigger failure"},
+                        {"step": 2, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "thought": "Try the failing tool.",
+                    "action": "explode",
+                    "action_input": {},
+                }
+            ),
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "task_complete", "reason": "recover"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "thought": "Recover.",
+                    "action": "task_complete",
+                    "action_input": {"message": "recovered"},
+                }
+            ),
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [
+            Tool("explode", "Fail", lambda arguments: (_ for _ in ()).throw(RuntimeError("boom"))),
+            Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done")),
+        ],
+        enable_planning=True,
+        enable_compression=False,
+        enable_adaptive_replanning=True,
+        max_replans=2,
+    )
+
+    result = agent.run("recover from failure")
+
+    assert result["final_answer"] == "recovered"
+    assert result["metadata"]["adaptive_replanning_enabled"] is True
+    assert result["metadata"]["replan_count"] == 1
+    assert result["metadata"]["replan_decision_count"] == 1
+    assert result["metadata"]["replan_signals"][0]["signal"]["kind"] == "tool_error"
+    assert result["metadata"]["replan_strategy"] == "simplify_plan_skip_failed_tool"
+
+
+def test_react_agent_adaptive_replan_respects_budget():
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "explode", "reason": "trigger failure"},
+                        {"step": 2, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            json.dumps({"thought": "Try once.", "action": "explode", "action_input": {}}),
+            json.dumps({"plan": [{"step": 1, "action": "explode", "reason": "retry once"}]}),
+            json.dumps({"thought": "Try twice.", "action": "explode", "action_input": {}}),
+            json.dumps(
+                {
+                    "thought": "Stop retrying.",
+                    "action": "task_complete",
+                    "action_input": {"message": "done after budget"},
+                }
+            ),
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [
+            Tool("explode", "Fail", lambda arguments: (_ for _ in ()).throw(RuntimeError("boom"))),
+            Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done")),
+        ],
+        enable_planning=True,
+        enable_compression=False,
+        enable_adaptive_replanning=True,
+        max_replans=1,
+    )
+
+    result = agent.run("recover with one replan")
+
+    assert result["final_answer"] == "done after budget"
+    assert result["metadata"]["replan_count"] == 1
+    assert result["metadata"]["replan_decision_count"] == 2
+    assert result["metadata"]["replan_skipped_count"] == 1
+    assert result["metadata"]["replan_maxed_count"] == 1
+
+
+def test_react_agent_adaptive_replan_handles_parse_error():
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            "not json",
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "task_complete", "reason": "repair format"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "thought": "Use strict JSON.",
+                    "action": "task_complete",
+                    "action_input": {"message": "format repaired"},
+                }
+            ),
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done"))],
+        enable_planning=True,
+        enable_compression=False,
+        enable_adaptive_replanning=True,
+        max_replans=1,
+    )
+
+    result = agent.run("finish after parse repair")
+
+    assert result["final_answer"] == "format repaired"
+    assert result["metadata"]["parse_error_count"] == 1
+    assert result["metadata"]["replan_signals"][0]["signal"]["kind"] == "parse_error"
+    assert result["metadata"]["replan_strategy"] == "repair_response_format"

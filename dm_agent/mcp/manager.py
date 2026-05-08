@@ -148,12 +148,10 @@ class MCPManager:
 
             mcp_tools = client.get_tools()
             for tool_def in mcp_tools:
-                # 将 MCP 工具转换为我们的 Tool 对象
                 tool_name = tool_def.get("name", "")
                 description = tool_def.get("description", "")
                 input_schema = tool_def.get("inputSchema", {})
 
-                # 创建工具包装器
                 wrapped_tool = self._create_tool_wrapper(
                     server_name=server_name,
                     tool_name=tool_name,

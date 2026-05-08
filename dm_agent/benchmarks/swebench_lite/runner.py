@@ -110,6 +110,8 @@ def _build_agent(
         enable_compression=enable_compression,
         skill_manager=skill_manager,
         trace_writer=trace_writer,
+        enable_adaptive_replanning=config.enable_adaptive_replanning,
+        max_replans=config.max_replans,
     )
     return agent, client
 
@@ -596,6 +598,11 @@ def build_report(
             "enable_compression": enable_compression,
             "enable_reflexion": config.enable_reflexion,
             "max_trials": config.max_trials,
+            "enable_adaptive_replanning": config.enable_adaptive_replanning,
+            "max_replans": config.max_replans,
+        },
+        "token_economics": {
+            "cost_per_1k_tokens": config.cost_per_1k_tokens,
         },
         "summary": summarize_results(results),
         "results": [result.to_dict() for result in results],

@@ -38,6 +38,30 @@ dm-agent-bench --suite maintenance \
   --trace-dir bench_reports/traces
 ```
 
+Opt-in adaptive replanning and local token accounting:
+
+```bash
+dm-agent-bench --suite maintenance \
+  --provider deepseek \
+  --enable-adaptive-replanning \
+  --max-replans 3 \
+  --cost-per-1k-tokens 0.00027 \
+  --output bench_reports/maintenance.json \
+  --markdown bench_reports/maintenance.md
+```
+
+Generate an offline economics table from existing JSON reports:
+
+```bash
+dm-agent-economics bench_reports/maintenance.json \
+  --label maintenance-deepseek \
+  --output-json bench_reports/economics.json \
+  --output-md bench_reports/economics.md
+```
+
+`dm-agent-economics` never runs a model, downloads a dataset, or queries live pricing. Prices are
+explicit inputs for local accounting.
+
 ## Maintenance Suite
 
 The maintenance suite currently includes:
@@ -68,11 +92,14 @@ The report includes:
 - average tool calls
 - average changed files
 - estimated tokens
+- estimated cost and cost per success when `--cost-per-1k-tokens` is provided
 - provider request count
 - per-run changed files
 - optional per-run trace paths
 - hidden test stdout/stderr tail
 - agent metadata such as replan, parse repair, and tool error counts
+- adaptive replanning metadata when enabled: signal kind, selected strategy, skipped replans,
+  and replan budget exhaustion
 
 ## Changed-File Constraints
 
@@ -94,3 +121,4 @@ Future benchmark work should add:
 - trace completeness checks
 - repeated-sample confidence intervals
 - cross-model comparison tables
+- cost-per-success economics across existing reports

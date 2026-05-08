@@ -4,11 +4,14 @@
 """
 
 from .core import (
+    AdaptiveReplanPolicy,
     CriticAgent,
     CriticReview,
     EpisodicMemory,
     Lesson,
     ReactAgent,
+    ReplanDecision,
+    ReplanSignal,
     Reflector,
     SelfConsistencyCandidate,
     SelfConsistencyRunner,
@@ -36,6 +39,9 @@ __all__ = [
     # Core
     "ReactAgent",
     "Step",
+    "AdaptiveReplanPolicy",
+    "ReplanDecision",
+    "ReplanSignal",
     "CriticAgent",
     "CriticReview",
     "SelfConsistencyRunner",

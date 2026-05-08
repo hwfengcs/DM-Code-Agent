@@ -24,7 +24,7 @@ these entries.
 | [02](02-reflexion.md) | Reflexion: episodic memory across trials | P2 | implementation landed; ablation pending |
 | [03](03-rag.md) | Hybrid retrieval (BM25 + embeddings) for repository-scale context | P3 | implementation landed; ablation pending |
 | [04](04-critic-and-consistency.md) | Critic agent and self-consistency selection | P4 | implementation landed; ablation pending |
-| 05 | Adaptive replanning and cross-model token economics | P5 | planned |
+| [05](05-adaptive-and-economics.md) | Adaptive replanning and token economics | P5 | implementation landed; real cross-model eval frozen |
 | 06 | Final write-up: what worked, what didn't, what's next | P6 | planned |
 
 ## Conventions
