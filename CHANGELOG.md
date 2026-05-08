@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reports when `--trace-dir` is enabled.
 - `dm-agent-trace analyze-dir` for offline aggregation of trace-health,
   verification-gap, and failure-stage counts across trace directories.
+- `dm-agent-economics` now carries pass-rate 95% confidence intervals from
+  benchmark reports, with a Wilson fallback for older reports.
 - `dm-agent-trace diff` for offline comparison of two JSONL traces, including
   status changes, step/tool/replan deltas, action-sequence divergence,
   tool-usage deltas, plan changes, and final-answer changes.
@@ -47,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   analyzer integration in benchmark reports.
 - `docs/research-log/15-trace-analysis-aggregation.md` documenting directory
   aggregation for trace review.
+- `docs/research-log/16-economics-uncertainty.md` documenting confidence-aware
+  offline economics reporting.
 
 ## [2.0.0] - 2026-05-08
 

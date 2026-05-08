@@ -24,6 +24,7 @@ class EconomicsEntry:
     total_runs: int
     successes: int
     pass_rate: float
+    pass_rate_ci_95: Dict[str, float]
     total_estimated_tokens: int
     cost_per_1k_tokens: Optional[float]
     estimated_cost_usd: Optional[float]
@@ -40,6 +41,7 @@ class EconomicsEntry:
             "total_runs": self.total_runs,
             "successes": self.successes,
             "pass_rate": self.pass_rate,
+            "pass_rate_ci_95": self.pass_rate_ci_95,
             "total_estimated_tokens": self.total_estimated_tokens,
             "cost_per_1k_tokens": self.cost_per_1k_tokens,
             "estimated_cost_usd": self.estimated_cost_usd,
@@ -63,6 +65,7 @@ def summarize_report(
     total_runs = int(summary.get("total_runs") or summary.get("total") or len(results))
     successes = _success_count(report, summary, total_runs)
     pass_rate = _safe_rate(successes, total_runs)
+    pass_rate_ci = _pass_rate_ci(summary, successes, total_runs)
     total_tokens = _total_tokens(results, summary)
     configured_cost = _resolve_cost_per_1k(report, cost_per_1k_tokens)
     total_cost = _total_cost(results, total_tokens, configured_cost)
@@ -77,6 +80,7 @@ def summarize_report(
         total_runs=total_runs,
         successes=successes,
         pass_rate=pass_rate,
+        pass_rate_ci_95=pass_rate_ci,
         total_estimated_tokens=total_tokens,
         cost_per_1k_tokens=configured_cost,
         estimated_cost_usd=total_cost,
@@ -135,19 +139,22 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "This report is generated from existing benchmark JSON files. It does not run "
         "live models, SWE-bench, or external price lookups.",
         "",
-        "| Label | Suite | Provider | Model | Pass rate | Runs | Avg tokens | Tokens/success | Estimated cost | Cost/success |",
+        "| Label | Suite | Provider | Model | Pass rate (95% CI) | Runs | Avg tokens | Tokens/success | Estimated cost | Cost/success |",
         "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for entry in report.get("entries", []):
         lines.append(
-            "| {label} | {suite} | {provider} | {model} | {pass_rate:.1%} | {total_runs} | "
+            "| {label} | {suite} | {provider} | {model} | {pass_rate} | {total_runs} | "
             "{avg_tokens_per_run:.0f} | {tokens_per_success} | {estimated_cost} | "
             "{cost_per_success} |".format(
                 label=entry.get("label", ""),
                 suite=entry.get("suite", ""),
                 provider=entry.get("provider", ""),
                 model=entry.get("model", ""),
-                pass_rate=float(entry.get("pass_rate", 0.0)),
+                pass_rate=_format_rate_with_ci(
+                    entry.get("pass_rate"),
+                    entry.get("pass_rate_ci_95"),
+                ),
                 total_runs=int(entry.get("total_runs", 0)),
                 avg_tokens_per_run=float(entry.get("avg_tokens_per_run", 0.0)),
                 tokens_per_success=_format_number(entry.get("tokens_per_success"), decimals=0),
@@ -230,6 +237,20 @@ def _resolve_cost_per_1k(report: Dict[str, Any], override: Optional[float]) -> O
     return value if value > 0 else None
 
 
+def _pass_rate_ci(
+    summary: Dict[str, Any],
+    successes: int,
+    total_runs: int,
+) -> Dict[str, float]:
+    interval = summary.get("overall_pass_rate_ci_95")
+    if isinstance(interval, dict) and {"low", "high"} <= set(interval):
+        return {
+            "low": float(interval.get("low", 0.0)),
+            "high": float(interval.get("high", 0.0)),
+        }
+    return _wilson_interval(successes, total_runs)
+
+
 def _total_cost(
     results: Sequence[Dict[str, Any]],
     total_tokens: int,
@@ -252,6 +273,28 @@ def _default_label(report: Dict[str, Any]) -> str:
 
 def _safe_rate(successes: int, total: int) -> float:
     return (successes / total) if total else 0.0
+
+
+def _wilson_interval(successes: int, total: int, *, z: float = 1.96) -> Dict[str, float]:
+    if total <= 0:
+        return {"low": 0.0, "high": 0.0}
+    phat = successes / total
+    denominator = 1 + (z * z / total)
+    centre = phat + (z * z / (2 * total))
+    margin = z * ((phat * (1 - phat) + (z * z / (4 * total))) / total) ** 0.5
+    return {
+        "low": max(0.0, (centre - margin) / denominator),
+        "high": min(1.0, (centre + margin) / denominator),
+    }
+
+
+def _format_rate_with_ci(rate: Any, interval: Any) -> str:
+    value = 0.0 if rate is None else float(rate)
+    if not isinstance(interval, dict):
+        return f"{value:.1%}"
+    low = float(interval.get("low", 0.0))
+    high = float(interval.get("high", 0.0))
+    return f"{value:.1%} [{low:.1%}-{high:.1%}]"
 
 
 def _format_usd(value: Any) -> str:

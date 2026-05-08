@@ -35,6 +35,7 @@ these entries.
 | [13](13-benchmark-provenance.md) | Benchmark manifest provenance and suite signatures | post-v2 | implementation landed |
 | [14](14-benchmark-trace-analysis.md) | Benchmark trace-analysis metadata | post-v2 | implementation landed |
 | [15](15-trace-analysis-aggregation.md) | Trace directory analysis aggregation | post-v2 | implementation landed |
+| [16](16-economics-uncertainty.md) | Confidence-aware token economics reports | post-v2 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

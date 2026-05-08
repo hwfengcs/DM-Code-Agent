@@ -473,6 +473,7 @@ def test_benchmark_economics_report_is_deterministic_and_keyless():
         "summary": {
             "total_runs": 2,
             "overall_pass_rate": 0.5,
+            "overall_pass_rate_ci_95": {"low": 0.1, "high": 0.9},
             "total_estimated_tokens": 3000,
         },
         "results": [
@@ -486,9 +487,11 @@ def test_benchmark_economics_report_is_deterministic_and_keyless():
     entry = economics["entries"][0]
     assert entry["label"] == "scripted-smoke"
     assert entry["successes"] == 1
+    assert entry["pass_rate_ci_95"] == {"low": 0.1, "high": 0.9}
     assert entry["total_estimated_tokens"] == 3000
     assert entry["estimated_cost_usd"] == 0.006
     assert entry["cost_per_success_usd"] == 0.006
     markdown = render_markdown(economics)
     assert "Benchmark Token Economics" in markdown
+    assert "50.0% [10.0%-90.0%]" in markdown
     assert "scripted-smoke" in markdown

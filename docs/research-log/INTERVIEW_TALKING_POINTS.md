@@ -21,6 +21,8 @@ Private prep notes for discussing DM-Code-Agent as an AI agent engineering proje
     advisory failure-stage and verification-gap summary.
 12. Added trace-directory aggregation so benchmark trace folders can be reviewed for health,
     verification gaps, and dominant failure stages without custom scripts.
+13. Propagated pass-rate confidence intervals into offline token economics so cost comparisons
+    expose sample uncertainty.
 
 Use the caveat explicitly: current SWE-bench Lite number is Tier-1 host-verifier only and not
 leaderboard-comparable. Do not claim real score improvements for v2 mechanisms until a permitted
