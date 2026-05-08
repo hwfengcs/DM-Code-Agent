@@ -26,7 +26,8 @@
 ## Why this project
 
 - **Auditable.** Every plan, tool call, and observation is written to a JSONL trace. Trace ships with
-  dry replay and explicit tool replay; debugging does not require asking the model again.
+  dry replay, explicit tool replay, and offline trace diff; debugging does not require asking the
+  model again.
 - **Benchmarked.** Coding and maintenance hidden-test suites are in-tree. The SWE-bench Lite
   DeepSeek Tier-1 baseline is published: 0.0% resolved / 72.0% patch-applied on the fixed
   50-instance subset. This Tier-1 number is affected by host-verifier environment noise and is
@@ -44,7 +45,7 @@
 | Dimension | DM-Code-Agent | Aider | OpenHands | SWE-agent | smolagents |
 | --- | --- | --- | --- | --- | --- |
 | Local-first (no sandbox required) | ✅ | ✅ | docker | docker | ✅ |
-| Trace + Replay | ✅ JSONL + dry/tool replay | git diff | server log | trajectory | weak |
+| Trace + Replay | ✅ JSONL + dry/tool replay + diff | git diff | server log | trajectory | weak |
 | Reflexion / Critic / Self-Consistency | ✅ v2 | ❌ | partial | ❌ | ❌ |
 | Hybrid BM25 + embedding RAG | ✅ v2 (opt-in) | repo-map | partial | retrieval | ❌ |
 | MCP integration | ✅ | ❌ | ✅ | ❌ | ❌ |
@@ -112,7 +113,7 @@ It is designed to be a developer tool you can audit rather than a black-box codi
 | RAG Retrieval | Default-off BM25 + optional embeddings + RRF, injected as `<retrieved_context>` |
 | Tool System | File IO, search, Python/Shell execution, tests, linting, AST, and code metrics |
 | Code Index | Repository-level Python symbol index, symbol search, and local dependency graph |
-| Trace / Replay | JSONL traces for run, plan, LLM-call summary, tool call, step, replan, and final result |
+| Trace / Replay | JSONL traces for run, plan, LLM-call summary, tool call, step, replan, final result, and offline trace diff |
 | Multi-LLM | DeepSeek, OpenAI, Claude, Gemini, and custom `base_url` |
 | MCP Integration | Attach Playwright, Context7, filesystem, SQLite, and other MCP servers |
 | Skills | Activate domain-specific prompts and tools by task signals |
@@ -161,6 +162,12 @@ dm-agent "Fix retry.py retry boundaries and run tests" \
 
 dm-agent-trace view traces/retry-fix.jsonl
 dm-agent-trace replay traces/retry-fix.jsonl
+```
+
+Compare two runs without model calls or tool execution:
+
+```bash
+dm-agent-trace diff traces/baseline.jsonl traces/rag-enabled.jsonl
 ```
 
 For private debugging, explicitly include full LLM I/O:

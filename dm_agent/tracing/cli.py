@@ -44,23 +44,26 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         help="Workspace for tool replay. Defaults to the current directory.",
     )
     replay_parser.add_argument("--json", action="store_true", help="Print replay result as JSON.")
+
+    diff_parser = subparsers.add_parser("diff", help="Compare two trace timelines.")
+    diff_parser.add_argument("base_trace", type=Path, help="Baseline JSONL trace file.")
+    diff_parser.add_argument("candidate_trace", type=Path, help="Candidate JSONL trace file.")
+    diff_parser.add_argument("--json", action="store_true", help="Print diff result as JSON.")
     return parser.parse_args(argv)
 
 
 def main(argv: Any = None) -> int:
     args = parse_args(argv)
-    try:
-        events = load_trace_events(args.trace)
-    except FileNotFoundError:
-        print(f"Trace not found: {args.trace}", file=sys.stderr)
-        return 2
-    except json.JSONDecodeError as exc:
-        print(f"Invalid trace JSONL: {exc}", file=sys.stderr)
-        return 2
 
     if args.command == "view":
+        events = _load_trace_for_cli(args.trace)
+        if events is None:
+            return 2
         return _view(events, as_json=args.json, raw=args.raw)
     if args.command == "replay":
+        events = _load_trace_for_cli(args.trace)
+        if events is None:
+            return 2
         return _replay(
             events,
             execute_tools=args.execute_tools,
@@ -68,6 +71,12 @@ def main(argv: Any = None) -> int:
             workspace=args.workspace,
             as_json=args.json,
         )
+    if args.command == "diff":
+        base_events = _load_trace_for_cli(args.base_trace)
+        candidate_events = _load_trace_for_cli(args.candidate_trace)
+        if base_events is None or candidate_events is None:
+            return 2
+        return _diff(base_events, candidate_events, as_json=args.json)
     return 2
 
 
@@ -150,6 +159,73 @@ def _replay(
     return 0 if result["status"] == "ok" else 1
 
 
+def _diff(
+    base_events: List[Dict[str, Any]],
+    candidate_events: List[Dict[str, Any]],
+    *,
+    as_json: bool,
+) -> int:
+    diff = diff_events(base_events, candidate_events)
+    if as_json:
+        print(json.dumps(diff, indent=2, ensure_ascii=False))
+        return 0
+
+    base = diff["base"]
+    candidate = diff["candidate"]
+    metrics = diff["metrics"]
+    print("Trace diff")
+    print(f"Base: {base.get('task', '')}")
+    print(f"Candidate: {candidate.get('task', '')}")
+    print(f"Status: {base.get('status', '')} -> {candidate.get('status', '')}")
+    print(
+        "Steps: "
+        f"{metrics['step_count']['base']} -> {metrics['step_count']['candidate']} "
+        f"({_signed(metrics['step_count']['delta'])})"
+    )
+    print(
+        "Tool calls: "
+        f"{metrics['tool_call_count']['base']} -> {metrics['tool_call_count']['candidate']} "
+        f"({_signed(metrics['tool_call_count']['delta'])})"
+    )
+    print(
+        "Replans: "
+        f"{metrics['replan_count']['base']} -> {metrics['replan_count']['candidate']} "
+        f"({_signed(metrics['replan_count']['delta'])})"
+    )
+    print()
+    print(f"Action common prefix: {diff['action_sequence']['common_prefix']}")
+    if diff["action_sequence"]["changes"]:
+        print("Action changes:")
+        for change in diff["action_sequence"]["changes"]:
+            print(
+                "- Step {index}: {base} -> {candidate}".format(
+                    index=change["step_number"],
+                    base=change.get("base") or "<missing>",
+                    candidate=change.get("candidate") or "<missing>",
+                )
+            )
+    else:
+        print("Action changes: none")
+
+    usage_delta = diff["tool_usage"]["delta"]
+    if usage_delta:
+        print()
+        print("Tool usage delta:")
+        for action, data in usage_delta.items():
+            print(
+                "- {action}: {base} -> {candidate} ({delta})".format(
+                    action=action,
+                    base=data["base"],
+                    candidate=data["candidate"],
+                    delta=_signed(data["delta"]),
+                )
+            )
+    print()
+    print(f"Plan changed: {'yes' if diff['plan_changed'] else 'no'}")
+    print(f"Final answer changed: {'yes' if diff['final_answer_changed'] else 'no'}")
+    return 0
+
+
 def summarize_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     runtime = _first(events, "runtime")
     run_start = _first(events, "run_start")
@@ -174,6 +250,52 @@ def summarize_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         "replan_count": sum(1 for event in events if event.get("event") == "replan"),
         "plan_steps": (plan or {}).get("payload", {}).get("steps", []),
         "steps": steps,
+    }
+
+
+def diff_events(
+    base_events: List[Dict[str, Any]],
+    candidate_events: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Return a deterministic behavioral diff between two trace event lists."""
+
+    base = summarize_events(base_events)
+    candidate = summarize_events(candidate_events)
+    base_actions = _action_sequence(base)
+    candidate_actions = _action_sequence(candidate)
+    base_plan_actions = _plan_actions(base)
+    candidate_plan_actions = _plan_actions(candidate)
+    base_usage = _count_actions(base_actions)
+    candidate_usage = _count_actions(candidate_actions)
+
+    return {
+        "base": _trace_header(base),
+        "candidate": _trace_header(candidate),
+        "status_changed": base.get("status") != candidate.get("status"),
+        "task_changed": base.get("task") != candidate.get("task"),
+        "final_answer_changed": base.get("final_answer") != candidate.get("final_answer"),
+        "plan_changed": base_plan_actions != candidate_plan_actions,
+        "metrics": {
+            "step_count": _metric_delta(base, candidate, "step_count"),
+            "tool_call_count": _metric_delta(base, candidate, "tool_call_count"),
+            "replan_count": _metric_delta(base, candidate, "replan_count"),
+            "duration_seconds": _float_metric_delta(base, candidate, "duration_seconds"),
+        },
+        "action_sequence": {
+            "base": base_actions,
+            "candidate": candidate_actions,
+            "common_prefix": _common_prefix_length(base_actions, candidate_actions),
+            "changes": _sequence_changes(base_actions, candidate_actions),
+        },
+        "tool_usage": {
+            "base": base_usage,
+            "candidate": candidate_usage,
+            "delta": _count_delta(base_usage, candidate_usage),
+        },
+        "plan": {
+            "base": base_plan_actions,
+            "candidate": candidate_plan_actions,
+        },
     }
 
 
@@ -229,6 +351,17 @@ def replay_tools(
     return results
 
 
+def _load_trace_for_cli(path: Path) -> List[Dict[str, Any]] | None:
+    try:
+        return load_trace_events(path)
+    except FileNotFoundError:
+        print(f"Trace not found: {path}", file=sys.stderr)
+        return None
+    except json.JSONDecodeError as exc:
+        print(f"Invalid trace JSONL: {exc}", file=sys.stderr)
+        return None
+
+
 @contextmanager
 def chdir(path: Path):
     previous = Path.cwd()
@@ -258,6 +391,117 @@ def _shorten(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 3] + "..."
+
+
+def _trace_header(summary: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "run_id": summary.get("run_id", ""),
+        "task": summary.get("task", ""),
+        "status": summary.get("status", ""),
+        "provider": summary.get("provider", ""),
+        "model": summary.get("model", ""),
+        "step_count": summary.get("step_count", 0),
+        "tool_call_count": summary.get("tool_call_count", 0),
+        "replan_count": summary.get("replan_count", 0),
+        "duration_seconds": summary.get("duration_seconds"),
+    }
+
+
+def _action_sequence(summary: Dict[str, Any]) -> List[str]:
+    return [str(step.get("action", "")) for step in summary.get("steps", [])]
+
+
+def _plan_actions(summary: Dict[str, Any]) -> List[str]:
+    return [str(step.get("action", "")) for step in summary.get("plan_steps", [])]
+
+
+def _metric_delta(
+    base: Dict[str, Any],
+    candidate: Dict[str, Any],
+    key: str,
+) -> Dict[str, int]:
+    base_value = int(base.get(key) or 0)
+    candidate_value = int(candidate.get(key) or 0)
+    return {
+        "base": base_value,
+        "candidate": candidate_value,
+        "delta": candidate_value - base_value,
+    }
+
+
+def _float_metric_delta(
+    base: Dict[str, Any],
+    candidate: Dict[str, Any],
+    key: str,
+) -> Dict[str, float | None]:
+    base_value = base.get(key)
+    candidate_value = candidate.get(key)
+    delta = None
+    if base_value is not None and candidate_value is not None:
+        delta = float(candidate_value) - float(base_value)
+    return {
+        "base": float(base_value) if base_value is not None else None,
+        "candidate": float(candidate_value) if candidate_value is not None else None,
+        "delta": delta,
+    }
+
+
+def _common_prefix_length(base: Sequence[str], candidate: Sequence[str]) -> int:
+    count = 0
+    for left, right in zip(base, candidate):
+        if left != right:
+            break
+        count += 1
+    return count
+
+
+def _sequence_changes(base: Sequence[str], candidate: Sequence[str]) -> List[Dict[str, str | int]]:
+    changes: List[Dict[str, str | int]] = []
+    max_length = max(len(base), len(candidate))
+    for index in range(max_length):
+        base_action = base[index] if index < len(base) else ""
+        candidate_action = candidate[index] if index < len(candidate) else ""
+        if base_action == candidate_action:
+            continue
+        changes.append(
+            {
+                "step_number": index + 1,
+                "base": base_action,
+                "candidate": candidate_action,
+            }
+        )
+    return changes
+
+
+def _count_actions(actions: Sequence[str]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for action in actions:
+        if not action:
+            continue
+        counts[action] = counts.get(action, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _count_delta(
+    base: Dict[str, int],
+    candidate: Dict[str, int],
+) -> Dict[str, Dict[str, int]]:
+    delta: Dict[str, Dict[str, int]] = {}
+    for action in sorted(set(base) | set(candidate)):
+        base_count = base.get(action, 0)
+        candidate_count = candidate.get(action, 0)
+        if base_count == candidate_count:
+            continue
+        delta[action] = {
+            "base": base_count,
+            "candidate": candidate_count,
+            "delta": candidate_count - base_count,
+        }
+    return delta
+
+
+def _signed(value: int) -> str:
+    return f"{value:+d}"
 
 
 if __name__ == "__main__":

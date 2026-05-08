@@ -27,6 +27,17 @@ dm-agent-trace view traces/retry-fix.jsonl
 dm-agent-trace view traces/retry-fix.jsonl --json
 ```
 
+Compare two traces without replaying tools:
+
+```bash
+dm-agent-trace diff traces/baseline.jsonl traces/rag-enabled.jsonl
+dm-agent-trace diff traces/baseline.jsonl traces/rag-enabled.jsonl --json
+```
+
+Trace diff reports status changes, step/tool/replan deltas, action-sequence divergence, tool-usage
+deltas, plan changes, and final-answer changes. It is a pure JSONL analysis pass: it does not call a
+model, execute tools, or require the original workspace.
+
 Dry replay:
 
 ```bash
@@ -71,6 +82,23 @@ The current schema records these event types:
 - `replan`: regenerated plan after a failure.
 - `run_end`: final answer, status, duration, and agent metadata.
 - `run_error`: unhandled runtime error.
+
+## Trace Diff
+
+`dm-agent-trace diff` is intended for regression review and benchmark ablations. A maintainer can
+compare a baseline run against an opt-in mechanism run and inspect whether the new run changed the
+plan shape, skipped or added tools, reduced replans, or changed the final answer before looking at
+the full JSONL.
+
+Example JSON fields:
+
+- `metrics.step_count.delta`
+- `metrics.tool_call_count.delta`
+- `action_sequence.common_prefix`
+- `action_sequence.changes`
+- `tool_usage.delta`
+- `plan_changed`
+- `final_answer_changed`
 
 ## Privacy Boundary
 

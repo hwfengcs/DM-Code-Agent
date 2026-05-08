@@ -9,6 +9,7 @@ from dm_agent.core.agent import ReactAgent
 from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter, load_trace_events
 from dm_agent.tracing.cli import main as trace_main
+from dm_agent.tracing.cli import diff_events
 from dm_agent.tracing.cli import replay_tools, summarize_events
 
 
@@ -114,6 +115,75 @@ def test_trace_tool_replay_can_reexecute_safe_file_read(tmp_path):
     assert tool_results
     assert tool_results[0]["action"] == "read_file"
     assert tool_results[0]["matches"] is True
+
+
+def test_trace_diff_compares_two_runs_without_replay(tmp_path, capsys):
+    (tmp_path / "input.txt").write_text("diff target\n", encoding="utf-8")
+    base_trace = tmp_path / "base.jsonl"
+    candidate_trace = tmp_path / "candidate.jsonl"
+
+    base_writer = TraceWriter(base_trace)
+    base_agent = ReactAgent(
+        FakeRespondClient(
+            [
+                json.dumps(
+                    {
+                        "thought": "Read first.",
+                        "action": "read_file",
+                        "action_input": {"path": "input.txt"},
+                    }
+                ),
+                json.dumps({"thought": "Done.", "action": "finish", "action_input": "ok"}),
+            ]
+        ),
+        default_tools(include_mcp=False),
+        enable_planning=False,
+        enable_compression=False,
+        trace_writer=base_writer,
+    )
+    candidate_writer = TraceWriter(candidate_trace)
+    candidate_agent = ReactAgent(
+        FakeRespondClient(
+            [
+                json.dumps(
+                    {
+                        "thought": "Finish directly.",
+                        "action": "finish",
+                        "action_input": "fast",
+                    }
+                )
+            ]
+        ),
+        default_tools(include_mcp=False),
+        enable_planning=False,
+        enable_compression=False,
+        trace_writer=candidate_writer,
+    )
+
+    with chdir(tmp_path):
+        base_agent.run("read input")
+        candidate_agent.run("read input")
+    base_writer.close()
+    candidate_writer.close()
+
+    diff = diff_events(load_trace_events(base_trace), load_trace_events(candidate_trace))
+
+    assert diff["metrics"]["step_count"]["delta"] == -1
+    assert diff["action_sequence"]["base"] == ["read_file", "finish"]
+    assert diff["action_sequence"]["candidate"] == ["finish"]
+    assert diff["action_sequence"]["changes"][0] == {
+        "step_number": 1,
+        "base": "read_file",
+        "candidate": "finish",
+    }
+    assert diff["tool_usage"]["delta"]["read_file"]["delta"] == -1
+    assert diff["final_answer_changed"] is True
+
+    assert trace_main(["diff", str(base_trace), str(candidate_trace)]) == 0
+    output = capsys.readouterr().out
+    assert "Trace diff" in output
+    assert "Steps: 2 -> 1 (-1)" in output
+    assert "Final answer changed: yes" in output
 
 
 def test_run_report_writes_human_readable_markdown(tmp_path):
