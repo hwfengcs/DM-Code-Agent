@@ -9,6 +9,8 @@ Private prep notes for discussing DM-Code-Agent as an AI agent engineering proje
 5. Built offline token economics reports from benchmark JSON without live API calls.
 6. Extended trace tooling with offline diff/analyze and added multi-file maintenance benchmarks
    that require code, docs, and regression-test changes.
+7. Added Wilson confidence intervals to benchmark summaries so ablation reports expose uncertainty
+   instead of only point estimates.
 
 Use the caveat explicitly: current SWE-bench Lite number is Tier-1 host-verifier only and not
 leaderboard-comparable. Do not claim real score improvements for v2 mechanisms until a permitted

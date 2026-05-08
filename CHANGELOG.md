@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cli_config_docs_contract`, a multi-file maintenance benchmark task that
   requires implementation, docs, and regression-test changes for CLI
   configuration documentation.
+- Wilson 95% confidence intervals for benchmark strict pass, hidden-test pass,
+  and agent completion rates in JSON summaries and Markdown reports.
 - `dm-agent-trace diff` for offline comparison of two JSONL traces, including
   status changes, step/tool/replan deltas, action-sequence divergence,
   tool-usage deltas, plan changes, and final-answer changes.
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   why the output remains advisory.
 - `docs/research-log/09-maintenance-realism.md` documenting the benchmark task
   design and hidden-test contract.
+- `docs/research-log/10-benchmark-confidence.md` documenting the interval
+  design and interpretation limits.
 
 ## [2.0.0] - 2026-05-08
 

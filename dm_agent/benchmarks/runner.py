@@ -245,8 +245,11 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
             "tasks": len(group),
             "successes": len(successes),
             "pass_rate": len(successes) / len(group) if group else 0.0,
+            "pass_rate_ci_95": _wilson_interval(len(successes), len(group)),
             "hidden_test_pass_rate": len(hidden_passes) / len(group) if group else 0.0,
+            "hidden_test_pass_rate_ci_95": _wilson_interval(len(hidden_passes), len(group)),
             "agent_completion_rate": len(completed) / len(group) if group else 0.0,
+            "agent_completion_rate_ci_95": _wilson_interval(len(completed), len(group)),
             "avg_steps": _mean(result.steps_count for result in group),
             "avg_tool_calls": _mean(result.tool_calls for result in group),
             "avg_changed_files": _mean(len(result.changed_files) for result in group),
@@ -263,13 +266,15 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
 
     hidden_passes = [result for result in results if result.hidden_test.returncode == 0]
     completed = [result for result in results if result.metadata.get("status") == "success"]
+    successes = sum(1 for result in results if result.success)
     return {
         "total_runs": len(results),
-        "overall_pass_rate": (
-            sum(1 for result in results if result.success) / len(results) if results else 0.0
-        ),
+        "overall_pass_rate": (successes / len(results) if results else 0.0),
+        "overall_pass_rate_ci_95": _wilson_interval(successes, len(results)),
         "overall_hidden_test_pass_rate": len(hidden_passes) / len(results) if results else 0.0,
+        "overall_hidden_test_pass_rate_ci_95": _wilson_interval(len(hidden_passes), len(results)),
         "overall_agent_completion_rate": len(completed) / len(results) if results else 0.0,
+        "overall_agent_completion_rate_ci_95": _wilson_interval(len(completed), len(results)),
         "avg_trials": _mean(result.metadata.get("trial_count", 1) for result in results),
         "total_estimated_tokens": sum(result.estimated_tokens for result in results),
         "tokens_per_success": _tokens_per_success(results),
@@ -297,7 +302,7 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
         "",
         "## Variant Summary",
         "",
-        "| Variant | Strict pass | Hidden pass | Agent done | Avg steps | Avg tools | Avg changed | Avg tokens | Cost | Cost/success | Requests |",
+        "| Variant | Strict pass (95% CI) | Hidden pass | Agent done | Avg steps | Avg tools | Avg changed | Avg tokens | Cost | Cost/success | Requests |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
@@ -305,15 +310,20 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
         data = {
             "estimated_cost_usd": 0.0,
             "cost_per_success_usd": 0.0,
+            "pass_rate_ci_95": None,
             **data,
         }
         lines.append(
-            "| {name} | {pass_rate:.1%} ({successes}/{tasks}) | "
+            "| {name} | {pass_rate:.1%} ({successes}/{tasks}) {pass_ci} | "
             "{hidden_test_pass_rate:.1%} | {agent_completion_rate:.1%} | "
             "{avg_steps:.2f} | {avg_tool_calls:.2f} | {avg_changed_files:.2f} | "
             "{avg_estimated_tokens:.0f} | "
             "${estimated_cost_usd:.4f} | ${cost_per_success_usd:.4f} | "
-            "{total_requests} |".format(name=name, **data)
+            "{total_requests} |".format(
+                name=name,
+                pass_ci=_format_ci(data.get("pass_rate_ci_95")),
+                **data,
+            )
         )
 
     lines.extend(["", "## Failed Runs", ""])
@@ -731,3 +741,24 @@ def _cost_per_success(results: Sequence[CodingBenchResult]) -> float:
     if successes <= 0:
         return 0.0
     return sum(result.estimated_cost_usd for result in results) / successes
+
+
+def _wilson_interval(successes: int, total: int, *, z: float = 1.96) -> Dict[str, float]:
+    if total <= 0:
+        return {"low": 0.0, "high": 0.0}
+    phat = successes / total
+    denominator = 1 + (z * z / total)
+    centre = phat + (z * z / (2 * total))
+    margin = z * ((phat * (1 - phat) + (z * z / (4 * total))) / total) ** 0.5
+    return {
+        "low": max(0.0, (centre - margin) / denominator),
+        "high": min(1.0, (centre + margin) / denominator),
+    }
+
+
+def _format_ci(interval: Any) -> str:
+    if not isinstance(interval, dict):
+        return ""
+    low = float(interval.get("low", 0.0))
+    high = float(interval.get("high", 0.0))
+    return f"[95% CI {low:.1%}-{high:.1%}]"

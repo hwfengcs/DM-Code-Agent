@@ -193,8 +193,8 @@ dm-agent-bench --suite maintenance --provider deepseek --task config_precedence 
   --trace-dir bench_reports/traces
 ```
 
-Reports include hidden-test pass rate, agent completion rate, average steps, tool calls,
-estimated tokens, changed files, and changed-file constraint violations. See
+Reports include hidden-test pass rate, 95% confidence intervals, agent completion rate, average
+steps, tool calls, estimated tokens, changed files, and changed-file constraint violations. See
 [docs/benchmarks.md](docs/benchmarks.md).
 
 Generate an offline token economics report without model calls or network access:

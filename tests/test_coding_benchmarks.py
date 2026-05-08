@@ -6,7 +6,12 @@ from dm_agent.benchmarks import runner as runner_module
 from dm_agent.benchmarks.cli import main as bench_main
 from dm_agent.benchmarks.economics import build_economics_report, render_markdown
 from dm_agent.benchmarks.models import BenchmarkRunConfig, CodingBenchResult, CommandResult
-from dm_agent.benchmarks.runner import prepare_workspace, run_hidden_tests, write_markdown_report
+from dm_agent.benchmarks.runner import (
+    prepare_workspace,
+    run_hidden_tests,
+    summarize_benchmark_results,
+    write_markdown_report,
+)
 from dm_agent.benchmarks.tasks import get_benchmark_tasks, get_coding_tasks, get_maintenance_tasks
 
 
@@ -151,6 +156,23 @@ def test_self_consistency_benchmark_uses_fresh_candidate_results(
     assert result.estimated_tokens == 500
     assert result.metadata["self_consistency"]["runs"] == 2
     assert result.metadata["self_consistency"]["selected_index"] == 2
+
+
+def test_benchmark_summary_includes_wilson_confidence_intervals():
+    results = [
+        _bench_result("a", success=True, final_answer="ok", tokens=100),
+        _bench_result("b", success=True, final_answer="ok", tokens=100),
+        _bench_result("c", success=True, final_answer="ok", tokens=100),
+        _bench_result("d", success=False, final_answer="bad", tokens=100),
+    ]
+
+    summary = summarize_benchmark_results(results)
+
+    interval = summary["overall_pass_rate_ci_95"]
+    assert summary["overall_pass_rate"] == 0.75
+    assert 0.0 <= interval["low"] < summary["overall_pass_rate"] < interval["high"] <= 1.0
+    variant_interval = summary["variants"]["full"]["pass_rate_ci_95"]
+    assert variant_interval == interval
 
 
 def test_hidden_tests_fail_on_initial_slugify_workspace(tmp_path):
@@ -359,6 +381,7 @@ def test_benchmark_markdown_report_includes_run_details(tmp_path):
 
     text = report_path.read_text(encoding="utf-8")
     assert "Run Details" in text
+    assert "95% CI" in text
     assert "Cost/success" in text
     assert "`config_loader.py`" in text
     assert "`traces/config.jsonl`" in text

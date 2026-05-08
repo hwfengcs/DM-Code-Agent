@@ -106,8 +106,11 @@ A run is successful only if:
 The report includes:
 
 - `overall_pass_rate`
+- `overall_pass_rate_ci_95`
 - `overall_hidden_test_pass_rate`
+- `overall_hidden_test_pass_rate_ci_95`
 - `overall_agent_completion_rate`
+- `overall_agent_completion_rate_ci_95`
 - average steps
 - average tool calls
 - average changed files
@@ -121,6 +124,9 @@ The report includes:
 - adaptive replanning metadata when enabled: signal kind, selected strategy, skipped replans,
   and replan budget exhaustion
 - RAG / critic / self-consistency configuration metadata when those default-off switches are used
+
+Pass-rate confidence intervals use Wilson 95% intervals. They are computed from the runs already in
+the report and do not increase the default repeat count.
 
 ## Changed-File Constraints
 
@@ -140,6 +146,6 @@ Future benchmark work should add:
 - documentation/CLI consistency tasks
 - CI and packaging repair tasks
 - trace completeness checks
-- repeated-sample confidence intervals
+- richer repeated-sample variance summaries beyond binomial confidence intervals
 - cross-model comparison tables
 - cost-per-success economics across existing reports

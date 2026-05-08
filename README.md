@@ -189,7 +189,7 @@ dm-agent-bench --suite maintenance \
   --trace-dir bench_reports/traces
 ```
 
-报告会包含 hidden-test pass rate、agent completion rate、平均步骤、工具调用、token 估算、改动文件列表和文件约束违规情况。详见 [docs/benchmarks.md](docs/benchmarks.md)。
+报告会包含 hidden-test pass rate、95% 置信区间、agent completion rate、平均步骤、工具调用、token 估算、改动文件列表和文件约束违规情况。详见 [docs/benchmarks.md](docs/benchmarks.md)。
 
 离线生成 token 经济学报告（不调用模型、不联网）：
 
