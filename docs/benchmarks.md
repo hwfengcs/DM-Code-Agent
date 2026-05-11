@@ -69,7 +69,9 @@ dm-agent-economics bench_reports/maintenance.json \
 
 `dm-agent-economics` never runs a model, downloads a dataset, or queries live pricing. Prices are
 explicit inputs for local accounting. When source benchmark reports include pass-rate confidence
-intervals, the economics Markdown carries those intervals into the pass-rate column.
+intervals, the economics Markdown carries those intervals into the pass-rate column. When multiple
+input reports carry different `manifest.suite_signature` values, the economics summary and Markdown
+emit a warning because cost/pass-rate rankings may not be comparable.
 
 Compare two benchmark manifests before comparing scores:
 

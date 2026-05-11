@@ -21,6 +21,7 @@ that improve DM-Code-Agent as an auditable code-agent baseline.
 | 2026-05-11 | Packaging/CI maintenance benchmark task | `packaging_ci_contract`, `tests/test_coding_benchmarks.py`, `docs/research-log/17-packaging-ci-maintenance.md` |
 | 2026-05-11 | Patch-fingerprint self-consistency voting | `SelfConsistencyRunner`, benchmark `patch_fingerprint` metadata, `docs/research-log/18-self-consistency-patch-fingerprint.md` |
 | 2026-05-11 | Benchmark manifest diff CLI | `dm-agent-manifest-diff`, `diff_report_manifests`, `docs/research-log/19-benchmark-manifest-diff.md` |
+| 2026-05-11 | Economics report manifest guard | `dm-agent-economics` `manifest_guard`, Markdown suite-signature warning, `docs/research-log/20-economics-manifest-guard.md` |
 
 ## Highest ROI Backlog
 
@@ -28,10 +29,10 @@ that improve DM-Code-Agent as an auditable code-agent baseline.
 | ---: | --- | --- | --- |
 | 1 | Repeated-failure policy experiments | Uses recorded repeated-failure signals to test escalation strategies | Keep default off until deterministic evidence exists |
 | 2 | Trace analysis Markdown reports | Produces shareable trace-health summaries from directories | Avoid leaking full trace contents |
-| 3 | Economics report manifest guard | Warns before ranking reports with different suite signatures | Should be overrideable for intentional comparisons |
-| 4 | Additional maintenance realism tasks: behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI and packaging/CI consistency | Hidden tests must stay deterministic and keyless |
-| 5 | Self-consistency report rendering | Make patch-vote metadata easier to read in benchmark Markdown | Keep full patch contents out of reports |
-| 6 | Manifest-aware benchmark Markdown summaries | Surface suite signature and task-contract warnings near score tables | Avoid noisy output for matching reports |
+| 3 | Additional maintenance realism tasks: behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI and packaging/CI consistency | Hidden tests must stay deterministic and keyless |
+| 4 | Self-consistency report rendering | Make patch-vote metadata easier to read in benchmark Markdown | Keep full patch contents out of reports |
+| 5 | Manifest-aware benchmark Markdown summaries | Surface suite signature and task-contract warnings near score tables | Avoid noisy output for matching reports |
+| 6 | Economics guard policy flag | Optionally fail economics generation on suite-signature drift for CI use | Keep the default warning-only for compatibility |
 
 ## Frozen Unless Authorized
 

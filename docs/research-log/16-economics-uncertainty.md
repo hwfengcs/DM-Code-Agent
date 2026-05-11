@@ -42,5 +42,4 @@ python -m black --check dm_agent/benchmarks/economics.py tests/test_coding_bench
 ## Open Questions / Next Bets
 
 - Add uncertainty-aware cost-per-success intervals when repeated report samples exist.
-- Add a report-comparison CLI that refuses to rank reports with different suite signatures unless
-  explicitly allowed.
+- Add a CI-oriented economics flag that can fail on manifest drift instead of warning only.

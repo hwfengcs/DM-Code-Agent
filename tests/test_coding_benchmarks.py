@@ -761,6 +761,7 @@ def test_benchmark_economics_report_is_deterministic_and_keyless():
             "overall_pass_rate_ci_95": {"low": 0.1, "high": 0.9},
             "total_estimated_tokens": 3000,
         },
+        "manifest": {"suite_signature": "same-suite"},
         "results": [
             {"success": True, "estimated_tokens": 1000},
             {"success": False, "estimated_tokens": 2000},
@@ -776,7 +777,44 @@ def test_benchmark_economics_report_is_deterministic_and_keyless():
     assert entry["total_estimated_tokens"] == 3000
     assert entry["estimated_cost_usd"] == 0.006
     assert entry["cost_per_success_usd"] == 0.006
+    assert economics["summary"]["manifest_guard"]["warning"] is False
     markdown = render_markdown(economics)
     assert "Benchmark Token Economics" in markdown
     assert "50.0% [10.0%-90.0%]" in markdown
     assert "scripted-smoke" in markdown
+    assert "Warning:" not in markdown
+
+
+def test_benchmark_economics_warns_on_manifest_signature_mismatch():
+    first = {
+        "suite": "maintenance",
+        "provider": "scripted",
+        "model": "a",
+        "summary": {"total_runs": 1, "overall_pass_rate": 1.0},
+        "manifest": {"suite_signature": "suite-a"},
+        "results": [{"success": True, "estimated_tokens": 100}],
+    }
+    second = {
+        "suite": "maintenance",
+        "provider": "scripted",
+        "model": "b",
+        "summary": {"total_runs": 1, "overall_pass_rate": 0.0},
+        "manifest": {"suite_signature": "suite-b"},
+        "results": [{"success": False, "estimated_tokens": 100}],
+    }
+    missing = {
+        "suite": "legacy",
+        "provider": "scripted",
+        "model": "old",
+        "summary": {"total_runs": 1, "overall_pass_rate": 0.0},
+        "results": [{"success": False, "estimated_tokens": 100}],
+    }
+
+    economics = build_economics_report([first, second, missing])
+    guard = economics["summary"]["manifest_guard"]
+
+    assert guard["warning"] is True
+    assert guard["suite_signature_count"] == 2
+    assert set(guard["suite_signatures"]) == {"suite-a", "suite-b"}
+    assert guard["missing_suite_signature"] == ["legacy:scripted:old"]
+    assert "different benchmark suite signatures" in render_markdown(economics)

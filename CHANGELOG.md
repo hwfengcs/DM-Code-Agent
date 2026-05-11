@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dm-agent-manifest-diff`, an offline CLI for comparing two benchmark report
   manifests before score comparisons. It highlights suite-signature, task
   fingerprint, and variant-name drift without rerunning benchmarks.
+- `dm-agent-economics` manifest guard metadata and Markdown warning when input
+  reports carry different benchmark suite signatures.
 - `docs/research-log/07-trace-diff.md` documenting the trace-diff design and
   the next trace-analysis bets.
 - `docs/research-log/08-trace-analyzer.md` documenting the analyzer rules and
@@ -66,6 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   patch-based self-consistency voting.
 - `docs/research-log/19-benchmark-manifest-diff.md` documenting manifest diff
   guardrails for benchmark comparisons.
+- `docs/research-log/20-economics-manifest-guard.md` documenting
+  suite-signature warnings in economics reports.
 
 ## [2.0.0] - 2026-05-08
 

@@ -116,6 +116,7 @@ def build_economics_report(
             item.label,
         ),
     )
+    manifest_guard = _manifest_guard(reports)
     return {
         "mode": "benchmark_economics",
         "summary": {
@@ -124,6 +125,7 @@ def build_economics_report(
                 ranked[0].label if ranked and ranked[0].cost_per_success_usd is not None else ""
             ),
             "best_pass_rate": max((entry.pass_rate for entry in entries), default=0.0),
+            "manifest_guard": manifest_guard,
         },
         "entries": [entry.to_dict() for entry in entries],
         "ranking": [entry.label for entry in ranked],
@@ -139,9 +141,22 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "This report is generated from existing benchmark JSON files. It does not run "
         "live models, SWE-bench, or external price lookups.",
         "",
-        "| Label | Suite | Provider | Model | Pass rate (95% CI) | Runs | Avg tokens | Tokens/success | Estimated cost | Cost/success |",
-        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
+    manifest_guard = (report.get("summary") or {}).get("manifest_guard") or {}
+    if manifest_guard.get("warning"):
+        lines.extend(
+            [
+                "> Warning: source reports have different benchmark suite signatures. "
+                "Cost and pass-rate rankings may not be comparable.",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "| Label | Suite | Provider | Model | Pass rate (95% CI) | Runs | Avg tokens | Tokens/success | Estimated cost | Cost/success |",
+            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
     for entry in report.get("entries", []):
         lines.append(
             "| {label} | {suite} | {provider} | {model} | {pass_rate} | {total_runs} | "
@@ -269,6 +284,28 @@ def _default_label(report: Dict[str, Any]) -> str:
     model = str(report.get("model") or "unknown")
     suite = str(report.get("suite") or report.get("mode") or "benchmark")
     return f"{suite}:{provider}:{model}"
+
+
+def _manifest_guard(reports: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    signatures: Dict[str, List[str]] = {}
+    missing = []
+    for index, report in enumerate(reports):
+        label = _default_label(report) or f"report-{index + 1}"
+        manifest = report.get("manifest") or {}
+        signature = ""
+        if isinstance(manifest, dict):
+            signature = str(manifest.get("suite_signature") or "")
+        if signature:
+            signatures.setdefault(signature, []).append(label)
+        else:
+            missing.append(label)
+
+    return {
+        "warning": len(signatures) > 1,
+        "suite_signature_count": len(signatures),
+        "suite_signatures": signatures,
+        "missing_suite_signature": missing,
+    }
 
 
 def _safe_rate(successes: int, total: int) -> float:
