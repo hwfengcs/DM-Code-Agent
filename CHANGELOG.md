@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Patch-fingerprint voting for self-consistency: benchmark candidates now carry
   a stable workspace-local patch fingerprint, and core/benchmark selection uses
   it when present before falling back to final-answer text.
+- `dm-agent-manifest-diff`, an offline CLI for comparing two benchmark report
+  manifests before score comparisons. It highlights suite-signature, task
+  fingerprint, and variant-name drift without rerunning benchmarks.
 - `docs/research-log/07-trace-diff.md` documenting the trace-diff design and
   the next trace-analysis bets.
 - `docs/research-log/08-trace-analyzer.md` documenting the analyzer rules and
@@ -61,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   packaging/CI maintenance benchmark contract.
 - `docs/research-log/18-self-consistency-patch-fingerprint.md` documenting
   patch-based self-consistency voting.
+- `docs/research-log/19-benchmark-manifest-diff.md` documenting manifest diff
+  guardrails for benchmark comparisons.
 
 ## [2.0.0] - 2026-05-08
 

@@ -38,6 +38,7 @@ these entries.
 | [16](16-economics-uncertainty.md) | Confidence-aware token economics reports | post-v2 | implementation landed |
 | [17](17-packaging-ci-maintenance.md) | Packaging and CI maintenance benchmark task | post-v2 | implementation landed |
 | [18](18-self-consistency-patch-fingerprint.md) | Patch-fingerprint self-consistency voting | post-v2 | implementation landed |
+| [19](19-benchmark-manifest-diff.md) | Benchmark manifest diff CLI | post-v2 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

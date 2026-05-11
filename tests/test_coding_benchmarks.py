@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from dataclasses import replace
 
@@ -6,6 +7,11 @@ import pytest
 from dm_agent.benchmarks import runner as runner_module
 from dm_agent.benchmarks.cli import main as bench_main
 from dm_agent.benchmarks.economics import build_economics_report, render_markdown
+from dm_agent.benchmarks.manifest_diff import (
+    diff_report_manifests,
+    main as manifest_diff_main,
+    render_markdown as render_manifest_diff_markdown,
+)
 from dm_agent.benchmarks.models import BenchmarkRunConfig, CodingBenchResult, CommandResult
 from dm_agent.benchmarks.runner import (
     benchmark_task_fingerprint,
@@ -181,6 +187,78 @@ def test_benchmark_manifest_is_stable_and_includes_variants():
     assert first == second
     assert first["task_ids"] == ["config_precedence"]
     assert first["variant_names"] == ["full"]
+
+
+def test_benchmark_manifest_diff_marks_matching_reports_compatible(tmp_path, capsys):
+    task = get_maintenance_tasks(["config_precedence"])[0]
+    manifest = build_benchmark_manifest(
+        suite="maintenance",
+        tasks=[task],
+        variants=DEFAULT_BENCH_VARIANTS,
+    )
+    left = {"suite": "maintenance", "manifest": manifest}
+    right = {"suite": "maintenance", "manifest": manifest}
+
+    diff = diff_report_manifests(left, right)
+
+    assert diff.compatible is True
+    assert diff.suite_signature_match is True
+    markdown = render_manifest_diff_markdown(diff, left_label="a.json", right_label="b.json")
+    assert "compatible" in markdown
+
+    left_path = tmp_path / "left.json"
+    right_path = tmp_path / "right.json"
+    left_path.write_text(json.dumps(left), encoding="utf-8")
+    right_path.write_text(json.dumps(right), encoding="utf-8")
+
+    assert manifest_diff_main([str(left_path), str(right_path), "--json"]) == 0
+    assert '"compatible": true' in capsys.readouterr().out
+
+
+def test_benchmark_manifest_diff_reports_suite_task_variant_and_fingerprint_drift(tmp_path, capsys):
+    task = get_maintenance_tasks(["config_precedence"])[0]
+    other_task = get_maintenance_tasks(["packaging_ci_contract"])[0]
+    left_manifest = build_benchmark_manifest(
+        suite="maintenance",
+        tasks=[task],
+        variants=DEFAULT_BENCH_VARIANTS,
+    )
+    right_manifest = build_benchmark_manifest(
+        suite="coding",
+        tasks=[other_task],
+        variants=[],
+    )
+    right_manifest["task_fingerprints"]["config_precedence"] = "changed"
+    right_manifest["suite_signature"] = "different"
+    right_manifest["variant_names"] = ["no_planning"]
+
+    diff = diff_report_manifests(
+        {"suite": "maintenance", "manifest": left_manifest},
+        {"suite": "coding", "manifest": right_manifest},
+    )
+
+    assert diff.compatible is False
+    assert diff.suite_match is False
+    assert diff.variant_names_match is False
+    assert diff.missing_in_left == ["packaging_ci_contract"]
+    assert diff.changed_fingerprints == ["config_precedence"]
+
+    left_path = tmp_path / "left.json"
+    right_path = tmp_path / "right.json"
+    left_path.write_text(
+        json.dumps({"suite": "maintenance", "manifest": left_manifest}),
+        encoding="utf-8",
+    )
+    right_path.write_text(
+        json.dumps({"suite": "coding", "manifest": right_manifest}),
+        encoding="utf-8",
+    )
+
+    assert manifest_diff_main([str(left_path), str(right_path)]) == 1
+    output = capsys.readouterr().out
+    assert "different" in output
+    assert "packaging_ci_contract" in output
+    assert "config_precedence" in output
 
 
 def test_self_consistency_benchmark_uses_fresh_candidate_results(

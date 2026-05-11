@@ -71,6 +71,15 @@ dm-agent-economics bench_reports/maintenance.json \
 explicit inputs for local accounting. When source benchmark reports include pass-rate confidence
 intervals, the economics Markdown carries those intervals into the pass-rate column.
 
+Compare two benchmark manifests before comparing scores:
+
+```bash
+dm-agent-manifest-diff bench_reports/baseline.json bench_reports/experiment.json
+```
+
+The manifest diff is offline-only. It exits with `0` when suite signatures, task fingerprints, and
+variant names match; it exits with `1` when reports are from different task contracts.
+
 Default-off v2 plumbing for coding/maintenance benchmark experiments:
 
 ```bash
