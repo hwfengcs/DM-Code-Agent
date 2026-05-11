@@ -137,6 +137,8 @@ The report includes:
 - RAG / critic / self-consistency configuration metadata when those default-off switches are used
 - self-consistency uncertainty metadata when multiple candidates are run: vote distribution,
   selected support, support fraction, tie detection, margin to runner-up, and confidence label
+- self-consistency patch fingerprints when file edits are available, so majority voting can group
+  equivalent workspace changes before falling back to final-answer text
 - manifest provenance: task ids, per-task fingerprints, variant names, and suite signature
 - compact trace analysis when `--trace-dir` is enabled
 

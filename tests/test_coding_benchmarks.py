@@ -111,6 +111,19 @@ def _bench_result(task_id: str, *, success: bool, final_answer: str, tokens: int
     )
 
 
+def _bench_result_with_metadata(
+    task_id: str,
+    *,
+    success: bool,
+    final_answer: str,
+    tokens: int,
+    metadata: dict,
+):
+    result = _bench_result(task_id, success=success, final_answer=final_answer, tokens=tokens)
+    result.metadata.update(metadata)
+    return result
+
+
 def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest.MonkeyPatch):
     def fake_run_benchmark_task(task, variant, config, *, repeat_index=0, suite="coding"):
         return _bench_result(task.task_id, success=True, final_answer="ok", tokens=100)
@@ -200,6 +213,92 @@ def test_self_consistency_benchmark_uses_fresh_candidate_results(
     assert uncertainty["vote_distribution"] == {"bad": 1, "good": 1}
     assert uncertainty["selected_support"] == 1
     assert uncertainty["runner_confidence"] == "high"
+
+
+def test_benchmark_self_consistency_majority_vote_groups_by_patch_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    task = get_coding_tasks(["slugify_cleanup"])[0]
+    candidates = [
+        _bench_result_with_metadata(
+            task.task_id,
+            success=True,
+            final_answer="wording one",
+            tokens=100,
+            metadata={"patch_fingerprint": "patch-a"},
+        ),
+        _bench_result_with_metadata(
+            task.task_id,
+            success=False,
+            final_answer="wording two",
+            tokens=90,
+            metadata={"patch_fingerprint": "patch-b"},
+        ),
+        _bench_result_with_metadata(
+            task.task_id,
+            success=True,
+            final_answer="wording three",
+            tokens=110,
+            metadata={"patch_fingerprint": "patch-a"},
+        ),
+    ]
+
+    def fake_run_in_workspace(*args, **kwargs):
+        repeat_index = kwargs["repeat_index"]
+        return candidates[repeat_index]
+
+    monkeypatch.setattr(runner_module, "_run_benchmark_task_in_workspace", fake_run_in_workspace)
+
+    result = runner_module.run_benchmark_task(
+        task,
+        runner_module.DEFAULT_BENCH_VARIANTS[0],
+        BenchmarkRunConfig(self_consistency_runs=3, self_consistency_strategy="majority_vote"),
+    )
+
+    uncertainty = result.metadata["self_consistency"]["uncertainty"]
+
+    assert result.final_answer == "wording one"
+    assert uncertainty["vote_distribution"] == {"patch-a": 2, "patch-b": 1}
+    assert uncertainty["selected_vote_key"] == "patch-a"
+    assert uncertainty["selected_vote_key_source"] == "patch_fingerprint"
+    assert result.metadata["self_consistency"]["candidates"][0]["vote_key_source"] == (
+        "patch_fingerprint"
+    )
+
+
+def test_patch_fingerprint_is_stable_content_sensitive_and_ignores_hidden_files(tmp_path):
+    before = {"app.py": b"old\n", "README.md": b"same\n"}
+    after = {"app.py": b"new\n", "README.md": b"same\n"}
+    changed_files = ["app.py"]
+
+    first = runner_module._patch_fingerprint(before, after, changed_files)
+    second = runner_module._patch_fingerprint(before, after, changed_files)
+    changed_content = runner_module._patch_fingerprint(
+        before,
+        {"app.py": b"newer\n", "README.md": b"same\n"},
+        changed_files,
+    )
+
+    assert first
+    assert first == second
+    assert first != changed_content
+
+    task = get_coding_tasks(["slugify_cleanup"])[0]
+    prepare_workspace(task, tmp_path, include_hidden=False)
+    before_snapshot = runner_module._snapshot_workspace(tmp_path)
+    Path(tmp_path / "text_utils.py").write_text(
+        "def slugify(value: str) -> str:\n    return value.strip().lower()\n",
+        encoding="utf-8",
+    )
+    after_snapshot = runner_module._snapshot_workspace(tmp_path)
+    changed = runner_module._diff_workspace(before_snapshot, after_snapshot)
+    before_hidden = runner_module._patch_fingerprint(before_snapshot, after_snapshot, changed)
+
+    runner_module._write_files(tmp_path, task.hidden_files)
+    after_hidden_snapshot = runner_module._snapshot_workspace(tmp_path)
+    after_hidden = runner_module._patch_fingerprint(before_snapshot, after_hidden_snapshot, changed)
+
+    assert before_hidden == after_hidden
 
 
 def test_benchmark_summary_includes_wilson_confidence_intervals():

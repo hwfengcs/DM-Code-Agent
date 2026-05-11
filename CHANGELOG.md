@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `packaging_ci_contract`, a multi-file maintenance benchmark task that repairs
   Python packaging metadata, dev extras, CI matrix/install commands, CI checks,
   and regression coverage under deterministic hidden tests.
+- Patch-fingerprint voting for self-consistency: benchmark candidates now carry
+  a stable workspace-local patch fingerprint, and core/benchmark selection uses
+  it when present before falling back to final-answer text.
 - `docs/research-log/07-trace-diff.md` documenting the trace-diff design and
   the next trace-analysis bets.
 - `docs/research-log/08-trace-analyzer.md` documenting the analyzer rules and
@@ -56,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   offline economics reporting.
 - `docs/research-log/17-packaging-ci-maintenance.md` documenting the
   packaging/CI maintenance benchmark contract.
+- `docs/research-log/18-self-consistency-patch-fingerprint.md` documenting
+  patch-based self-consistency voting.
 
 ## [2.0.0] - 2026-05-08
 

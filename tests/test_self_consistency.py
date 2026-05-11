@@ -53,6 +53,76 @@ def test_self_consistency_majority_vote_selects_most_common_answer():
     assert uncertainty["runner_confidence"] == "medium"
 
 
+def test_self_consistency_majority_vote_prefers_patch_fingerprint_when_present():
+    candidates = [
+        {
+            "final_answer": "alpha wording",
+            "steps": [{"action": "finish"}],
+            "metadata": {"status": "success", "patch_fingerprint": "patch-a"},
+        },
+        {
+            "final_answer": "beta wording",
+            "steps": [{"action": "finish"}],
+            "metadata": {"status": "success", "patch_fingerprint": "patch-a"},
+        },
+        {
+            "final_answer": "gamma wording",
+            "steps": [{"action": "finish"}],
+            "metadata": {"status": "success", "patch_fingerprint": "patch-b"},
+        },
+    ]
+
+    runner = SelfConsistencyRunner(
+        lambda run_index, task, **kwargs: candidates[run_index - 1],
+        num_runs=3,
+        strategy="majority_vote",
+    )
+
+    result = runner.run("choose the best patch")
+    metadata = result["metadata"]["self_consistency"]
+    uncertainty = metadata["uncertainty"]
+
+    assert result["final_answer"] == "alpha wording"
+    assert uncertainty["vote_distribution"] == {"patch-a": 2, "patch-b": 1}
+    assert uncertainty["selected_vote_key"] == "patch-a"
+    assert uncertainty["selected_vote_key_source"] == "patch_fingerprint"
+    assert metadata["candidates"][0]["patch_fingerprint"] == "patch-a"
+    assert metadata["candidates"][0]["vote_key_source"] == "patch_fingerprint"
+
+
+def test_self_consistency_majority_vote_falls_back_to_final_answer_without_patch_fingerprint():
+    candidates = [
+        {
+            "final_answer": "alpha",
+            "steps": [{"action": "finish"}],
+            "metadata": {"status": "success"},
+        },
+        {
+            "final_answer": "alpha",
+            "steps": [{"action": "finish"}],
+            "metadata": {"status": "success"},
+        },
+        {
+            "final_answer": "beta",
+            "steps": [{"action": "finish"}],
+            "metadata": {"status": "success"},
+        },
+    ]
+
+    runner = SelfConsistencyRunner(
+        lambda run_index, task, **kwargs: candidates[run_index - 1],
+        num_runs=3,
+        strategy="majority_vote",
+    )
+
+    result = runner.run("choose the best answer")
+    uncertainty = result["metadata"]["self_consistency"]["uncertainty"]
+
+    assert uncertainty["vote_distribution"] == {"alpha": 2, "beta": 1}
+    assert uncertainty["selected_vote_key"] == "alpha"
+    assert uncertainty["selected_vote_key_source"] == "final_answer"
+
+
 def test_self_consistency_critic_score_selects_highest_reviewed_candidate():
     client = FakeRespondClient(
         [

@@ -76,5 +76,5 @@ python -m black --check dm_agent/core/self_consistency.py dm_agent/benchmarks/ru
 ## Open Questions / Next Bets
 
 - Add uncertainty-aware benchmark report rendering for self-consistency runs.
-- Track patch fingerprints rather than final-answer strings when candidates edit files.
+- Use patch-fingerprint voting metadata in benchmark Markdown summaries.
 - Combine uncertainty metadata with trace analyzer output for "selected but risky" warnings.

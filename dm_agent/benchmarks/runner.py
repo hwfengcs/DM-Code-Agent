@@ -515,7 +515,9 @@ def _run_benchmark_task_in_workspace(
             if trace_writer:
                 trace_writer.close()
 
-    changed_files = _diff_workspace(before_snapshot, _snapshot_workspace(workspace))
+    after_snapshot = _snapshot_workspace(workspace)
+    changed_files = _diff_workspace(before_snapshot, after_snapshot)
+    patch_fingerprint = _patch_fingerprint(before_snapshot, after_snapshot, changed_files)
     _write_files(workspace, task.hidden_files)
     hidden_result = run_hidden_tests(task, workspace, timeout=config.test_timeout)
 
@@ -532,6 +534,7 @@ def _run_benchmark_task_in_workspace(
             "total_tokens": client.usage.total_tokens,
             "repeat_index": repeat_index,
             "changed_files": changed_files,
+            "patch_fingerprint": patch_fingerprint,
             "trace_path": str(trace_path) if trace_path else "",
             "reflexion_enabled": config.enable_reflexion,
             "max_trials": config.max_trials,
@@ -618,6 +621,9 @@ def _run_self_consistency_benchmark_task(
                 "success": candidate.success,
                 "failure_reason": candidate.failure_reason,
                 "final_answer": candidate.final_answer,
+                "vote_key": _benchmark_vote_key(candidate),
+                "vote_key_source": _benchmark_vote_key_source(candidate),
+                "patch_fingerprint": candidate.metadata.get("patch_fingerprint", ""),
                 "estimated_tokens": candidate.estimated_tokens,
                 "estimated_cost_usd": candidate.estimated_cost_usd,
                 "steps_count": candidate.steps_count,
@@ -661,7 +667,7 @@ def _select_self_consistency_candidate(
     if strategy == "majority_vote":
         groups: Dict[str, List[CodingBenchResult]] = {}
         for candidate in candidates:
-            key = candidate.final_answer.strip()
+            key = _benchmark_vote_key(candidate)
             groups.setdefault(key, []).append(candidate)
         ranked_groups = sorted(
             groups.values(),
@@ -682,8 +688,8 @@ def _benchmark_self_consistency_uncertainty(
     *,
     strategy: str,
 ) -> Dict[str, Any]:
-    vote_distribution = _final_answer_distribution(candidates)
-    selected_key = _display_vote_key(selected.final_answer)
+    vote_distribution = _benchmark_vote_distribution(candidates)
+    selected_key = _display_vote_key(_benchmark_vote_key(selected))
     selected_support = vote_distribution.get(selected_key, 0)
     support_fraction = selected_support / len(candidates) if candidates else 0.0
     selected_score = _benchmark_candidate_score(selected, strategy)
@@ -707,6 +713,7 @@ def _benchmark_self_consistency_uncertainty(
         "unique_votes": len(vote_distribution),
         "vote_distribution": vote_distribution,
         "selected_vote_key": selected_key,
+        "selected_vote_key_source": _benchmark_vote_key_source(selected),
         "selected_support": selected_support,
         "support_fraction": support_fraction,
         "selected_score": selected_score,
@@ -720,12 +727,25 @@ def _benchmark_self_consistency_uncertainty(
     }
 
 
-def _final_answer_distribution(candidates: Sequence[CodingBenchResult]) -> Dict[str, int]:
+def _benchmark_vote_distribution(candidates: Sequence[CodingBenchResult]) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for candidate in candidates:
-        key = _display_vote_key(candidate.final_answer)
+        key = _display_vote_key(_benchmark_vote_key(candidate))
         counts[key] = counts.get(key, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def _benchmark_vote_key(candidate: CodingBenchResult) -> str:
+    patch_fingerprint = str(candidate.metadata.get("patch_fingerprint", "")).strip()
+    if patch_fingerprint:
+        return patch_fingerprint
+    return candidate.final_answer.strip()
+
+
+def _benchmark_vote_key_source(candidate: CodingBenchResult) -> str:
+    if str(candidate.metadata.get("patch_fingerprint", "")).strip():
+        return "patch_fingerprint"
+    return "final_answer" if candidate.final_answer.strip() else "empty"
 
 
 def _display_vote_key(value: str) -> str:
@@ -859,6 +879,24 @@ def _diff_workspace(before: Dict[str, bytes], after: Dict[str, bytes]) -> List[s
         if before.get(path) != after.get(path):
             changed.append(path)
     return changed
+
+
+def _patch_fingerprint(
+    before: Dict[str, bytes],
+    after: Dict[str, bytes],
+    changed_files: Sequence[str],
+) -> str:
+    if not changed_files:
+        return ""
+    payload = {}
+    for path in changed_files:
+        before_content = before.get(path)
+        after_content = after.get(path)
+        payload[path] = {
+            "before": (hashlib.sha256(before_content).hexdigest() if path in before else None),
+            "after": hashlib.sha256(after_content).hexdigest() if path in after else None,
+        }
+    return _stable_hash(payload)
 
 
 def _should_track_file(relative_path: str) -> bool:

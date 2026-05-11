@@ -23,6 +23,7 @@ class SelfConsistencyCandidate:
     score: float
     passed: bool
     critic_review: Optional[CriticReview] = None
+    vote_key_source: str = "final_answer"
     note: str = ""
 
     def summary(self) -> Dict[str, Any]:
@@ -30,6 +31,10 @@ class SelfConsistencyCandidate:
         return {
             "run_index": self.run_index,
             "vote_key": self.vote_key,
+            "vote_key_source": self.vote_key_source,
+            "patch_fingerprint": (
+                metadata.get("patch_fingerprint") if isinstance(metadata, dict) else None
+            ),
             "score": self.score,
             "passed": self.passed,
             "status": metadata.get("status"),
@@ -153,7 +158,7 @@ class SelfConsistencyRunner:
             )
             score = review.score
             passed = review.passed
-            vote_key = str(result.get("final_answer", "")).strip()
+            vote_key, vote_key_source = _normalise_vote_key(result)
             note = review.summary
             result.setdefault("metadata", {})["critic_review"] = review.to_dict()
             result["metadata"]["critic_score"] = review.score
@@ -165,6 +170,7 @@ class SelfConsistencyRunner:
                 score=score,
                 passed=passed,
                 critic_review=review,
+                vote_key_source=vote_key_source,
                 note=note,
             )
 
@@ -173,7 +179,7 @@ class SelfConsistencyRunner:
             test_score = self.visible_test(result)
             score = _coerce_score(test_score)
             passed = score >= 0.5
-            vote_key = str(result.get("final_answer", "")).strip()
+            vote_key, vote_key_source = _normalise_vote_key(result)
             note = "visible test passed" if passed else "visible test failed"
             result.setdefault("metadata", {})["visible_test_score"] = score
             result["metadata"]["visible_test_passed"] = passed
@@ -183,10 +189,11 @@ class SelfConsistencyRunner:
                 vote_key=vote_key,
                 score=score,
                 passed=passed,
+                vote_key_source=vote_key_source,
                 note=note,
             )
 
-        vote_key = _normalise_vote_key(result)
+        vote_key, vote_key_source = _normalise_vote_key(result)
         score = 1.0 if _is_success(result) else 0.0
         return SelfConsistencyCandidate(
             run_index=run_index,
@@ -194,6 +201,7 @@ class SelfConsistencyRunner:
             vote_key=vote_key,
             score=score,
             passed=_is_success(result),
+            vote_key_source=vote_key_source,
             note="majority_vote",
         )
 
@@ -261,6 +269,7 @@ class SelfConsistencyRunner:
             "unique_votes": len(vote_distribution),
             "vote_distribution": vote_distribution,
             "selected_vote_key": selected_key,
+            "selected_vote_key_source": selected.vote_key_source,
             "selected_support": selected_support,
             "support_fraction": support_fraction,
             "selected_score": selected.score,
@@ -271,14 +280,18 @@ class SelfConsistencyRunner:
         }
 
 
-def _normalise_vote_key(result: Dict[str, Any]) -> str:
+def _normalise_vote_key(result: Dict[str, Any]) -> tuple[str, str]:
+    metadata = result.get("metadata", {})
+    if isinstance(metadata, dict):
+        patch_fingerprint = str(metadata.get("patch_fingerprint", "")).strip()
+        if patch_fingerprint:
+            return patch_fingerprint, "patch_fingerprint"
     answer = str(result.get("final_answer", "")).strip()
     if answer:
-        return answer
-    metadata = result.get("metadata", {})
+        return answer, "final_answer"
     if isinstance(metadata, dict) and metadata.get("prediction"):
-        return str(metadata["prediction"]).strip()
-    return ""
+        return str(metadata["prediction"]).strip(), "prediction"
+    return "", "empty"
 
 
 def _vote_distribution(candidates: Iterable[SelfConsistencyCandidate]) -> Dict[str, int]:
