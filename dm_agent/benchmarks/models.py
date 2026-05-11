@@ -69,6 +69,7 @@ class BenchmarkRunConfig:
     max_trials: int = 1
     enable_adaptive_replanning: bool = False
     max_replans: int = -1
+    enable_repeated_failure_policy_experiment: bool = False
     cost_per_1k_tokens: float = 0.0
     enable_rag: bool = False
     rag_top_k: int = 5

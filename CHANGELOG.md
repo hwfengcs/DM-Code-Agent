@@ -45,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dm-agent-trace analyze-dir --markdown PATH` for shareable trace-health
   summaries that avoid raw prompt, observation, tool-output, and final-answer
   contents.
+- Default-off repeated-failure policy experiment for adaptive replanning. When
+  explicitly enabled, repeated action/error signatures can select a
+  loop-breaking replan strategy without changing default behavior.
 - `docs/research-log/07-trace-diff.md` documenting the trace-diff design and
   the next trace-analysis bets.
 - `docs/research-log/08-trace-analyzer.md` documenting the analyzer rules and
@@ -75,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   suite-signature warnings in economics reports.
 - `docs/research-log/21-trace-analysis-markdown.md` documenting the
   trace-directory Markdown report and privacy boundary.
+- `docs/research-log/22-repeated-failure-policy-experiment.md` documenting the
+  default-off repeated-failure policy experiment.
 
 ## [2.0.0] - 2026-05-08
 

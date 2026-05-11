@@ -73,6 +73,7 @@ class ReactAgent:
         enable_adaptive_replanning: bool = False,
         replan_policy: Optional[AdaptiveReplanPolicy] = None,
         max_replans: int = -1,
+        enable_repeated_failure_policy_experiment: bool = False,
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -144,6 +145,7 @@ class ReactAgent:
         self.enable_adaptive_replanning = enable_adaptive_replanning
         self.replan_policy = replan_policy or AdaptiveReplanPolicy()
         self.max_replans = max_replans
+        self.enable_repeated_failure_policy_experiment = enable_repeated_failure_policy_experiment
         if self.enable_rag and self.retriever is None:
             raise ValueError("enable_rag=True requires a retriever instance.")
 
@@ -345,6 +347,10 @@ class ReactAgent:
             "last_failure_signature": "",
             "repeated_failure_count": 0,
             "repeated_failures": [],
+            "repeated_failure_policy_experiment_enabled": (
+                self.enable_repeated_failure_policy_experiment
+            ),
+            "repeated_failure_policy_applied_count": 0,
             "trial": trial_number,
             "max_trials": max_trials,
             "reflexion_lesson_count": len(self.reflexion_memory),
@@ -364,6 +370,9 @@ class ReactAgent:
                     "rag_top_k": self.rag_top_k,
                     "adaptive_replanning_enabled": self.enable_adaptive_replanning,
                     "max_replans": self.max_replans,
+                    "repeated_failure_policy_experiment_enabled": (
+                        self.enable_repeated_failure_policy_experiment
+                    ),
                     "trial": trial_number,
                     "max_trials": max_trials,
                     "reflexion_lesson_count": len(self.reflexion_memory),
@@ -1071,7 +1080,13 @@ class ReactAgent:
                 signal,
                 replan_count=int(metadata.get("replan_count", 0)),
                 max_replans=self.max_replans,
+                repeated_failure=repeated_failure,
+                use_repeated_failure_escape=self.enable_repeated_failure_policy_experiment,
             )
+            if repeated_failure and self.enable_repeated_failure_policy_experiment:
+                metadata["repeated_failure_policy_applied_count"] = (
+                    int(metadata.get("repeated_failure_policy_applied_count", 0)) + 1
+                )
             metadata["replan_decision_count"] += 1
             metadata["replan_strategy"] = decision.strategy
             strategy_counts = metadata.setdefault("replan_strategy_counts", {})

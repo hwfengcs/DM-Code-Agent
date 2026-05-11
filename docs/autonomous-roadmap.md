@@ -23,17 +23,18 @@ that improve DM-Code-Agent as an auditable code-agent baseline.
 | 2026-05-11 | Benchmark manifest diff CLI | `dm-agent-manifest-diff`, `diff_report_manifests`, `docs/research-log/19-benchmark-manifest-diff.md` |
 | 2026-05-11 | Economics report manifest guard | `dm-agent-economics` `manifest_guard`, Markdown suite-signature warning, `docs/research-log/20-economics-manifest-guard.md` |
 | 2026-05-11 | Trace analysis Markdown reports | `dm-agent-trace analyze-dir --markdown`, `render_trace_directory_markdown`, `docs/research-log/21-trace-analysis-markdown.md` |
+| 2026-05-11 | Repeated-failure policy experiment | `--enable-repeated-failure-policy-experiment`, `break_repeated_failure_loop`, `docs/research-log/22-repeated-failure-policy-experiment.md` |
 
 ## Highest ROI Backlog
 
 | Priority | Opportunity | Why it matters | Constraints |
 | ---: | --- | --- | --- |
-| 1 | Repeated-failure policy experiments | Uses recorded repeated-failure signals to test escalation strategies | Keep default off until deterministic evidence exists |
-| 2 | Additional maintenance realism tasks: behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI and packaging/CI consistency | Hidden tests must stay deterministic and keyless |
-| 3 | Self-consistency report rendering | Make patch-vote metadata easier to read in benchmark Markdown | Keep full patch contents out of reports |
-| 4 | Manifest-aware benchmark Markdown summaries | Surface suite signature and task-contract warnings near score tables | Avoid noisy output for matching reports |
-| 5 | Economics guard policy flag | Optionally fail economics generation on suite-signature drift for CI use | Keep the default warning-only for compatibility |
-| 6 | Benchmark-to-trace report linking | Link trace-analysis Markdown artifacts from benchmark Markdown reports | Use relative paths and avoid raw trace contents |
+| 1 | Additional maintenance realism tasks: behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI and packaging/CI consistency | Hidden tests must stay deterministic and keyless |
+| 2 | Self-consistency report rendering | Make patch-vote metadata easier to read in benchmark Markdown | Keep full patch contents out of reports |
+| 3 | Manifest-aware benchmark Markdown summaries | Surface suite signature and task-contract warnings near score tables | Avoid noisy output for matching reports |
+| 4 | Economics guard policy flag | Optionally fail economics generation on suite-signature drift for CI use | Keep the default warning-only for compatibility |
+| 5 | Benchmark-to-trace report linking | Link trace-analysis Markdown artifacts from benchmark Markdown reports | Use relative paths and avoid raw trace contents |
+| 6 | Repeated-failure policy ablation harness | Compare default adaptive replanning vs loop-breaking strategy offline/with allowed live runs | No score claims without authorized real evaluation |
 
 ## Frozen Unless Authorized
 

@@ -300,6 +300,29 @@ def test_adaptive_replan_policy_classifies_failure_signals():
     assert test_signal.strategy == "inject_test_failure_context"
 
 
+def test_adaptive_replan_policy_repeated_failure_experiment_is_default_off():
+    policy = AdaptiveReplanPolicy()
+    signal = policy.classify("Tool execution failed: boom", action="run_shell")
+
+    default_decision = policy.decide(
+        signal,
+        replan_count=0,
+        max_replans=-1,
+        repeated_failure=True,
+    )
+    experiment_decision = policy.decide(
+        signal,
+        replan_count=0,
+        max_replans=-1,
+        repeated_failure=True,
+        use_repeated_failure_escape=True,
+    )
+
+    assert default_decision.strategy == "simplify_plan_skip_failed_tool"
+    assert experiment_decision.strategy == "break_repeated_failure_loop"
+    assert experiment_decision.should_replan is True
+
+
 def test_react_agent_adaptive_replan_records_strategy_metadata():
     client = FakeRespondClient(
         [
@@ -505,3 +528,66 @@ def test_react_agent_adaptive_replan_records_repeated_failures(tmp_path):
     ]
     assert [decision["repeated_failure"] for decision in decisions] == [False, True]
     assert decisions[1]["repeated_failure_details"]["action"] == "explode"
+
+
+def test_react_agent_repeated_failure_policy_experiment_changes_only_repeated_decision(tmp_path):
+    trace_path = tmp_path / "repeat-experiment.jsonl"
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "explode", "reason": "trigger failure"},
+                        {"step": 2, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            json.dumps({"thought": "Try once.", "action": "explode", "action_input": {}}),
+            json.dumps({"plan": [{"step": 1, "action": "explode", "reason": "retry"}]}),
+            json.dumps({"thought": "Try twice.", "action": "explode", "action_input": {}}),
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "task_complete", "reason": "break loop"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "thought": "Recover.",
+                    "action": "task_complete",
+                    "action_input": {"message": "done"},
+                }
+            ),
+        ]
+    )
+    writer = TraceWriter(trace_path)
+    agent = ReactAgent(
+        client,
+        [
+            Tool("explode", "Fail", lambda arguments: (_ for _ in ()).throw(RuntimeError("boom"))),
+            Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done")),
+        ],
+        enable_planning=True,
+        enable_compression=False,
+        enable_adaptive_replanning=True,
+        enable_repeated_failure_policy_experiment=True,
+        max_replans=2,
+        trace_writer=writer,
+    )
+
+    result = agent.run("recover from a repeated failure with experiment")
+    writer.close()
+
+    assert result["final_answer"] == "done"
+    assert result["metadata"]["repeated_failure_policy_experiment_enabled"] is True
+    assert result["metadata"]["repeated_failure_policy_applied_count"] == 1
+    assert result["metadata"]["replan_strategy_counts"]["break_repeated_failure_loop"] == 1
+
+    decisions = [
+        event["payload"]
+        for event in load_trace_events(trace_path)
+        if event["event"] == "replan_decision"
+    ]
+    assert decisions[0]["strategy"] == "simplify_plan_skip_failed_tool"
+    assert decisions[1]["strategy"] == "break_repeated_failure_loop"

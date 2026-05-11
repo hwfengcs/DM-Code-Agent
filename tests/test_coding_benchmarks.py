@@ -59,6 +59,13 @@ def test_benchmark_feature_flags_parse_without_api_key():
     )
 
 
+def test_repeated_failure_policy_experiment_requires_adaptive_replanning(
+    capsys: pytest.CaptureFixture[str],
+):
+    assert bench_main(["--list", "--enable-repeated-failure-policy-experiment"]) == 2
+    assert "requires --enable-adaptive-replanning" in capsys.readouterr().err
+
+
 def test_swebench_self_consistency_is_explicitly_frozen(
     capsys: pytest.CaptureFixture[str],
 ):
@@ -143,6 +150,8 @@ def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest
             enable_rag=True,
             rag_top_k=3,
             enable_critic=True,
+            enable_adaptive_replanning=True,
+            enable_repeated_failure_policy_experiment=True,
             self_consistency_runs=2,
             self_consistency_strategy="critic_score",
         ),
@@ -151,6 +160,7 @@ def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest
     assert report["rag"]["enabled"] is True
     assert report["rag"]["top_k"] == 3
     assert report["critic"]["enabled"] is True
+    assert report["adaptive_replanning"]["repeated_failure_policy_experiment"] is True
     assert report["self_consistency"]["runs"] == 2
     assert report["self_consistency"]["strategy"] == "critic_score"
     assert report["manifest"]["task_fingerprints"][task.task_id]

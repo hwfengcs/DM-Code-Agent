@@ -114,6 +114,9 @@ def run_benchmark_suite(
         "adaptive_replanning": {
             "enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
+            "repeated_failure_policy_experiment": (
+                config.enable_repeated_failure_policy_experiment
+            ),
         },
         "rag": {
             "enabled": config.enable_rag,
@@ -483,6 +486,9 @@ def _run_benchmark_task_in_workspace(
         max_trials=config.max_trials,
         enable_adaptive_replanning=config.enable_adaptive_replanning,
         max_replans=config.max_replans,
+        enable_repeated_failure_policy_experiment=(
+            config.enable_repeated_failure_policy_experiment
+        ),
         enable_rag=config.enable_rag,
         retriever=_build_benchmark_retriever(workspace, config) if config.enable_rag else None,
         rag_top_k=config.rag_top_k,
@@ -540,6 +546,9 @@ def _run_benchmark_task_in_workspace(
             "max_trials": config.max_trials,
             "adaptive_replanning_enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
+            "repeated_failure_policy_experiment_enabled": (
+                config.enable_repeated_failure_policy_experiment
+            ),
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
             "rag_enabled": config.enable_rag,
             "rag_top_k": config.rag_top_k,

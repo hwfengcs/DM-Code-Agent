@@ -114,6 +114,9 @@ def _build_agent(
         trace_writer=trace_writer,
         enable_adaptive_replanning=config.enable_adaptive_replanning,
         max_replans=config.max_replans,
+        enable_repeated_failure_policy_experiment=(
+            config.enable_repeated_failure_policy_experiment
+        ),
         enable_rag=config.enable_rag,
         retriever=(
             HybridRetriever.from_repository(
@@ -622,6 +625,9 @@ def build_report(
             "max_trials": config.max_trials,
             "enable_adaptive_replanning": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
+            "enable_repeated_failure_policy_experiment": (
+                config.enable_repeated_failure_policy_experiment
+            ),
             "enable_rag": config.enable_rag,
             "rag_top_k": config.rag_top_k,
             "rag_granularity": config.rag_granularity,

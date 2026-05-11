@@ -52,6 +52,7 @@ Opt-in adaptive replanning and local token accounting:
 dm-agent-bench --suite maintenance \
   --provider deepseek \
   --enable-adaptive-replanning \
+  --enable-repeated-failure-policy-experiment \
   --max-replans 3 \
   --cost-per-1k-tokens 0.00027 \
   --output bench_reports/maintenance.json \
@@ -145,6 +146,8 @@ The report includes:
 - agent metadata such as replan, parse repair, and tool error counts
 - adaptive replanning metadata when enabled: signal kind, selected strategy, skipped replans,
   and replan budget exhaustion
+- repeated-failure policy experiment metadata when explicitly enabled: loop-breaking strategy
+  counts for repeated action/error signatures
 - RAG / critic / self-consistency configuration metadata when those default-off switches are used
 - self-consistency uncertainty metadata when multiple candidates are run: vote distribution,
   selected support, support fraction, tie detection, margin to runner-up, and confidence label

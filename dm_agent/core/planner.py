@@ -127,12 +127,24 @@ class AdaptiveReplanPolicy:
         *,
         replan_count: int,
         max_replans: int,
+        repeated_failure: bool = False,
+        use_repeated_failure_escape: bool = False,
     ) -> ReplanDecision:
         if max_replans >= 0 and replan_count >= max_replans:
             return ReplanDecision(
                 should_replan=False,
                 strategy="replan_budget_exhausted",
                 reason=f"Replan budget exhausted ({replan_count}/{max_replans}).",
+                signal=signal,
+            )
+        if repeated_failure and use_repeated_failure_escape:
+            return ReplanDecision(
+                should_replan=True,
+                strategy="break_repeated_failure_loop",
+                reason=(
+                    "Repeated failure-policy experiment selected a loop-breaking replan "
+                    "strategy for the same action/error signature."
+                ),
                 signal=signal,
             )
         if signal.kind == "unknown" and signal.severity == "low":

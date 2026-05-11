@@ -41,6 +41,7 @@ these entries.
 | [19](19-benchmark-manifest-diff.md) | Benchmark manifest diff CLI | post-v2 | implementation landed |
 | [20](20-economics-manifest-guard.md) | Economics manifest guard | post-v2 | implementation landed |
 | [21](21-trace-analysis-markdown.md) | Trace-analysis Markdown reports | post-v2 | implementation landed |
+| [22](22-repeated-failure-policy-experiment.md) | Repeated-failure policy experiment | post-v2 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

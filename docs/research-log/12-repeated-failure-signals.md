@@ -63,6 +63,6 @@ python -m black --check dm_agent/core/agent.py tests/test_planner_agent.py
 
 ## Open Questions / Next Bets
 
-- Add a strategy label for repeated failure without changing `should_replan`.
+- Build an ablation harness around the default-off loop-breaking experiment.
 - Track non-consecutive repeated failures within a run.
 - Aggregate repeated-failure counts in benchmark reports.
