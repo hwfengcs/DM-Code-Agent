@@ -711,6 +711,135 @@ BUILTIN_MAINTENANCE_TASKS: List[BenchmarkTask] = [
             "tests/test_public_cli_docs.py",
         ],
     ),
+    BenchmarkTask(
+        task_id="packaging_ci_contract",
+        name="Packaging metadata and CI contract repair",
+        prompt=(
+            "Fix the packaging and CI contract across packaging_contract.py, pyproject.toml, "
+            ".github/workflows/ci.yml, and tests/test_public_packaging.py. The project must "
+            "consistently support Python 3.10, 3.11, and 3.12; expose a >=3.10 "
+            "requires-python floor; define a dev extra with pytest, ruff, and black; install "
+            "that dev extra in CI; and run pytest, ruff, and black checks in CI. Add "
+            "regression coverage in tests/test_public_packaging.py so future packaging or CI "
+            "drift is caught." + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "packaging_contract.py": (
+                'SUPPORTED_PYTHON_VERSIONS = ["3.11", "3.12"]\n'
+                'DEV_DEPENDENCIES = ["pytest>=8.0"]\n'
+                'CI_CHECK_COMMANDS = ["python -m pytest"]\n\n\n'
+                "def requires_python_specifier():\n"
+                '    return ">=3.11"\n\n\n'
+                "def ci_python_versions():\n"
+                "    return list(SUPPORTED_PYTHON_VERSIONS)\n\n\n"
+                "def dev_extra_dependencies():\n"
+                "    return list(DEV_DEPENDENCIES)\n\n\n"
+                "def ci_install_command():\n"
+                '    return "python -m pip install -e ."\n\n\n'
+                "def ci_check_commands():\n"
+                "    return list(CI_CHECK_COMMANDS)\n"
+            ),
+            "pyproject.toml": (
+                "[project]\n"
+                'name = "demo-agent-plugin"\n'
+                'version = "0.1.0"\n'
+                'description = "Small package used by the maintenance benchmark."\n'
+                'requires-python = ">=3.11"\n'
+                'dependencies = ["click>=8.1"]\n'
+                "classifiers = [\n"
+                '    "Programming Language :: Python :: 3.11",\n'
+                '    "Programming Language :: Python :: 3.12",\n'
+                "]\n\n"
+                "[project.optional-dependencies]\n"
+                'dev = ["pytest>=8.0"]\n'
+            ),
+            ".github/workflows/ci.yml": (
+                "name: CI\n\n"
+                "on:\n"
+                "  push:\n"
+                "  pull_request:\n\n"
+                "jobs:\n"
+                "  test:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    strategy:\n"
+                "      matrix:\n"
+                '        python-version: ["3.11", "3.12"]\n'
+                "    steps:\n"
+                "      - uses: actions/checkout@v4\n"
+                "      - uses: actions/setup-python@v5\n"
+                "        with:\n"
+                "          python-version: ${{ matrix.python-version }}\n"
+                "      - run: python -m pip install -e .\n"
+                "      - run: python -m pytest\n"
+            ),
+            "tests/test_public_packaging.py": (
+                "from packaging_contract import ci_check_commands, ci_python_versions\n\n\n"
+                "def test_ci_runs_pytest():\n"
+                '    assert "python -m pytest" in ci_check_commands()\n\n\n'
+                "def test_ci_has_supported_python_versions():\n"
+                '    assert "3.11" in ci_python_versions()\n'
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_packaging_ci.py": (
+                "from pathlib import Path\n\n"
+                "from packaging_contract import (\n"
+                "    ci_check_commands,\n"
+                "    ci_install_command,\n"
+                "    ci_python_versions,\n"
+                "    dev_extra_dependencies,\n"
+                "    requires_python_specifier,\n"
+                ")\n\n\n"
+                "def _read(path):\n"
+                "    return Path(path).read_text(encoding='utf-8')\n\n\n"
+                "def test_packaging_contract_declares_python_310_floor():\n"
+                '    assert requires_python_specifier() == ">=3.10"\n'
+                '    assert ci_python_versions() == ["3.10", "3.11", "3.12"]\n'
+                "    pyproject = _read('pyproject.toml')\n"
+                "    assert 'requires-python = \">=3.10\"' in pyproject\n"
+                '    assert "Programming Language :: Python :: 3.10" in pyproject\n'
+                '    assert "Programming Language :: Python :: 3.11" in pyproject\n'
+                '    assert "Programming Language :: Python :: 3.12" in pyproject\n\n\n'
+                "def test_dev_extra_and_ci_install_are_consistent():\n"
+                "    dependencies = dev_extra_dependencies()\n"
+                "    for tool in ('pytest', 'ruff', 'black'):\n"
+                "        assert any(dep == tool or dep.startswith(f'{tool}>') for dep in dependencies)\n"
+                "    assert ci_install_command() == 'python -m pip install -e \".[dev]\"'\n"
+                "    pyproject = _read('pyproject.toml')\n"
+                "    for tool in ('pytest', 'ruff', 'black'):\n"
+                "        assert tool in pyproject\n"
+                "    workflow = _read('.github/workflows/ci.yml')\n"
+                "    normalized = workflow.replace(\"'\", '\"')\n"
+                "    assert 'python -m pip install -e \".[dev]\"' in normalized\n\n\n"
+                "def test_ci_runs_all_keyless_checks_in_order():\n"
+                "    expected = [\n"
+                "        'python -m pytest',\n"
+                "        'python -m ruff check dm_agent tests',\n"
+                "        'python -m black --check .',\n"
+                "    ]\n"
+                "    assert ci_check_commands() == expected\n"
+                "    workflow = _read('.github/workflows/ci.yml')\n"
+                "    positions = [workflow.index(command) for command in expected]\n"
+                "    assert positions == sorted(positions)\n"
+                "    for version in ('3.10', '3.11', '3.12'):\n"
+                "        assert version in workflow\n"
+            )
+        },
+        max_steps=20,
+        tags=["maintenance", "packaging", "ci", "regression", "multi-file"],
+        allowed_changed_files=[
+            "packaging_contract.py",
+            "pyproject.toml",
+            ".github/workflows/ci.yml",
+            "tests/test_public_packaging.py",
+        ],
+        required_changed_files=[
+            "packaging_contract.py",
+            "pyproject.toml",
+            ".github/workflows/ci.yml",
+            "tests/test_public_packaging.py",
+        ],
+    ),
 ]
 
 BENCHMARK_SUITES = {

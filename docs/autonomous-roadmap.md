@@ -18,17 +18,18 @@ that improve DM-Code-Agent as an auditable code-agent baseline.
 | 2026-05-08 | Benchmark trace-analysis metadata | `load_trace_analysis_for_report`, per-run `metadata.trace_analysis`, `docs/research-log/14-benchmark-trace-analysis.md` |
 | 2026-05-08 | Trace directory analysis aggregation | `dm-agent-trace analyze-dir`, `analyze_trace_directory`, `docs/research-log/15-trace-analysis-aggregation.md` |
 | 2026-05-08 | Confidence-aware token economics reports | `dm-agent-economics` pass-rate CI, `docs/research-log/16-economics-uncertainty.md` |
+| 2026-05-11 | Packaging/CI maintenance benchmark task | `packaging_ci_contract`, `tests/test_coding_benchmarks.py`, `docs/research-log/17-packaging-ci-maintenance.md` |
 
 ## Highest ROI Backlog
 
 | Priority | Opportunity | Why it matters | Constraints |
 | ---: | --- | --- | --- |
-| 1 | Additional maintenance realism tasks: packaging/CI repair and behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI consistency | Hidden tests must stay deterministic and keyless |
-| 2 | Patch fingerprint voting for self-consistency | Makes file-editing candidates comparable beyond final-answer strings | Must be deterministic and workspace-local |
-| 3 | Repeated-failure policy experiments | Uses recorded repeated-failure signals to test escalation strategies | Keep default off until deterministic evidence exists |
-| 4 | Benchmark manifest diff CLI | Compares two reports' suite signatures before comparing scores | Should not require rerunning benchmarks |
-| 5 | Trace analysis Markdown reports | Produces shareable trace-health summaries from directories | Avoid leaking full trace contents |
-| 6 | Economics report manifest guard | Warns before ranking reports with different suite signatures | Should be overrideable for intentional comparisons |
+| 1 | Patch fingerprint voting for self-consistency | Makes file-editing candidates comparable beyond final-answer strings | Must be deterministic and workspace-local |
+| 2 | Repeated-failure policy experiments | Uses recorded repeated-failure signals to test escalation strategies | Keep default off until deterministic evidence exists |
+| 3 | Benchmark manifest diff CLI | Compares two reports' suite signatures before comparing scores | Should not require rerunning benchmarks |
+| 4 | Trace analysis Markdown reports | Produces shareable trace-health summaries from directories | Avoid leaking full trace contents |
+| 5 | Economics report manifest guard | Warns before ranking reports with different suite signatures | Should be overrideable for intentional comparisons |
+| 6 | Additional maintenance realism tasks: behavior-preserving refactors | Covers more everyday OSS maintenance work beyond docs/CLI and packaging/CI consistency | Hidden tests must stay deterministic and keyless |
 
 ## Frozen Unless Authorized
 

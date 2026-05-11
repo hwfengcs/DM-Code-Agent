@@ -384,6 +384,114 @@ def test_maintenance_hidden_tests_pass_for_known_cli_docs_solution(tmp_path):
     assert result.returncode == 0
 
 
+def test_maintenance_hidden_tests_fail_on_initial_packaging_ci_workspace(tmp_path):
+    task = get_maintenance_tasks(["packaging_ci_contract"])[0]
+    prepare_workspace(task, tmp_path, include_hidden=True)
+
+    result = run_hidden_tests(task, tmp_path)
+
+    assert result.returncode != 0
+    assert "test_packaging_contract_declares_python_310_floor" in result.stdout
+
+
+def test_maintenance_hidden_tests_pass_for_known_packaging_ci_solution(tmp_path):
+    task = get_maintenance_tasks(["packaging_ci_contract"])[0]
+    prepare_workspace(task, tmp_path, include_hidden=True)
+    Path(tmp_path / "packaging_contract.py").write_text(
+        (
+            'SUPPORTED_PYTHON_VERSIONS = ["3.10", "3.11", "3.12"]\n'
+            'DEV_DEPENDENCIES = ["pytest>=8.0", "ruff>=0.4", "black>=24.0"]\n'
+            "CI_CHECK_COMMANDS = [\n"
+            '    "python -m pytest",\n'
+            '    "python -m ruff check dm_agent tests",\n'
+            '    "python -m black --check .",\n'
+            "]\n\n\n"
+            "def requires_python_specifier():\n"
+            '    return ">=3.10"\n\n\n'
+            "def ci_python_versions():\n"
+            "    return list(SUPPORTED_PYTHON_VERSIONS)\n\n\n"
+            "def dev_extra_dependencies():\n"
+            "    return list(DEV_DEPENDENCIES)\n\n\n"
+            "def ci_install_command():\n"
+            "    return 'python -m pip install -e \".[dev]\"'\n\n\n"
+            "def ci_check_commands():\n"
+            "    return list(CI_CHECK_COMMANDS)\n"
+        ),
+        encoding="utf-8",
+    )
+    Path(tmp_path / "pyproject.toml").write_text(
+        (
+            "[project]\n"
+            'name = "demo-agent-plugin"\n'
+            'version = "0.1.0"\n'
+            'description = "Small package used by the maintenance benchmark."\n'
+            'requires-python = ">=3.10"\n'
+            'dependencies = ["click>=8.1"]\n'
+            "classifiers = [\n"
+            '    "Programming Language :: Python :: 3.10",\n'
+            '    "Programming Language :: Python :: 3.11",\n'
+            '    "Programming Language :: Python :: 3.12",\n'
+            "]\n\n"
+            "[project.optional-dependencies]\n"
+            'dev = ["pytest>=8.0", "ruff>=0.4", "black>=24.0"]\n'
+        ),
+        encoding="utf-8",
+    )
+    Path(tmp_path / ".github" / "workflows" / "ci.yml").write_text(
+        (
+            "name: CI\n\n"
+            "on:\n"
+            "  push:\n"
+            "  pull_request:\n\n"
+            "jobs:\n"
+            "  test:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    strategy:\n"
+            "      matrix:\n"
+            '        python-version: ["3.10", "3.11", "3.12"]\n'
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - uses: actions/setup-python@v5\n"
+            "        with:\n"
+            "          python-version: ${{ matrix.python-version }}\n"
+            '      - run: python -m pip install -e ".[dev]"\n'
+            "      - run: python -m pytest\n"
+            "      - run: python -m ruff check dm_agent tests\n"
+            "      - run: python -m black --check .\n"
+        ),
+        encoding="utf-8",
+    )
+    Path(tmp_path / "tests" / "test_public_packaging.py").write_text(
+        (
+            "from packaging_contract import (\n"
+            "    ci_check_commands,\n"
+            "    ci_install_command,\n"
+            "    ci_python_versions,\n"
+            "    dev_extra_dependencies,\n"
+            "    requires_python_specifier,\n"
+            ")\n\n\n"
+            "def test_packaging_contract_matches_ci_surface():\n"
+            '    assert requires_python_specifier() == ">=3.10"\n'
+            '    assert ci_python_versions() == ["3.10", "3.11", "3.12"]\n'
+            "    assert ci_install_command() == 'python -m pip install -e \".[dev]\"'\n\n\n"
+            "def test_dev_tools_and_ci_checks_are_declared():\n"
+            "    deps = dev_extra_dependencies()\n"
+            "    for tool in ('pytest', 'ruff', 'black'):\n"
+            "        assert any(dep.startswith(tool) for dep in deps)\n"
+            "    assert ci_check_commands() == [\n"
+            "        'python -m pytest',\n"
+            "        'python -m ruff check dm_agent tests',\n"
+            "        'python -m black --check .',\n"
+            "    ]\n"
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_hidden_tests(task, tmp_path)
+
+    assert result.returncode == 0
+
+
 def test_benchmark_markdown_report_includes_run_details(tmp_path):
     report_path = tmp_path / "bench.md"
     report = {

@@ -100,6 +100,8 @@ The maintenance suite currently includes:
 - `cross_file_user_contract`: cross-file API contract repair for a serializer/model pair.
 - `cli_config_docs_contract`: multi-file CLI/docs/test consistency repair for configuration
   documentation.
+- `packaging_ci_contract`: multi-file packaging metadata and CI workflow repair with required
+  regression-test updates.
 
 These tasks are intentionally closer to repository upkeep than puzzle-style algorithms. They
 include hidden tests, edge cases, and changed-file constraints.

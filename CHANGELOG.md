@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dm-agent-trace diff` for offline comparison of two JSONL traces, including
   status changes, step/tool/replan deltas, action-sequence divergence,
   tool-usage deltas, plan changes, and final-answer changes.
+- `packaging_ci_contract`, a multi-file maintenance benchmark task that repairs
+  Python packaging metadata, dev extras, CI matrix/install commands, CI checks,
+  and regression coverage under deterministic hidden tests.
 - `docs/research-log/07-trace-diff.md` documenting the trace-diff design and
   the next trace-analysis bets.
 - `docs/research-log/08-trace-analyzer.md` documenting the analyzer rules and
@@ -51,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aggregation for trace review.
 - `docs/research-log/16-economics-uncertainty.md` documenting confidence-aware
   offline economics reporting.
+- `docs/research-log/17-packaging-ci-maintenance.md` documenting the
+  packaging/CI maintenance benchmark contract.
 
 ## [2.0.0] - 2026-05-08
 
