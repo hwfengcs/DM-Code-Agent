@@ -44,6 +44,6 @@ python -m black --check dm_agent/tracing/cli.py dm_agent/tracing/__init__.py tes
 
 ## Open Questions / Next Bets
 
-- Add a Markdown renderer for directory analysis reports.
+- Link directory Markdown reports from benchmark Markdown output.
 - Link directory analysis summaries from benchmark Markdown reports.
 - Add trace-diff aggregation for baseline/candidate trace pairs.

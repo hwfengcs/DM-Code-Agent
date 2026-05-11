@@ -12,6 +12,7 @@ from dm_agent.tracing.cli import main as trace_main
 from dm_agent.tracing.cli import analyze_events
 from dm_agent.tracing.cli import analyze_trace_directory
 from dm_agent.tracing.cli import diff_events
+from dm_agent.tracing.cli import render_trace_directory_markdown
 from dm_agent.tracing.cli import replay_tools, summarize_events
 
 
@@ -353,6 +354,50 @@ def test_trace_analyze_dir_aggregates_health_and_verification_gaps(tmp_path, cap
     output = capsys.readouterr().out
     assert "Trace directory analysis" in output
     assert "Verification gaps: 1" in output
+
+
+def test_trace_analyze_dir_writes_shareable_markdown_without_raw_trace_text(tmp_path, capsys):
+    trace_path = tmp_path / "raw_text.jsonl"
+    writer = TraceWriter(trace_path)
+    writer.start_run("sensitive task prompt")
+    writer.record_step(
+        step_number=1,
+        step=type(
+            "Step",
+            (),
+            {
+                "thought": "finish",
+                "action": "finish",
+                "action_input": {"answer": "secret final answer"},
+                "observation": "secret observation body",
+            },
+        )(),
+    )
+    writer.finish_run(
+        {
+            "final_answer": "secret final answer",
+            "metadata": {"status": "success", "duration_seconds": 0.1},
+        }
+    )
+    writer.close()
+
+    report = analyze_trace_directory(tmp_path)
+    markdown = render_trace_directory_markdown(report)
+
+    assert "Trace Directory Analysis" in markdown
+    assert "`raw_text.jsonl`" in markdown
+    assert "Verification gaps: `1`" in markdown
+    assert "secret observation body" not in markdown
+    assert "secret final answer" not in markdown
+    assert "sensitive task prompt" not in markdown
+
+    markdown_path = tmp_path / "trace-report.md"
+    assert trace_main(["analyze-dir", str(tmp_path), "--markdown", str(markdown_path)]) == 0
+    output = capsys.readouterr().out
+    assert "Markdown report:" in output
+    written = markdown_path.read_text(encoding="utf-8")
+    assert "Trace Directory Analysis" in written
+    assert "secret observation body" not in written
 
 
 def test_run_report_writes_human_readable_markdown(tmp_path):

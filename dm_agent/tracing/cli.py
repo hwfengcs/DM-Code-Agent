@@ -64,6 +64,11 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         help="Glob pattern relative to the directory. Default: *.jsonl.",
     )
     analyze_dir_parser.add_argument("--json", action="store_true", help="Print analysis as JSON.")
+    analyze_dir_parser.add_argument(
+        "--markdown",
+        type=Path,
+        help="Write a shareable Markdown summary without raw trace contents.",
+    )
 
     diff_parser = subparsers.add_parser("diff", help="Compare two trace timelines.")
     diff_parser.add_argument("base_trace", type=Path, help="Baseline JSONL trace file.")
@@ -97,7 +102,12 @@ def main(argv: Any = None) -> int:
             return 2
         return _analyze(events, as_json=args.json)
     if args.command == "analyze-dir":
-        return _analyze_dir(args.directory, pattern=args.pattern, as_json=args.json)
+        return _analyze_dir(
+            args.directory,
+            pattern=args.pattern,
+            as_json=args.json,
+            markdown_path=args.markdown,
+        )
     if args.command == "diff":
         base_events = _load_trace_for_cli(args.base_trace)
         candidate_events = _load_trace_for_cli(args.candidate_trace)
@@ -225,8 +235,17 @@ def _analyze(
     return 0
 
 
-def _analyze_dir(directory: Path, *, pattern: str, as_json: bool) -> int:
+def _analyze_dir(
+    directory: Path,
+    *,
+    pattern: str,
+    as_json: bool,
+    markdown_path: Path | None = None,
+) -> int:
     report = analyze_trace_directory(directory, pattern=pattern)
+    if markdown_path:
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(render_trace_directory_markdown(report), encoding="utf-8")
     if as_json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return 0 if not report["errors"] else 1
@@ -244,7 +263,69 @@ def _analyze_dir(directory: Path, *, pattern: str, as_json: bool) -> int:
     print("Final failure stages:")
     for stage, count in summary["final_failure_stage_counts"].items():
         print(f"- {stage}: {count}")
+    if markdown_path:
+        print(f"Markdown report: {markdown_path}")
     return 0 if not report["errors"] else 1
+
+
+def render_trace_directory_markdown(report: Dict[str, Any]) -> str:
+    """Render trace-directory analysis without raw prompt, observation, or answer text."""
+
+    summary = report.get("summary") or {}
+    lines = [
+        "# Trace Directory Analysis",
+        "",
+        "This report is generated from trace metadata only. It omits raw prompts, observations, "
+        "tool outputs, and final answers.",
+        "",
+        f"- Directory: `{report.get('directory', '')}`",
+        f"- Pattern: `{report.get('pattern', '')}`",
+        f"- Traces analyzed: `{summary.get('analyzed_traces', 0)}/{summary.get('total_files', 0)}`",
+        f"- Errors: `{summary.get('error_count', 0)}`",
+        f"- Verification gaps: `{summary.get('verification_gap_count', 0)}`",
+        "",
+        "## Trace Health",
+        "",
+    ]
+    for grade, count in (summary.get("trace_health_counts") or {}).items():
+        lines.append(f"- `{grade}`: `{count}`")
+
+    lines.extend(["", "## Final Failure Stages", ""])
+    for stage, count in (summary.get("final_failure_stage_counts") or {}).items():
+        lines.append(f"- `{stage}`: `{count}`")
+
+    lines.extend(
+        [
+            "",
+            "## Trace Details",
+            "",
+            "| Trace | Status | Health | Final failure | Verification gap | Replans |",
+            "| --- | --- | --- | --- | ---: | ---: |",
+        ]
+    )
+    for item in report.get("analyses", []):
+        analysis = item.get("analysis") or {}
+        health = analysis.get("trace_health") or {}
+        verification = analysis.get("verification") or {}
+        recovery = analysis.get("recovery") or {}
+        lines.append(
+            "| {path} | {status} | {health} | {final_failure} | {gap} | {replans} |".format(
+                path=f"`{_display_trace_path(str(item.get('path', '')), report)}`",
+                status=f"`{analysis.get('status', '')}`",
+                health=f"`{health.get('grade', 'unknown')}`",
+                final_failure=f"`{analysis.get('final_failure_stage', 'unknown')}`",
+                gap="yes" if verification.get("gap") else "no",
+                replans=int(recovery.get("replan_count") or 0),
+            )
+        )
+
+    errors = report.get("errors") or []
+    if errors:
+        lines.extend(["", "## Errors", ""])
+        for item in errors:
+            lines.append(f"- `{_display_trace_path(str(item.get('path', '')), report)}`: error")
+
+    return "\n".join(lines) + "\n"
 
 
 def _diff(
@@ -887,6 +968,15 @@ def _count_values(values: Iterable[str]) -> Dict[str, int]:
         key = str(value or "unknown")
         counts[key] = counts.get(key, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def _display_trace_path(path: str, report: Dict[str, Any]) -> str:
+    directory = Path(str(report.get("directory") or ""))
+    trace_path = Path(path)
+    try:
+        return trace_path.relative_to(directory).as_posix()
+    except (ValueError, OSError):
+        return trace_path.name
 
 
 def _signed(value: int) -> str:

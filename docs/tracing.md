@@ -33,6 +33,7 @@ Analyze one trace for failure stage, recovery, and verification gaps:
 dm-agent-trace analyze traces/retry-fix.jsonl
 dm-agent-trace analyze traces/retry-fix.jsonl --json
 dm-agent-trace analyze-dir bench_reports/traces
+dm-agent-trace analyze-dir bench_reports/traces --markdown bench_reports/trace-analysis.md
 ```
 
 Trace analysis is advisory and read-only. It reports the primary failure stage, final failure
@@ -111,7 +112,8 @@ The current schema records these event types:
 
 `dm-agent-trace analyze-dir` applies the same analyzer to every matching trace in a directory and
 summarizes health grades, verification gaps, and failure-stage counts. It accepts `--pattern` for
-non-default file names and `--json` for machine-readable output.
+non-default file names, `--json` for machine-readable output, and `--markdown PATH` for a shareable
+summary that omits raw prompts, observations, tool outputs, and final answers.
 
 ## Trace Diff
 
