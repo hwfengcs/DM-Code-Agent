@@ -337,8 +337,8 @@ class ContextCompressor:
     def __init__(
         self,
         client: Optional[BaseLLMClient] = None,
-        compress_every: int = 5,
-        keep_recent: int = 3,
+        compress_every: int = 20,
+        keep_recent: int = 8,
         *,
         memory: Optional[Mem0StyleMemory] = None,
         memory_limit: int = 5,
@@ -356,6 +356,7 @@ class ContextCompressor:
         self.scope = scope or {"agent_id": "dm-code-agent"}
         self.turn_count = 0
         self._compression_count = 0
+        self._last_compressed_turn_count = 0
 
     @property
     def memory_count(self) -> int:
@@ -365,16 +366,22 @@ class ContextCompressor:
         self.memory.clear()
         self.turn_count = 0
         self._compression_count = 0
+        self._last_compressed_turn_count = 0
 
     def should_compress(self, history: List[Dict[str, str]]) -> bool:
         user_messages = [msg for msg in history if msg.get("role") == "user"]
         self.turn_count = len(user_messages)
-        return self.turn_count >= self.compress_every or self.memory_count > 0
+        non_system_messages = [msg for msg in history if msg.get("role") != "system"]
+        has_old_messages = len(non_system_messages) > self.keep_recent * 2
+        new_turns_since_last = self.turn_count - self._last_compressed_turn_count
+        return has_old_messages and new_turns_since_last >= self.compress_every
 
     def compress(self, history: List[Dict[str, str]]) -> List[Dict[str, str]]:
         if not history:
             return []
 
+        self.turn_count = len([msg for msg in history if msg.get("role") == "user"])
+        self._last_compressed_turn_count = self.turn_count
         self._compression_count += 1
         system_messages = [msg for msg in history if msg.get("role") == "system"]
         non_system = [msg for msg in history if msg.get("role") != "system"]

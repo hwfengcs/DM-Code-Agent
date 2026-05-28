@@ -177,6 +177,7 @@ def test_react_agent_reset_conversation_clears_context_memory():
     ]
 
     assert agent.compressor is not None
+    agent.compressor.keep_recent = 1
     agent.compressor.compress(agent.conversation_history)
 
     assert agent.get_context_stats()["conversation_messages"] == 7

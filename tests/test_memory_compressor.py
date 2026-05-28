@@ -66,6 +66,50 @@ def test_context_compressor_uses_agent_memory_instead_of_flat_summary():
     assert compressed[-1]["content"] == "Now explain retry.py"
 
 
+def test_context_compressor_waits_for_a_new_batch_before_recompressing():
+    compressor = ContextCompressor(compress_every=3, keep_recent=1)
+    history = [
+        {"role": "user", "content": "Task: inspect app.py"},
+        {"role": "assistant", "content": "Tool read_file app.py succeeded"},
+        {"role": "user", "content": "Observation: pytest failed in app.py"},
+        {"role": "assistant", "content": "Tool edit_file app.py completed"},
+        {"role": "user", "content": "Summarize app.py"},
+    ]
+
+    assert compressor.should_compress(history) is True
+    compressor.compress(history)
+
+    history.extend(
+        [
+            {"role": "assistant", "content": "Done"},
+            {"role": "user", "content": "One more small follow-up"},
+        ]
+    )
+    assert compressor.memory_count > 0
+    assert compressor.should_compress(history) is False
+
+    history.extend(
+        [
+            {"role": "assistant", "content": "Answered follow-up"},
+            {"role": "user", "content": "Second follow-up"},
+            {"role": "assistant", "content": "Answered second follow-up"},
+            {"role": "user", "content": "Third follow-up"},
+        ]
+    )
+    assert compressor.should_compress(history) is True
+
+
+def test_context_compressor_does_not_compress_before_recent_window_is_exceeded():
+    compressor = ContextCompressor(compress_every=2, keep_recent=4)
+    history = [
+        {"role": "user", "content": "Task: inspect app.py"},
+        {"role": "assistant", "content": "Tool read_file app.py succeeded"},
+        {"role": "user", "content": "Observation: done"},
+    ]
+
+    assert compressor.should_compress(history) is False
+
+
 def test_context_compressor_reports_memory_stats():
     compressor = ContextCompressor(compress_every=1, keep_recent=1)
     original = [

@@ -132,10 +132,10 @@ class ReactAgent:
         self.enable_planning = enable_planning
         self.planner = TaskPlanner(client, tools) if enable_planning else None
 
-        # 上下文压缩器（每 5 轮对话压缩一次）
+        # 上下文压缩器：默认先充分利用现代 LLM 上下文，长会话再分批压缩。
         self.enable_compression = enable_compression
         self.compressor = (
-            ContextCompressor(client, compress_every=5, keep_recent=3)
+            ContextCompressor(client, compress_every=20, keep_recent=8)
             if enable_compression
             else None
         )
