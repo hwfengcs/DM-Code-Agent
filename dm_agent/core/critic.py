@@ -193,7 +193,6 @@ def _safe_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         "trial",
         "trial_count",
         "reflexion_lesson_count",
-        "rag_retrieval_count",
         "critic_review_count",
         "critic_reject_count",
         "critic_pass_count",

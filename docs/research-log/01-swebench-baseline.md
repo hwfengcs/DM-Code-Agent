@@ -19,7 +19,7 @@ issues from 12 popular Python projects in the Lite split, scored by hidden
 unit tests on real codebases.
 
 Phase 1 builds the harness around DM-Code-Agent. Phase 1's pass rate is
-intentionally a *baseline* — no Reflexion, no RAG, no Critic, no
+intentionally a *baseline* — no Reflexion, no Critic, no
 Self-Consistency — so that the relative deltas in P2-P4 show up cleanly.
 
 ## Design
@@ -102,7 +102,7 @@ most actionable:
 
 ```
 PATCH_NOT_PRODUCED   →  P2 Reflexion / P5 Adaptive Replanning
-PATCH_APPLY_FAILED   →  P3 RAG (better hunk context)
+PATCH_APPLY_FAILED   →  stricter file re-read before patching
 HIDDEN_TEST_FAIL     →  P4 Critic + Self-Consistency
 REGRESSION           →  P4 Critic + Self-Consistency
 MAX_STEPS            →  P5 budget tuning
@@ -217,7 +217,7 @@ Representative failures:
 | `django__django-15814` | `patch_apply_failed` | `patch_apply_failed` | `git apply` rejected the generated diff because a header lacked filename information. | P3 can improve hunk context; verifier should also canonicalize malformed diffs where possible. |
 | `pytest-dev__pytest-8906` | `regression` | `pass_to_pass_regression` | FAIL_TO_PASS passed 1/1, but PASS_TO_PASS only passed 66/84; verifier tail includes a pytest node-id lookup failure. | P4 can catch behavioural regressions, but this sample also points at Tier-1 test-node drift. |
 | `sphinx-doc__sphinx-8474` | `regression` | `fail_to_pass_unresolved` | PASS_TO_PASS was 0/436 and the verifier failed importing `docutils` in the host environment. | Tier-2 Docker is needed to separate agent quality from missing historical dependencies. |
-| `pydata__xarray-4493` | `regression` | `fail_to_pass_unresolved` | Patch applied and many PASS_TO_PASS tests passed (1375/1689), but FAIL_TO_PASS stayed 0/1. | Better retrieval and a critic pass should target the actual failing behaviour instead of broad edits. |
+| `pydata__xarray-4493` | `regression` | `fail_to_pass_unresolved` | Patch applied and many PASS_TO_PASS tests passed (1375/1689), but FAIL_TO_PASS stayed 0/1. | A critic pass should target the actual failing behaviour instead of broad edits. |
 
 ### Tier-1 verifier audit
 

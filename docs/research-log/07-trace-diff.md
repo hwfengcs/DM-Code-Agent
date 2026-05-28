@@ -13,14 +13,14 @@ headline.
 
 ## Context
 
-P2-P5 added default-off mechanisms: Reflexion, RAG, critic review, self-consistency, and adaptive
+P2-P5 added default-off mechanisms: Reflexion, critic review, self-consistency, and adaptive
 replanning. The project can now produce multiple traces for the same task under different
 configurations, but the previous trace tooling only supported:
 
 - `view`: summarize one run.
 - `replay`: dry replay or explicit tool replay for one run.
 
-That left a gap for local research work. If a RAG-enabled run succeeds where the baseline fails, the
+That left a gap for local research work. If an opt-in mechanism run succeeds where the baseline fails, the
 first question should not be "what is the score?" It should be "what behavior changed?"
 
 ## What Changed
@@ -54,8 +54,8 @@ The command is deliberately non-destructive. It never replays tool calls, even f
 ## Example
 
 ```bash
-dm-agent-trace diff traces/baseline.jsonl traces/rag-enabled.jsonl
-dm-agent-trace diff traces/baseline.jsonl traces/rag-enabled.jsonl --json
+dm-agent-trace diff traces/baseline.jsonl traces/critic-enabled.jsonl
+dm-agent-trace diff traces/baseline.jsonl traces/critic-enabled.jsonl --json
 ```
 
 ## Keyless Checks

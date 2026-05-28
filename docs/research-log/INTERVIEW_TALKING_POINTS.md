@@ -4,7 +4,7 @@ Private prep notes for discussing DM-Code-Agent as an AI agent engineering proje
 
 1. Built local-first ReAct code agent with JSONL trace/replay and hidden-test benchmarks.
 2. Added SWE-bench Lite Tier-1 harness and published frozen 50-instance baseline.
-3. Implemented default-off Reflexion, RAG, Critic, and Self-Consistency modules.
+3. Implemented default-off Reflexion, Critic, and Self-Consistency modules.
 4. Added deterministic adaptive replanning by error signal with traceable decisions.
 5. Built offline token economics reports from benchmark JSON without live API calls.
 6. Extended trace tooling with offline diff/analyze and added multi-file maintenance benchmarks

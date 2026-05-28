@@ -4,7 +4,6 @@ import pytest
 
 from dm_agent.core.agent import ReactAgent
 from dm_agent.core.planner import AdaptiveReplanPolicy
-from dm_agent.memory.retriever import RetrievalDocument, RetrievalResult
 from dm_agent.core.planner import TaskPlanner
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
@@ -104,102 +103,6 @@ def test_react_agent_executes_tool_then_finishes():
     assert [step["action"] for step in result["steps"]] == ["echo", "finish"]
     assert "echo:hello" in result["steps"][0]["observation"]
     assert result["metadata"]["tool_error_count"] == 0
-
-
-class FakeRetriever:
-    def __init__(self):
-        self.queries = []
-
-    def retrieve(self, query, *, top_k=5):
-        self.queries.append((query, top_k))
-        return [
-            RetrievalResult(
-                document=RetrievalDocument(
-                    doc_id="function:app.py:1:fix_bug",
-                    path="app.py",
-                    kind="function",
-                    symbol="fix_bug",
-                    start_line=1,
-                    end_line=2,
-                    content="def fix_bug():\n    return 'fixed'\n",
-                ),
-                score=1.0,
-                source="fake",
-                rank=1,
-            )
-        ]
-
-
-def test_react_agent_injects_rag_context_only_when_enabled():
-    client = FakeRespondClient(
-        [
-            json.dumps(
-                {
-                    "thought": "Use retrieved context.",
-                    "action": "finish",
-                    "action_input": {"answer": "done"},
-                }
-            )
-        ]
-    )
-    retriever = FakeRetriever()
-    agent = ReactAgent(
-        client,
-        [Tool("task_complete", "Finish", lambda arguments: "finished")],
-        enable_planning=False,
-        enable_compression=False,
-        enable_rag=True,
-        retriever=retriever,
-        rag_top_k=1,
-    )
-
-    result = agent.run("fix the bug")
-
-    assert result["metadata"]["rag_enabled"] is True
-    assert result["metadata"]["rag_retrieval_count"] == 1
-    assert retriever.queries == [("fix the bug", 1)]
-    system_prompt = client.requests[0][0][0]["content"]
-    assert "<retrieved_context>" in system_prompt
-    assert "app.py:1-2" in system_prompt
-
-
-def test_react_agent_default_does_not_call_retriever():
-    client = FakeRespondClient(
-        [
-            json.dumps(
-                {
-                    "thought": "Finish.",
-                    "action": "finish",
-                    "action_input": {"answer": "done"},
-                }
-            )
-        ]
-    )
-    retriever = FakeRetriever()
-    agent = ReactAgent(
-        client,
-        [Tool("task_complete", "Finish", lambda arguments: "finished")],
-        enable_planning=False,
-        enable_compression=False,
-        retriever=retriever,
-    )
-
-    result = agent.run("finish")
-
-    assert result["final_answer"] == "done"
-    assert result["metadata"]["rag_enabled"] is False
-    assert retriever.queries == []
-
-
-def test_react_agent_requires_retriever_when_rag_enabled():
-    with pytest.raises(ValueError, match="requires a retriever"):
-        ReactAgent(
-            FakeRespondClient([]),
-            [Tool("task_complete", "Finish", lambda arguments: "finished")],
-            enable_planning=False,
-            enable_compression=False,
-            enable_rag=True,
-        )
 
 
 def test_react_agent_rejects_empty_task():

@@ -7,7 +7,7 @@ DM-Code-Agent v2.0.0 is a local-first, auditable Python code-agent baseline with
 - JSONL trace/replay.
 - Hidden-test coding and maintenance benchmarks.
 - SWE-bench Lite Tier-1 harness and frozen 50-instance baseline.
-- Default-off Reflexion, Hybrid RAG, Critic, Self-Consistency, and Adaptive Replanning modules.
+- Default-off Reflexion, Critic, Self-Consistency, and Adaptive Replanning modules.
 - Offline benchmark token economics.
 
 ## Public Evaluation Caveat
@@ -43,8 +43,6 @@ Generic coding/maintenance benchmarks now expose default-off switches for local 
 
 ```bash
 dm-agent-bench --suite maintenance \
-  --enable-rag \
-  --rag-top-k 5 \
   --enable-critic \
   --self-consistency-runs 3 \
   --self-consistency-strategy test_pass

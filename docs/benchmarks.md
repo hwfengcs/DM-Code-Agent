@@ -87,17 +87,15 @@ Default-off v2 plumbing for coding/maintenance benchmark experiments:
 
 ```bash
 dm-agent-bench --suite maintenance \
-  --enable-rag \
-  --rag-top-k 5 \
   --enable-critic \
   --self-consistency-runs 3 \
   --self-consistency-strategy test_pass
 ```
 
-RAG builds a local BM25 index for each candidate workspace. Critic review uses the same configured
-LLM client as the main run unless future code supplies a separate client. Self-consistency creates
-fresh workspaces per candidate and then selects by majority vote, critic score, or test pass. These
-features are disabled by default and are not used by CI live runs.
+Critic review uses the same configured LLM client as the main run unless future code supplies a
+separate client. Self-consistency creates fresh workspaces per candidate and then selects by
+majority vote, critic score, or test pass. These features are disabled by default and are not used
+by CI live runs.
 
 SWE-bench Lite self-consistency is intentionally blocked while real SWE-bench evaluation is frozen.
 
@@ -148,7 +146,7 @@ The report includes:
   and replan budget exhaustion
 - repeated-failure policy experiment metadata when explicitly enabled: loop-breaking strategy
   counts for repeated action/error signatures
-- RAG / critic / self-consistency configuration metadata when those default-off switches are used
+- critic / self-consistency configuration metadata when those default-off switches are used
 - self-consistency uncertainty metadata when multiple candidates are run: vote distribution,
   selected support, support fraction, tie detection, margin to runner-up, and confidence label
 - self-consistency patch fingerprints when file edits are available, so majority voting can group

@@ -6,8 +6,8 @@ distribution gives us actionable guidance for the next phases:
 
 - ``patch_not_produced`` and ``parse_error`` are addressed by stricter
   output-format prompting, by Reflexion (P2), and by Adaptive Replanning (P5).
-- ``patch_apply_failed`` benefits from RAG (P3) since the agent often gets
-  hunk context wrong when relying on memory.
+- ``patch_apply_failed`` often means the agent chose stale hunk context or
+  edited without re-reading the concrete target file.
 - ``hidden_test_fail`` and ``regression`` benefit from Critic + Self-Consistency
   (P4): an independent reviewer can catch behavioural mistakes.
 - ``max_steps`` and ``timeout`` are budget signals.

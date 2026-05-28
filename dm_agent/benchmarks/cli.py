@@ -98,24 +98,6 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         help="Estimated provider cost per 1K tokens for local economics reports.",
     )
     parser.add_argument(
-        "--enable-rag",
-        action="store_true",
-        help="Enable local BM25 RAG context retrieval for benchmark agent runs. Default is off.",
-    )
-    parser.add_argument("--rag-top-k", type=int, default=5, help="Top-K retrieved snippets.")
-    parser.add_argument(
-        "--rag-granularity",
-        choices=["symbol", "file", "both"],
-        default="symbol",
-        help="Retrieval index granularity.",
-    )
-    parser.add_argument(
-        "--rag-max-files",
-        type=int,
-        default=200,
-        help="Maximum Python files to index for RAG.",
-    )
-    parser.add_argument(
         "--enable-critic",
         action="store_true",
         help="Enable critic review gate for benchmark agent completions. Default is off.",
@@ -331,10 +313,6 @@ def _run_swebench_lite(args: argparse.Namespace) -> int:
         max_replans=args.max_replans,
         enable_repeated_failure_policy_experiment=(args.enable_repeated_failure_policy_experiment),
         cost_per_1k_tokens=args.cost_per_1k_tokens,
-        enable_rag=args.enable_rag,
-        rag_top_k=args.rag_top_k,
-        rag_granularity=args.rag_granularity,
-        rag_max_files=args.rag_max_files,
         enable_critic=args.enable_critic,
         self_consistency_runs=args.self_consistency_runs,
         self_consistency_strategy=args.self_consistency_strategy,
@@ -455,10 +433,6 @@ def main(argv: Any = None) -> int:
                     args.enable_repeated_failure_policy_experiment
                 ),
                 cost_per_1k_tokens=args.cost_per_1k_tokens,
-                enable_rag=args.enable_rag,
-                rag_top_k=args.rag_top_k,
-                rag_granularity=args.rag_granularity,
-                rag_max_files=args.rag_max_files,
                 enable_critic=args.enable_critic,
                 self_consistency_runs=args.self_consistency_runs,
                 self_consistency_strategy=args.self_consistency_strategy,
@@ -482,10 +456,6 @@ def _validate_feature_args(args: argparse.Namespace) -> str:
         return (
             "--enable-repeated-failure-policy-experiment requires " "--enable-adaptive-replanning."
         )
-    if args.rag_top_k < 1:
-        return "--rag-top-k must be at least 1."
-    if args.rag_max_files < 1:
-        return "--rag-max-files must be at least 1."
     if args.self_consistency_runs < 1:
         return "--self-consistency-runs must be at least 1."
     if args.self_consistency_strategy == "critic_score" and not args.enable_critic:

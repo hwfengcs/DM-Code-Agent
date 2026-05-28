@@ -45,9 +45,6 @@ def test_benchmark_feature_flags_parse_without_api_key():
         bench_main(
             [
                 "--list",
-                "--enable-rag",
-                "--rag-top-k",
-                "3",
                 "--enable-critic",
                 "--self-consistency-runs",
                 "2",
@@ -147,8 +144,6 @@ def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest
     report = runner_module.run_benchmark_suite(
         tasks=[task],
         config=BenchmarkRunConfig(
-            enable_rag=True,
-            rag_top_k=3,
             enable_critic=True,
             enable_adaptive_replanning=True,
             enable_repeated_failure_policy_experiment=True,
@@ -157,8 +152,6 @@ def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest
         ),
     )
 
-    assert report["rag"]["enabled"] is True
-    assert report["rag"]["top_k"] == 3
     assert report["critic"]["enabled"] is True
     assert report["adaptive_replanning"]["repeated_failure_policy_experiment"] is True
     assert report["self_consistency"]["runs"] == 2

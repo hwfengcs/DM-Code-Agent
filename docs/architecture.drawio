@@ -1,96 +1,203 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="drawio" version="26.0.0">
-  <diagram name="DM-Code-Agent Architecture">
-    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+  <diagram name="DM-Code-Agent 中文架构图">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="2" value="Developer CLI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="60" y="350" width="160" height="70" as="geometry" />
+
+        <mxCell id="title" value="DM-Code-Agent 架构图：本地优先、可审计、可评测的代码维护 Agent" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Microsoft YaHei;fontSize=25;fontStyle=1;fontColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="220" y="24" width="1160" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="3" value="main.py&#xa;config + menu + single task" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
-          <mxGeometry x="280" y="340" width="190" height="90" as="geometry" />
+
+        <mxCell id="entry-lane" value="1. 输入与初始化" style="swimlane;startSize=34;rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=14;fontStyle=1;fillColor=#f7fbff;strokeColor=#6c8ebf;collapsible=0;container=1;recursiveResize=0;" vertex="1" parent="1">
+          <mxGeometry x="50" y="105" width="470" height="410" as="geometry" />
         </mxCell>
-        <mxCell id="4" value="ReactAgent&#xa;ReAct loop + step history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="325" width="210" height="120" as="geometry" />
+        <mxCell id="core-lane" value="2. ReactAgent 核心闭环" style="swimlane;startSize=34;rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=14;fontStyle=1;fillColor=#fff8f0;strokeColor=#d79b00;collapsible=0;container=1;recursiveResize=0;" vertex="1" parent="1">
+          <mxGeometry x="570" y="105" width="530" height="410" as="geometry" />
         </mxCell>
-        <mxCell id="5" value="TaskPlanner&#xa;3-8 step execution plan" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
-          <mxGeometry x="540" y="130" width="190" height="90" as="geometry" />
+        <mxCell id="model-lane" value="3. 模型适配层" style="swimlane;startSize=34;rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=14;fontStyle=1;fillColor=#f6fff7;strokeColor=#82b366;collapsible=0;container=1;recursiveResize=0;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="105" width="360" height="200" as="geometry" />
         </mxCell>
-        <mxCell id="6" value="ContextCompressor&#xa;long conversation memory" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
-          <mxGeometry x="790" y="130" width="210" height="90" as="geometry" />
+        <mxCell id="tool-lane" value="4. 工具边界与本地环境" style="swimlane;startSize=34;rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=14;fontStyle=1;fillColor=#f7fbff;strokeColor=#6c8ebf;collapsible=0;container=1;recursiveResize=0;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="335" width="360" height="290" as="geometry" />
         </mxCell>
-        <mxCell id="7" value="SkillManager&#xa;domain prompts + skill tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
-          <mxGeometry x="790" y="520" width="210" height="90" as="geometry" />
+        <mxCell id="audit-lane" value="5. 审计与评测体系" style="swimlane;startSize=34;rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=14;fontStyle=1;fillColor=#fff7f7;strokeColor=#b85450;collapsible=0;container=1;recursiveResize=0;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="655" width="360" height="230" as="geometry" />
         </mxCell>
-        <mxCell id="8" value="LLM Client Factory" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="880" y="300" width="190" height="60" as="geometry" />
+        <mxCell id="algo-lane" value="6. 可插拔算法增强模块（默认关闭，按实验开启）" style="swimlane;startSize=34;rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=14;fontStyle=1;fillColor=#fbf7ff;strokeColor=#9673a6;collapsible=0;container=1;recursiveResize=0;" vertex="1" parent="1">
+          <mxGeometry x="50" y="570" width="1050" height="315" as="geometry" />
         </mxCell>
-        <mxCell id="9" value="DeepSeek" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
-          <mxGeometry x="1130" y="220" width="120" height="50" as="geometry" />
+
+        <mxCell id="cli" value="开发者 / 面试演示&#xa;CLI 输入自然语言任务" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="entry-lane">
+          <mxGeometry x="35" y="70" width="185" height="75" as="geometry" />
         </mxCell>
-        <mxCell id="10" value="OpenAI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
-          <mxGeometry x="1130" y="290" width="120" height="50" as="geometry" />
+        <mxCell id="main" value="main.py&#xa;解析参数 / 加载 .env&#xa;单任务或交互模式" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=13;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="entry-lane">
+          <mxGeometry x="250" y="65" width="185" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="11" value="Claude" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
-          <mxGeometry x="1130" y="360" width="120" height="50" as="geometry" />
+        <mxCell id="config" value="运行配置&#xa;Provider / Model / API Key&#xa;Trace / Report / Max Steps" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;" vertex="1" parent="entry-lane">
+          <mxGeometry x="250" y="190" width="185" height="78" as="geometry" />
         </mxCell>
-        <mxCell id="12" value="Gemini" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
-          <mxGeometry x="1130" y="430" width="120" height="50" as="geometry" />
+        <mxCell id="runtime" value="初始化运行上下文&#xa;MCPManager + SkillManager&#xa;TraceWriter + LLM Client&#xa;default_tools()" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="entry-lane">
+          <mxGeometry x="35" y="295" width="400" height="72" as="geometry" />
         </mxCell>
-        <mxCell id="13" value="Built-in Tools&#xa;file, shell, tests, AST metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="540" y="650" width="220" height="90" as="geometry" />
+
+        <mxCell id="core-run" value="ReactAgent.run(task)&#xa;接管一次任务执行" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=13;fontStyle=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="core-lane">
+          <mxGeometry x="35" y="65" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="14" value="MCPManager&#xa;external tool adapters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
-          <mxGeometry x="820" y="670" width="210" height="80" as="geometry" />
+        <mxCell id="core-plan" value="生成计划&#xa;TaskPlanner.plan()&#xa;3-8 步全局计划" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="core-lane">
+          <mxGeometry x="300" y="65" width="185" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="15" value="MCP Servers&#xa;Playwright, Context7, FS, SQLite" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
-          <mxGeometry x="1090" y="670" width="220" height="80" as="geometry" />
+        <mxCell id="core-json" value="模型输出 JSON&#xa;thought / action / action_input&#xa;可做解析与修复" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="core-lane">
+          <mxGeometry x="35" y="180" width="190" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="16" value="Local Workspace&#xa;source files + tests" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
-          <mxGeometry x="260" y="650" width="170" height="90" as="geometry" />
+        <mxCell id="core-tool" value="执行 action&#xa;只允许通过 Tool 改变世界&#xa;拿到 observation" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="core-lane">
+          <mxGeometry x="300" y="180" width="185" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=block;" edge="1" parent="1" source="2" target="3">
+        <mxCell id="core-history" value="Observation 回流&#xa;写入 conversation history&#xa;继续下一轮推理" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="core-lane">
+          <mxGeometry x="35" y="305" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="core-finish" value="完成收束&#xa;finish / task_complete&#xa;可先经过 Critic 审核" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="core-lane">
+          <mxGeometry x="300" y="305" width="185" height="72" as="geometry" />
+        </mxCell>
+
+        <mxCell id="llm-factory" value="LLM Client Factory&#xa;统一封装不同 Provider" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=13;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="model-lane">
+          <mxGeometry x="50" y="55" width="260" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="providers" value="DeepSeek / OpenAI / Claude / Gemini&#xa;HTTP 或官方 SDK 调用真实模型" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="model-lane">
+          <mxGeometry x="50" y="135" width="260" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="builtin-tools" value="内置工具&#xa;文件读写 / 搜索 / Shell&#xa;pytest / lint / AST / 代码索引" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="tool-lane">
+          <mxGeometry x="45" y="55" width="270" height="82" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp-tools" value="MCP 外部工具（可选）&#xa;Playwright / Context7 / Filesystem / SQLite" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;" vertex="1" parent="tool-lane">
+          <mxGeometry x="45" y="165" width="270" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="workspace" value="本地工作区&#xa;源码 / 测试 / 配置&#xa;Agent 的改动落在这里" style="shape=cylinder3;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="tool-lane">
+          <mxGeometry x="75" y="238" width="210" height="76" as="geometry" />
+        </mxCell>
+
+        <mxCell id="trace" value="TraceWriter&#xa;JSONL 记录 plan / LLM 摘要&#xa;tool call / step / replan / result" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="audit-lane">
+          <mxGeometry x="45" y="55" width="270" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="trace-cli" value="Trace CLI&#xa;view / analyze / replay / diff" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="audit-lane">
+          <mxGeometry x="45" y="150" width="125" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="bench" value="Eval / Benchmark&#xa;keyless eval + hidden tests&#xa;报告真实维护能力" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="audit-lane">
+          <mxGeometry x="190" y="150" width="125" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="algo-planner" value="Planner / Replan&#xa;先计划，失败后重规划" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="algo-lane">
+          <mxGeometry x="35" y="70" width="155" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="algo-policy" value="AdaptiveReplanPolicy&#xa;按失败类型选恢复策略" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="algo-lane">
+          <mxGeometry x="220" y="70" width="155" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="algo-memory" value="Mem0-style Memory&#xa;atomic memories + scoped search" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="algo-lane">
+          <mxGeometry x="405" y="70" width="165" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="algo-compress" value="ContextCompressor&#xa;压缩长历史，控制 token" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="algo-lane">
+          <mxGeometry x="600" y="70" width="165" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="algo-skill" value="SkillManager&#xa;领域 prompt + 专用工具" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="algo-lane">
+          <mxGeometry x="795" y="70" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="algo-review" value="Critic / Reflexion / Self-Consistency&#xa;完成前审核、失败反思、多候选选择" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="algo-lane">
+          <mxGeometry x="220" y="185" width="400" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="algo-note" value="面试重点：这些模块不是装饰，而是为了解决 Agent 常见问题：上下文不足、输出不稳、工具失败、提前完成、结果不可复现。" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fillColor=#ffffff;strokeColor=#9673a6;" vertex="1" parent="algo-lane">
+          <mxGeometry x="650" y="185" width="345" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="speaker-note" value="讲解主线：输入任务 → 初始化上下文 → ReAct 计划/行动/观察循环 → 工具修改本地仓库 → Trace 与 Benchmark 证明结果" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=14;fontStyle=1;fillColor=#ffffff;strokeColor=#1f2937;" vertex="1" parent="1">
+          <mxGeometry x="230" y="925" width="1140" height="46" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a1" value="任务" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="entry-lane" source="cli" target="main">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="21" value="task" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=block;" edge="1" parent="1" source="3" target="4">
+        <mxCell id="a2" value="读取" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;dashed=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="entry-lane" source="config" target="main">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="22" value="plan" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;endArrow=block;" edge="1" parent="1" source="4" target="5">
+        <mxCell id="a3" value="创建 Agent 依赖" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="entry-lane" source="main" target="runtime">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="343" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a4" value="run(task)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="runtime" target="core-run">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="23" value="compress" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=0;entryX=0.25;entryY=1;endArrow=block;" edge="1" parent="1" source="4" target="6">
+
+        <mxCell id="b1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="core-lane" source="core-run" target="core-plan">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="24" value="activate skills" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;entryX=0.25;entryY=0;endArrow=block;" edge="1" parent="1" source="4" target="7">
+        <mxCell id="b2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="core-lane" source="core-plan" target="core-json">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="392" y="155" />
+              <mxPoint x="130" y="155" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="b3" value="action" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="core-lane" source="core-json" target="core-tool">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="25" value="messages" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.35;entryX=0;entryY=0.5;endArrow=block;" edge="1" parent="1" source="4" target="8">
+        <mxCell id="b4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="core-lane" source="core-tool" target="core-finish">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="26" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.2;entryX=0;entryY=0.5;endArrow=block;" edge="1" parent="1" source="8" target="9">
+        <mxCell id="b5" value="observation" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;dashed=1;strokeWidth=2;exitX=0;exitY=0.65;entryX=1;entryY=0.6;" edge="1" parent="core-lane" source="core-tool" target="core-history">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="27" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.4;entryX=0;entryY=0.5;endArrow=block;" edge="1" parent="1" source="8" target="10">
+        <mxCell id="b6" value="继续下一步" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;dashed=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="core-lane" source="core-history" target="core-json">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="28" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.6;entryX=0;entryY=0.5;endArrow=block;" edge="1" parent="1" source="8" target="11">
+
+        <mxCell id="c1" value="messages" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;strokeWidth=2;exitX=0.5;exitY=0;entryX=0.25;entryY=0;" edge="1" parent="1" source="core-json" target="llm-factory">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="82" />
+              <mxPoint x="1225" y="82" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="model-lane" source="llm-factory" target="providers">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="29" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.8;entryX=0;entryY=0.5;endArrow=block;" edge="1" parent="1" source="8" target="12">
+        <mxCell id="d1" value="工具调用" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;strokeWidth=2;exitX=1;exitY=0.55;entryX=0;entryY=0.5;" edge="1" parent="1" source="core-tool" target="builtin-tools">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="30" value="actions" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;endArrow=block;" edge="1" parent="1" source="4" target="13">
+        <mxCell id="d2" value="可选扩展" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;dashed=1;exitX=1;exitY=0.8;entryX=0;entryY=0.5;" edge="1" parent="1" source="core-tool" target="mcp-tools">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="31" value="tools" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;entryX=0.5;entryY=0;endArrow=block;" edge="1" parent="1" source="4" target="14">
+        <mxCell id="d3" value="读 / 写 / 跑测试" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="tool-lane" source="builtin-tools" target="workspace">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="32" value="read/write/run" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;endArrow=block;" edge="1" parent="1" source="13" target="16">
+        <mxCell id="d4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="tool-lane" source="mcp-tools" target="workspace">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="33" value="JSON-RPC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=block;" edge="1" parent="1" source="14" target="15">
+        <mxCell id="e1" value="记录每一步" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;strokeWidth=2;exitX=1;exitY=1;entryX=0;entryY=0.5;" edge="1" parent="1" source="core-lane" target="trace">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1125" y="520" />
+              <mxPoint x="1125" y="750" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;exitX=0.35;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="audit-lane" source="trace" target="trace-cli">
           <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;exitX=0.65;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="audit-lane" source="trace" target="bench">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f1" value="按开关注入 prompt / tools / recovery policy" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Microsoft YaHei;endArrow=block;dashed=1;strokeWidth=2;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="algo-lane" target="core-lane">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="575" y="545" />
+            </Array>
+          </mxGeometry>
         </mxCell>
       </root>
     </mxGraphModel>

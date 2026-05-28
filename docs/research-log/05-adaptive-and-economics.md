@@ -92,7 +92,7 @@ These remain intentionally undone under the current constraints:
 - No Docker / Tier-2 SWE-bench verification.
 - No new true SWE-bench run.
 - No cross-model SWE-bench run.
-- No claim that Reflexion, RAG, Critic, Self-Consistency, or Adaptive Replanning improved the real
+- No claim that Reflexion, Critic, Self-Consistency, or Adaptive Replanning improved the real
   P1 score.
 
 The code path is ready for future runs, but the numbers should only be filled after an allowed live

@@ -19,7 +19,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import CriticAgent, ReactAgent
 from dm_agent.evals.real_runner import PROVIDER_API_KEY_ENV, UsageTrackingClient
-from dm_agent.memory import HybridRetriever
 from dm_agent.skills import SkillManager
 from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter, analyze_events, load_trace_events
@@ -117,12 +116,6 @@ def run_benchmark_suite(
             "repeated_failure_policy_experiment": (
                 config.enable_repeated_failure_policy_experiment
             ),
-        },
-        "rag": {
-            "enabled": config.enable_rag,
-            "top_k": config.rag_top_k,
-            "granularity": config.rag_granularity,
-            "max_files": config.rag_max_files,
         },
         "critic": {
             "enabled": config.enable_critic,
@@ -489,9 +482,6 @@ def _run_benchmark_task_in_workspace(
         enable_repeated_failure_policy_experiment=(
             config.enable_repeated_failure_policy_experiment
         ),
-        enable_rag=config.enable_rag,
-        retriever=_build_benchmark_retriever(workspace, config) if config.enable_rag else None,
-        rag_top_k=config.rag_top_k,
         critic=CriticAgent(client) if config.enable_critic else None,
     )
 
@@ -550,8 +540,6 @@ def _run_benchmark_task_in_workspace(
                 config.enable_repeated_failure_policy_experiment
             ),
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
-            "rag_enabled": config.enable_rag,
-            "rag_top_k": config.rag_top_k,
             "critic_enabled": config.enable_critic,
             "self_consistency_runs": config.self_consistency_runs,
             "self_consistency_strategy": config.self_consistency_strategy,
@@ -832,27 +820,11 @@ def _build_tracking_client(config: BenchmarkRunConfig) -> UsageTrackingClient:
     return UsageTrackingClient(client)
 
 
-def _build_benchmark_retriever(workspace: Path, config: BenchmarkRunConfig) -> HybridRetriever:
-    return HybridRetriever.from_repository(
-        workspace,
-        granularity=config.rag_granularity,
-        max_files=config.rag_max_files,
-        include_tests=True,
-        enable_embeddings=False,
-    )
-
-
 def _validate_benchmark_config(config: BenchmarkRunConfig) -> None:
     if config.max_trials < 1:
         raise ValueError("max_trials must be at least 1")
     if config.max_replans < -1:
         raise ValueError("max_replans must be -1 or greater")
-    if config.rag_top_k < 1:
-        raise ValueError("rag_top_k must be at least 1")
-    if config.rag_max_files < 1:
-        raise ValueError("rag_max_files must be at least 1")
-    if config.rag_granularity not in {"symbol", "file", "both"}:
-        raise ValueError("rag_granularity must be one of: symbol, file, both")
     if config.self_consistency_runs < 1:
         raise ValueError("self_consistency_runs must be at least 1")
     if config.self_consistency_strategy not in {"majority_vote", "critic_score", "test_pass"}:

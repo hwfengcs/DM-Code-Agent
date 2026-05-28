@@ -44,8 +44,8 @@ trace directories.
 Compare two traces without replaying tools:
 
 ```bash
-dm-agent-trace diff traces/baseline.jsonl traces/rag-enabled.jsonl
-dm-agent-trace diff traces/baseline.jsonl traces/rag-enabled.jsonl --json
+dm-agent-trace diff traces/baseline.jsonl traces/critic-enabled.jsonl
+dm-agent-trace diff traces/baseline.jsonl traces/critic-enabled.jsonl --json
 ```
 
 Trace diff reports status changes, step/tool/replan deltas, action-sequence divergence, tool-usage

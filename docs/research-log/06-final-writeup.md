@@ -7,7 +7,6 @@ baseline:
 
 - SWE-bench Lite Tier-1 harness and frozen 50-instance baseline.
 - Reflexion trial memory.
-- Hybrid RAG with BM25 default and optional embeddings.
 - Critic gate and self-consistency runner.
 - Adaptive replanning and offline token economics.
 
@@ -19,7 +18,7 @@ SWE-bench evaluations, or cross-model sweeps in the final pass.
 
 The design goal is not to hide complexity behind a server. The agent is meant to be read:
 
-- `dm_agent/core/agent.py` keeps the ReAct loop, planning, Reflexion injection, RAG injection,
+- `dm_agent/core/agent.py` keeps the ReAct loop, planning, Reflexion injection,
   critic gate, and adaptive replan hook visible in one place.
 - `dm_agent/tracing/` records enough JSONL structure to audit behavior without saving full prompts
   by default.
@@ -29,11 +28,11 @@ The design goal is not to hide complexity behind a server. The agent is meant to
 
 ## What Worked
 
-1. **Default-off algorithm modules.** Reflexion, RAG, critic, self-consistency, and adaptive
+1. **Default-off algorithm modules.** Reflexion, critic, self-consistency, and adaptive
    replanning can be tested independently without changing baseline CLI behavior.
-2. **Keyless tests.** The new modules use scripted clients, fake retrievers, and existing JSON
+2. **Keyless tests.** The new modules use scripted clients and existing JSON
    reports. CI does not need API keys or network access.
-3. **Trace-friendly design.** P2-P5 add explicit events (`trial_start`, `reflexion`, `retrieval`,
+3. **Trace-friendly design.** P2-P5 add explicit events (`trial_start`, `reflexion`,
    `critic_review`, `replan_decision`) instead of hiding behavior in prompts.
 4. **Offline economics.** Cost-per-success reporting is generated from existing JSON. It never
    fetches prices or runs models.
@@ -59,7 +58,7 @@ python -m black --check .
 ## Release Hardening Addendum
 
 The v2 release pass also wires the default-off algorithm modules into the generic coding and
-maintenance benchmark CLI. `--enable-rag`, `--enable-critic`, and `--self-consistency-runs` are
+maintenance benchmark CLI. `--enable-critic` and `--self-consistency-runs` are
 available for local smoke experiments, but they do not affect default runs.
 
 SWE-bench Lite keeps the stricter freeze boundary: self-consistency is rejected before instance
@@ -79,7 +78,7 @@ python -m dm_agent.benchmarks.economics \
 
 ## Suggested Blog Outline
 
-Title: `Building an auditable Python code agent: Reflexion, RAG, critic review, and the cost of SWE-bench`
+Title: `Building an auditable Python code agent: Reflexion, critic review, and the cost of SWE-bench`
 
 1. Why local-first agent baselines still matter.
 2. The v1 loop: ReAct, planner, tools, trace replay.

@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- Legacy repository-index context support, including its CLI entry point,
+  old context exports, agent opt-in flags, benchmark flags, and the optional
+  dependency extra.
+
 ### Added
+- Mem0-style local context memory: older conversation turns are stored as
+  scoped atomic memories and only relevant memories are injected back into the
+  prompt.
 - `dm-agent-trace analyze` for offline failure-stage attribution, recovery
   inspection, verification-gap detection, and advisory trace-health grades.
 - `cli_config_docs_contract`, a multi-file maintenance benchmark task that
@@ -92,7 +100,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   caveat for real SWE-bench, Docker/Tier-2, and cross-model evaluations.
 - Release hardening docs in `docs/release-v2.0.0.md`.
 - Default-off benchmark plumbing flags for coding/maintenance runs:
-  `--enable-rag`, `--rag-top-k`, `--rag-granularity`, `--rag-max-files`,
   `--enable-critic`, `--self-consistency-runs`, and
   `--self-consistency-strategy`.
 - Fresh-workspace self-consistency selection for coding/maintenance benchmark
@@ -122,14 +129,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_critic.py` and `tests/test_self_consistency.py` covering the
   keyless critic gate and the three selection strategies.
 - `docs/research-log/04-critic-and-consistency.md` as the Phase 4 log.
-- P3 RAG context retrieval:
-  `dm_agent/memory/retriever.py` with `BM25Retriever`, optional
-  `EmbeddingRetriever`, and `HybridRetriever` using Reciprocal Rank Fusion.
-- `ReactAgent(enable_rag=True, retriever=...)` opt-in prompt injection of
-  per-step `<retrieved_context>` blocks, plus `retrieval` trace events.
-- `dm-agent-index` CLI for local index build/query workflows.
-- `tests/test_retriever.py` and keyless Agent tests covering default-off RAG
-  behavior and prompt injection.
 - P2 Reflexion implementation scaffold:
   `dm_agent/core/reflexion.py` with `Reflector`, `EpisodicMemory`, and bounded
   lessons, plus default-off `ReactAgent(enable_reflexion=True, max_trials=N)`
@@ -147,7 +146,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementation log and documented that real cross-model SWE-bench economics
   remain frozen until an allowed live evaluation.
 - Added `docs/research-log/04-critic-and-consistency.md` as the Phase 4 implementation log.
-- Added `docs/research-log/03-rag.md` as the Phase 3 implementation log.
 - Added `docs/research-log/02-reflexion.md` as the Phase 2 implementation log.
 
 ## [1.7.1] - P1 SWE-bench Lite baseline
@@ -189,7 +187,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dm-agent-bench --suite swebench_lite` CLI integration with
   `--instance-id`, `--max-instances`, `--use-docker`, `--snapshot-path`,
   `--instance-test-timeout` options.
-- `[swebench]` and `[rag]` optional dependency extras in `pyproject.toml`.
+- `[swebench]` optional dependency extra in `pyproject.toml`.
 - `tests/test_swebench_loader.py`: 14 deterministic tests covering JSONL
   round-trip, subset stability, failure-mode classification, and the lazy
   import boundary; runs without the `[swebench]` extra.
@@ -219,7 +217,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Roadmap (v2 algorithm track)
 - Phase 1: SWE-bench Lite adapter and public baseline score.
 - Phase 2: Reflexion (self-reflection) mechanism with episodic memory.
-- Phase 3: Hybrid BM25 + embedding retrieval (RAG) for repository-scale context.
+- Phase 3: scoped context memory for repository-scale agent runs.
 - Phase 4: Critic agent and self-consistency selection.
 - Phase 5: Adaptive replanning by error signal and cross-model token economics.
 - Phase 6: Full README rewrite, demo recording, and community distribution.

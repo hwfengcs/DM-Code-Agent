@@ -6,7 +6,7 @@ external posting.
 ## GitHub release
 
 - Tag `v2.0.0` after CI passes.
-- Release title: `DM-Code-Agent v2: auditable local code agent with Reflexion, RAG, critic review`.
+- Release title: `DM-Code-Agent v2: auditable local code agent with Reflexion and critic review`.
 - Attach links to:
   - `README.md`
   - `docs/research-log/06-final-writeup.md`
@@ -35,7 +35,7 @@ external posting.
 Suggested description:
 
 > Local-first Python code agent with JSONL trace/replay, MCP tools, hidden-test benchmarks, SWE-bench
-> Lite Tier-1 harness, and default-off Reflexion/RAG/Critic/Self-Consistency modules.
+> Lite Tier-1 harness, and default-off Reflexion/Critic/Self-Consistency modules.
 
 ## Demo asset
 

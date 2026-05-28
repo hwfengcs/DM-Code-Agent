@@ -1,253 +1,478 @@
-"""上下文压缩器 - 每 N 轮对话自动压缩上下文"""
+"""Mem0-inspired local memory compression.
+
+The compressor keeps recent messages verbatim, consolidates older messages into
+small scoped memories, and injects only memories relevant to the current turn.
+It intentionally stays local and deterministic so default tests do not need API
+keys or a hosted memory service.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import re
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from ..clients.base_client import BaseLLMClient
 
+MEMORY_TYPES = {"episodic", "semantic", "procedural"}
+_TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+|[\u4e00-\u9fff]+")
+_FILE_PATTERN = re.compile(
+    r"(?<![\w./\\-])([\w./\\-]+\.(?:py|md|toml|json|yaml|yml|txt|ini|cfg|js|ts|tsx|jsx|css|html))"
+)
+_ERROR_MARKERS = (
+    "error",
+    "exception",
+    "traceback",
+    "failed",
+    "failure",
+    "returncode: 1",
+    "AssertionError",
+    "错误",
+    "失败",
+    "异常",
+)
+_SUCCESS_MARKERS = ("success", "succeeded", "completed", "done", "完成", "成功")
+
+
+@dataclass
+class MemoryItem:
+    """One compact memory item extracted from prior messages."""
+
+    id: str
+    text: str
+    type: str = "episodic"
+    scope: Dict[str, str] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    importance: float = 0.5
+    created_at_turn: int = 0
+    last_accessed_turn: int = 0
+    access_count: int = 0
+
+    def reinforce(self, *, turn: int, importance_delta: float = 0.05) -> None:
+        self.importance = min(1.0, self.importance + importance_delta)
+        self.last_accessed_turn = max(self.last_accessed_turn, turn)
+        self.access_count += 1
+
+
+@dataclass(frozen=True)
+class MemoryHit:
+    """A scored memory search result."""
+
+    item: MemoryItem
+    score: float
+    rank: int
+
+
+class Mem0StyleMemory:
+    """A small local add/search memory store following Mem0's operating pattern.
+
+    Instead of summarizing all old messages into one fragile paragraph, the store
+    turns old context into atomic memories, deduplicates them, reinforces repeated
+    facts, and searches by query plus optional scope filters.
+    """
+
+    def __init__(self, *, max_items: int = 80) -> None:
+        if max_items < 1:
+            raise ValueError("max_items must be at least 1")
+        self.max_items = max_items
+        self._items: Dict[str, MemoryItem] = {}
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    @property
+    def items(self) -> List[MemoryItem]:
+        return list(self._items.values())
+
+    def add(
+        self,
+        text: str,
+        *,
+        type: str = "episodic",
+        scope: Optional[Dict[str, str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        importance: float = 0.5,
+        turn: int = 0,
+    ) -> str:
+        text = _compact(text, limit=700)
+        if not text:
+            return ""
+        if type not in MEMORY_TYPES:
+            type = "episodic"
+        scope = {str(key): str(value) for key, value in (scope or {}).items() if value}
+        metadata = dict(metadata or {})
+        memory_id = self._fingerprint(text=text, type=type, scope=scope)
+
+        existing = self._items.get(memory_id)
+        if existing:
+            existing.metadata = _merge_metadata(existing.metadata, metadata)
+            existing.reinforce(turn=turn)
+            return memory_id
+
+        self._items[memory_id] = MemoryItem(
+            id=memory_id,
+            text=text,
+            type=type,
+            scope=scope,
+            metadata=metadata,
+            importance=max(0.0, min(1.0, importance)),
+            created_at_turn=turn,
+            last_accessed_turn=turn,
+        )
+        self._enforce_limit()
+        return memory_id
+
+    def add_messages(
+        self,
+        messages: Sequence[Dict[str, str]],
+        *,
+        scope: Optional[Dict[str, str]] = None,
+        turn: int = 0,
+    ) -> List[str]:
+        memory_ids: List[str] = []
+        for message in messages:
+            for memory in self._extract_from_message(message):
+                memory_id = self.add(
+                    memory["text"],
+                    type=memory["type"],
+                    scope=scope,
+                    metadata=memory.get("metadata", {}),
+                    importance=float(memory.get("importance", 0.5)),
+                    turn=turn,
+                )
+                if memory_id:
+                    memory_ids.append(memory_id)
+        return memory_ids
+
+    def search(
+        self,
+        query: str,
+        *,
+        scope: Optional[Dict[str, str]] = None,
+        limit: int = 5,
+        turn: Optional[int] = None,
+    ) -> List[MemoryHit]:
+        if limit < 1:
+            return []
+        query_tokens = set(_tokenize(query))
+        query_files = set(_FILE_PATTERN.findall(query))
+        scoped_items = [
+            item for item in self._items.values() if _scope_matches(item.scope, scope or {})
+        ]
+        current_turn = (
+            turn
+            if turn is not None
+            else max((item.last_accessed_turn for item in scoped_items), default=0)
+        )
+        scored: List[tuple[MemoryItem, float]] = []
+        for item in scoped_items:
+            item_tokens = set(_tokenize(_memory_search_text(item)))
+            lexical = len(query_tokens & item_tokens) / max(len(query_tokens), 1)
+            file_bonus = _file_overlap_bonus(query_files, item)
+            has_query_signal = bool(query_tokens or query_files)
+            relevance = lexical + file_bonus
+            if has_query_signal and relevance <= 0:
+                continue
+            recency = 1.0 / (1.0 + max(current_turn - item.last_accessed_turn, 0))
+            score = (
+                relevance
+                + item.importance * 0.15
+                + min(item.access_count, 5) * 0.02
+                + recency * 0.05
+            )
+            scored.append((item, score))
+
+        if not scored and not (query_tokens or query_files):
+            scored = [(item, item.importance) for item in scoped_items]
+
+        ranked = sorted(scored, key=lambda pair: pair[1], reverse=True)[:limit]
+        hits: List[MemoryHit] = []
+        for rank, (item, score) in enumerate(ranked, start=1):
+            item.reinforce(turn=current_turn)
+            hits.append(MemoryHit(item=item, score=float(score), rank=rank))
+        return hits
+
+    def render(
+        self,
+        query: str,
+        *,
+        scope: Optional[Dict[str, str]] = None,
+        limit: int = 5,
+        turn: Optional[int] = None,
+    ) -> str:
+        hits = self.search(query, scope=scope, limit=limit, turn=turn)
+        if not hits:
+            return ""
+
+        lines = [
+            "<agent_memory>",
+            "Relevant memories from previous context. Treat them as hints; verify before editing.",
+        ]
+        for hit in hits:
+            item = hit.item
+            files = item.metadata.get("files") or []
+            suffix = f" files={','.join(files[:3])}" if files else ""
+            lines.append(f"{hit.rank}. [{item.type} score={hit.score:.3f}{suffix}] {item.text}")
+        lines.append("</agent_memory>")
+        return "\n".join(lines)
+
+    def _extract_from_message(self, message: Dict[str, str]) -> List[Dict[str, Any]]:
+        content = str(message.get("content", ""))
+        role = str(message.get("role", ""))
+        compact = _compact(content, limit=1200)
+        if not compact:
+            return []
+
+        memories: List[Dict[str, Any]] = []
+        files = sorted(set(_FILE_PATTERN.findall(content)))
+        if files:
+            memories.append(
+                {
+                    "type": "semantic",
+                    "text": "Files mentioned or inspected: " + ", ".join(files[:8]),
+                    "metadata": {"files": files, "source_role": role},
+                    "importance": 0.45,
+                }
+            )
+
+        task_line = _first_matching_line(content, ("任务：", "Task:", "task:"))
+        if task_line:
+            memories.append(
+                {
+                    "type": "episodic",
+                    "text": "Current task context: " + _compact(task_line, limit=260),
+                    "metadata": {"files": files, "source_role": role},
+                    "importance": 0.65,
+                }
+            )
+
+        tool_match = re.search(r"(?:执行工具|Tool)\s+([A-Za-z_][A-Za-z0-9_]*)", content)
+        if tool_match:
+            memories.append(
+                {
+                    "type": "episodic",
+                    "text": f"Tool used: {tool_match.group(1)}.",
+                    "metadata": {"tool": tool_match.group(1), "files": files, "source_role": role},
+                    "importance": 0.4,
+                }
+            )
+
+        error_line = _first_matching_line(content, _ERROR_MARKERS)
+        if error_line:
+            memories.append(
+                {
+                    "type": "episodic",
+                    "text": "Observed failure: " + _compact(error_line, limit=360),
+                    "metadata": {"files": files, "source_role": role},
+                    "importance": 0.8,
+                }
+            )
+
+        success_line = _first_matching_line(content, _SUCCESS_MARKERS)
+        if success_line:
+            memories.append(
+                {
+                    "type": "episodic",
+                    "text": "Completed operation: " + _compact(success_line, limit=320),
+                    "metadata": {"files": files, "source_role": role},
+                    "importance": 0.55,
+                }
+            )
+
+        if "pytest" in content or "run_tests" in content:
+            memories.append(
+                {
+                    "type": "procedural",
+                    "text": "When code changes are made, run the relevant tests and keep failing output available.",
+                    "metadata": {"files": files, "source_role": role},
+                    "importance": 0.7,
+                }
+            )
+
+        if not memories and len(compact) > 240:
+            memories.append(
+                {
+                    "type": "episodic",
+                    "text": "Prior context: " + _compact(compact, limit=360),
+                    "metadata": {"files": files, "source_role": role},
+                    "importance": 0.35,
+                }
+            )
+        return memories
+
+    def _enforce_limit(self) -> None:
+        if len(self._items) <= self.max_items:
+            return
+        ranked = sorted(
+            self._items.values(),
+            key=lambda item: (item.importance, item.access_count, item.last_accessed_turn),
+            reverse=True,
+        )
+        self._items = {item.id: item for item in ranked[: self.max_items]}
+
+    @staticmethod
+    def _fingerprint(*, text: str, type: str, scope: Dict[str, str]) -> str:
+        payload = "|".join(
+            [
+                type,
+                text.strip().lower(),
+                json_like_scope(scope),
+            ]
+        )
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
+
 
 class ContextCompressor:
-    """
-    每 N 轮对话自动压缩上下文
+    """Compress conversation history via scoped atomic memories.
 
-    上下文压缩器用于管理长时间对话中的token消耗问题。通过定期压缩历史对话记录，
-    保持重要的上下文信息同时减少token使用量，从而支持更长的对话序列。
-
-    Attributes:
-        client (Optional[BaseLLMClient]): LLM客户端，用于生成摘要（当前未使用）
-        compress_every (int): 每多少轮对话触发一次压缩
-        keep_recent (int): 保留最近的对话轮数
-        turn_count (int): 对话轮数计数器
+    The current run receives recent messages verbatim plus a compact
+    ``<agent_memory>`` block of relevant older context. The public API remains
+    compatible with the previous compressor.
     """
 
     def __init__(
-        self, client: Optional[BaseLLMClient] = None, compress_every: int = 5, keep_recent: int = 3
-    ):
-        """
-        初始化上下文压缩器
-
-        Args:
-            client (Optional[BaseLLMClient], optional): LLM 客户端（用于生成摘要），当前实现中未使用
-            compress_every (int, optional): 每多少轮对话触发一次压缩，默认为5轮
-            keep_recent (int, optional): 保留最近的对话轮数，默认为3轮
-
-        Examples:
-            >>> compressor = ContextCompressor(compress_every=3, keep_recent=2)
-            >>> print(compressor.compress_every)
-            3
-        """
+        self,
+        client: Optional[BaseLLMClient] = None,
+        compress_every: int = 5,
+        keep_recent: int = 3,
+        *,
+        memory: Optional[Mem0StyleMemory] = None,
+        memory_limit: int = 5,
+        scope: Optional[Dict[str, str]] = None,
+    ) -> None:
+        if compress_every < 1:
+            raise ValueError("compress_every must be at least 1")
+        if keep_recent < 1:
+            raise ValueError("keep_recent must be at least 1")
         self.client = client
         self.compress_every = compress_every
         self.keep_recent = keep_recent
-        self.turn_count = 0  # 对话轮数计数
+        self.memory = memory or Mem0StyleMemory()
+        self.memory_limit = memory_limit
+        self.scope = scope or {"agent_id": "dm-code-agent"}
+        self.turn_count = 0
+        self._compression_count = 0
+
+    @property
+    def memory_count(self) -> int:
+        return len(self.memory)
 
     def should_compress(self, history: List[Dict[str, str]]) -> bool:
-        """
-        判断是否需要压缩对话历史
-
-        通过统计用户消息数量来确定当前对话轮数，当达到设定阈值时返回True
-
-        Args:
-            history (List[Dict[str, str]]): 对话历史列表，每个元素包含role和content键
-
-        Returns:
-            bool: 当对话轮数达到压缩阈值时返回True，否则返回False
-
-        Examples:
-            >>> history = [
-            ...     {"role": "user", "content": "你好"},
-            ...     {"role": "assistant", "content": "你好！有什么可以帮助你的吗？"},
-            ...     {"role": "user", "content": "分析一下这个项目"}
-            ... ]
-            >>> compressor = ContextCompressor(compress_every=2)
-            >>> compressor.should_compress(history)
-            True
-        """
-        # 统计用户消息数量（每个用户消息代表一轮对话）
         user_messages = [msg for msg in history if msg.get("role") == "user"]
         self.turn_count = len(user_messages)
-
-        # 每 N 轮压缩一次
-        return self.turn_count >= self.compress_every
+        return self.turn_count >= self.compress_every or self.memory_count > 0
 
     def compress(self, history: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """
-        压缩对话历史
-
-        采用提取关键信息的策略，保留最近N轮对话，将之前的对话历史压缩为摘要信息
-
-        Args:
-            history (List[Dict[str, str]]): 原始对话历史列表
-
-        Returns:
-            result (List[Dict[str, str]]): 压缩后的对话历史列表
-
-        Examples:
-            >>> history = [
-            ...     {"role": "system", "content": "你是一个代码助手"},
-            ...     {"role": "user", "content": "分析项目结构"},
-            ...     {"role": "assistant", "content": "正在分析..."},
-            ...     {"role": "user", "content": "读取文件A"},
-            ...     {"role": "assistant", "content": "已读取文件A"},
-            ...     {"role": "user", "content": "读取文件B"},
-            ...     {"role": "assistant", "content": "已读取文件B"}
-            ... ]
-            >>> compressor = ContextCompressor(keep_recent=1)
-            >>> compressed = compressor.compress(history)
-            >>> len(compressed)
-            4  # 系统消息 + 摘要 + 最近1轮对话(2条消息)
-        """
         if not history:
             return []
 
-        # 分离系统消息和其他消息
+        self._compression_count += 1
         system_messages = [msg for msg in history if msg.get("role") == "system"]
         non_system = [msg for msg in history if msg.get("role") != "system"]
-
-        # 保留最近的消息（keep_recent 轮 = keep_recent * 2 条消息）
+        recent_message_count = self.keep_recent * 2
         recent_messages = (
-            non_system[-self.keep_recent * 2 :]
-            if len(non_system) > self.keep_recent * 2
-            else non_system
+            non_system[-recent_message_count:]
+            if len(non_system) > recent_message_count
+            else list(non_system)
+        )
+        older_messages = (
+            non_system[:-recent_message_count] if len(non_system) > recent_message_count else []
         )
 
-        # 需要压缩的中间消息
-        middle_messages = (
-            non_system[: -self.keep_recent * 2] if len(non_system) > self.keep_recent * 2 else []
-        )
-
-        # 如果有中间消息，进行压缩
-        compressed_middle = []
-        if middle_messages:
-            summary = self._extract_key_information(middle_messages)
-            compressed_middle = [{"role": "user", "content": f"历史对话摘要：\n{summary}"}]
-
-        # 组合：系统消息 + 压缩的中间历史 + 最近消息
-        result = system_messages + compressed_middle + recent_messages
-
-        # 重置计数器
-        self.turn_count = len([msg for msg in result if msg.get("role") == "user"])
-
-        return result
-
-    def _extract_key_information(self, messages: List[Dict[str, str]]) -> str:
-        """
-        提取式摘要：从对话历史中提取关键信息
-
-        通过正则表达式识别和提取对话中的关键信息，包括文件路径、工具调用、错误信息和完成的任务
-
-        Args:
-            messages (List[Dict[str, str]]): 需要提取信息的对话消息列表
-
-        Returns:
-            str: 格式化的关键信息摘要字符串
-
-        Examples:
-            >>> messages = [
-            ...     {"role": "user", "content": "读取文件：main.py"},
-            ...     {"role": "assistant", "content": "执行工具 read_file，输入：{'path': 'main.py'}"},
-            ...     {"role": "user", "content": "观察：成功读取文件"}
-            ... ]
-            >>> compressor = ContextCompressor()
-            >>> summary = compressor._extract_key_information(messages)
-            >>> "涉及文件" in summary
-            True
-        """
-        key_info = []
-
-        # 提取文件路径
-        file_paths = set()
-        for msg in messages:
-            content = msg.get("content", "")
-            # 查找文件路径模式
-            paths = re.findall(
-                r"(?:path|文件|读取|创建|编辑)[:：]\s*([^\s,，;；\n]+\.[a-zA-Z]+)", content
+        if older_messages:
+            self.memory.add_messages(
+                older_messages,
+                scope=self.scope,
+                turn=self._compression_count,
             )
-            file_paths.update(paths)
 
-        if file_paths:
-            key_info.append(f"涉及文件：{', '.join(sorted(file_paths))}")
-
-        # 提取工具调用
-        tools_used = set()
-        for msg in messages:
-            content = msg.get("content", "")
-            # 查找工具名称
-            if "执行工具" in content:
-                tool_match = re.search(r"执行工具\s+(\w+)", content)
-                if tool_match:
-                    tools_used.add(tool_match.group(1))
-
-        if tools_used:
-            key_info.append(f"使用的工具：{', '.join(sorted(tools_used))}")
-
-        # 提取错误信息
-        errors = []
-        for msg in messages:
-            content = msg.get("content", "")
-            if any(keyword in content for keyword in ["错误", "error", "Error", "失败", "异常"]):
-                # 提取错误相关的行（限制长度）
-                error_lines = [
-                    line
-                    for line in content.split("\n")
-                    if any(kw in line for kw in ["错误", "error", "Error", "失败", "异常"])
-                ]
-                errors.extend(error_lines[:2])  # 最多保留 2 条
-
-        if errors:
-            key_info.append(f"遇到的错误：\n" + "\n".join(errors))
-
-        # 提取完成的任务
-        completed = []
-        for msg in messages:
-            content = msg.get("content", "")
-            if "完成" in content or "成功" in content:
-                # 提取相关行
-                completed_lines = [
-                    line for line in content.split("\n") if "完成" in line or "成功" in line
-                ]
-                completed.extend(completed_lines[:2])
-
-        if completed:
-            key_info.append(f"已完成的操作：\n" + "\n".join(completed))
-
-        # 如果没有提取到任何信息，返回通用摘要
-        if not key_info:
-            return f"进行了 {len(messages)} 轮对话，讨论了代码相关任务。"
-
-        return "\n\n".join(key_info)
+        query = "\n".join(message.get("content", "") for message in recent_messages[-4:])
+        memory_block = self.memory.render(
+            query,
+            scope=self.scope,
+            limit=self.memory_limit,
+            turn=self._compression_count,
+        )
+        memory_messages = [{"role": "user", "content": memory_block}] if memory_block else []
+        return system_messages + memory_messages + recent_messages
 
     def get_compression_stats(
         self, original: List[Dict[str, str]], compressed: List[Dict[str, str]]
     ) -> Dict[str, Any]:
-        """
-        获取压缩统计信息
-
-        计算并返回压缩前后的统计信息，包括消息数量、压缩率和节省的消息数
-
-        Args:
-            original (List[Dict[str, str]]): 原始对话历史
-            compressed (List[Dict[str, str]]): 压缩后的对话历史
-
-        Returns:
-            stats (Dict[str, Any]): 包含压缩统计信息的字典
-                - original_messages (int): 原始消息数量
-                - compressed_messages (int): 压缩后消息数量
-                - compression_ratio (float): 压缩率 (0-1之间)
-                - saved_messages (int): 节省的消息数量
-
-        Examples:
-            >>> original = [{"role": "user", "content": "1"}, {"role": "assistant", "content": "2"}]
-            >>> compressed = [{"role": "user", "content": "历史对话摘要：..."}]
-            >>> stats = compressor.get_compression_stats(original, compressed)
-            >>> stats["saved_messages"]
-            1
-        """
         return {
             "original_messages": len(original),
             "compressed_messages": len(compressed),
             "compression_ratio": (1 - len(compressed) / len(original) if len(original) > 0 else 0),
             "saved_messages": len(original) - len(compressed),
+            "memory_items": self.memory_count,
         }
+
+
+def _compact(text: str, *, limit: int) -> str:
+    compact = " ".join(str(text or "").split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(limit - 3, 0)].rstrip() + "..."
+
+
+def _tokenize(text: str) -> List[str]:
+    tokens: List[str] = []
+    for match in _TOKEN_PATTERN.findall(text):
+        parts = re.split(r"_+", match)
+        for part in parts:
+            tokens.extend(_split_camel_case(part))
+    return [token.lower() for token in tokens if token]
+
+
+def _split_camel_case(token: str) -> List[str]:
+    parts = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token).split()
+    if len(parts) == 1:
+        return parts
+    return parts + [token]
+
+
+def _scope_matches(item_scope: Dict[str, str], requested: Dict[str, str]) -> bool:
+    for key, value in requested.items():
+        if value and item_scope.get(key) != value:
+            return False
+    return True
+
+
+def _merge_metadata(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(left)
+    for key, value in right.items():
+        if key == "files":
+            merged[key] = sorted(set(merged.get(key, [])) | set(value or []))
+        elif key not in merged or not merged[key]:
+            merged[key] = value
+    return merged
+
+
+def _memory_search_text(item: MemoryItem) -> str:
+    fields = [item.text, item.type]
+    files = item.metadata.get("files") or []
+    fields.extend(str(file) for file in files)
+    if "tool" in item.metadata:
+        fields.append(str(item.metadata["tool"]))
+    return "\n".join(fields)
+
+
+def _file_overlap_bonus(query_files: set[str], item: MemoryItem) -> float:
+    item_files = set(item.metadata.get("files") or [])
+    if not query_files or not item_files:
+        return 0.0
+    return 0.3 if query_files & item_files else 0.0
+
+
+def _first_matching_line(text: str, markers: Iterable[str]) -> str:
+    lowered_markers = [marker.lower() for marker in markers]
+    for line in str(text or "").splitlines():
+        lowered = line.lower()
+        if any(marker in lowered for marker in lowered_markers):
+            return line.strip()
+    return ""
+
+
+def json_like_scope(scope: Dict[str, str]) -> str:
+    return ";".join(f"{key}={scope[key]}" for key in sorted(scope))
