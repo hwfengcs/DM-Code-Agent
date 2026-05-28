@@ -318,6 +318,8 @@ class ReactAgent:
             "argument_error_count": 0,
             "replan_count": 0,
             "compressed_messages": 0,
+            "memory_items": 0,
+            "memory_injection_count": 0,
             "failure_reason": "",
             "reflexion_enabled": self.enable_reflexion,
             "critic_enabled": self.critic is not None,
@@ -409,7 +411,7 @@ class ReactAgent:
         self.conversation_history.append({"role": "user", "content": task_prompt})
 
         for step_num in range(1, limit + 1):
-            # 第二步：压缩上下文（如果需要）
+            # 第二步：整理旧上下文为本地记忆（如果需要）
             system_content = self.system_prompt
             messages_to_send = [
                 {"role": "system", "content": system_content}
@@ -417,7 +419,7 @@ class ReactAgent:
 
             if self.enable_compression and self.compressor:
                 if self.compressor.should_compress(self.conversation_history):
-                    print(f"\n🧠 使用记忆压缩对话历史以节省 token...")
+                    print("\n🧠 整理旧对话为本地原子记忆，并召回相关记忆...")
                     compressed_history = self.compressor.compress(self.conversation_history)
                     messages_to_send = [
                         {"role": "system", "content": system_content}
@@ -429,11 +431,17 @@ class ReactAgent:
                     )
                     metadata["compressed_messages"] += stats["saved_messages"]
                     memory_count = self.compressor.memory_count
+                    memory_block_injected = any(
+                        str(message.get("content", "")).startswith("<agent_memory>")
+                        for message in compressed_history
+                    )
                     metadata["memory_items"] = memory_count
+                    metadata["memory_injection_count"] += int(memory_block_injected)
                     print(
-                        f"   压缩率：{stats['compression_ratio']:.1%}，"
-                        f"节省 {stats['saved_messages']} 条消息，"
-                        f"记忆 {memory_count} 条"
+                        f"   保留最近 {self.compressor.keep_recent * 2} 条消息，"
+                        f"本地记忆 {memory_count} 条，"
+                        f"本轮{'已' if memory_block_injected else '未'}注入 <agent_memory>，"
+                        f"节省 {stats['saved_messages']} 条消息"
                     )
 
             # 获取 AI 响应
