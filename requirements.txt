@@ -8,6 +8,7 @@ python-dotenv>=1.0.0,<2.0.0
 
 # Optional but recommended colorful CLI output.
 colorama>=0.4.6,<1.0.0
+rich>=13.7.0,<15.0.0
 
 # Official provider SDKs.
 openai>=1.0.0

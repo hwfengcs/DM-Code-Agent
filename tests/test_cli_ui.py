@@ -10,17 +10,17 @@ class FakeAgent:
         }
 
 
-def test_cli_menu_uses_ascii_terminal_frame(capsys):
+def test_cli_menu_renders_modern_command_palette(capsys):
     print_menu()
 
     output = capsys.readouterr().out
 
     assert "主菜单" in output
-    assert "[1]" in output
+    assert "1" in output
+    assert "6" in output
     assert "执行新任务" in output
-    assert "╭" not in output
-    assert "╰" not in output
-    assert "─" not in output
+    assert "多轮对话模式" in output
+    assert "[1]" not in output
 
 
 def test_display_result_uses_panel_style(capsys):

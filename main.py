@@ -27,6 +27,21 @@ from dm_agent.mcp import MCPManager, load_mcp_config
 from dm_agent.skills import SkillManager
 from dm_agent.tracing import TraceWriter
 
+try:
+    from rich import box
+    from rich.console import Console, Group
+    from rich.padding import Padding
+    from rich.panel import Panel
+    from rich.prompt import Prompt
+    from rich.table import Table
+    from rich.text import Text
+
+    RICH_AVAILABLE = True
+    RICH_CONSOLE = Console(highlight=False, soft_wrap=True)
+except ImportError:
+    RICH_AVAILABLE = False
+    RICH_CONSOLE = None
+
 # 尝试导入 colorama 用于彩色输出
 try:
     from colorama import Fore, Style, init as colorama_init
@@ -70,9 +85,27 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 
 
 class UI:
-    """Small terminal UI layer built on colorama, with no optional dependencies."""
+    """Terminal UI layer with Rich rendering and a colorama fallback."""
 
     WIDTH = 88
+    RICH_STYLES = {
+        "ok": "bold white on green",
+        "error": "bold white on red",
+        "warn": "bold black on yellow",
+        "info": "bold white on blue",
+        "run": "bold white on magenta",
+    }
+    RICH_LABELS = {
+        "ok": "DONE",
+        "error": "ERROR",
+        "warn": "WARN",
+        "info": "INFO",
+        "run": "RUN",
+    }
+
+    @staticmethod
+    def rich_enabled() -> bool:
+        return RICH_AVAILABLE and RICH_CONSOLE is not None
 
     @staticmethod
     def width() -> int:
@@ -89,6 +122,10 @@ class UI:
 
     @staticmethod
     def rule(label: str = "", *, color: str = Fore.CYAN) -> None:
+        if UI.rich_enabled():
+            title = Text(f" {label} ", style="bright_black") if label else ""
+            RICH_CONSOLE.rule(title, style="bright_black")
+            return
         width = UI.width()
         if label:
             prefix = f" {label} "
@@ -99,6 +136,35 @@ class UI:
 
     @staticmethod
     def banner(title: str, subtitle: str = "") -> None:
+        if UI.rich_enabled():
+            heading = Text()
+            if title == "DM-Code-Agent":
+                heading.append("DM", style="bold cyan")
+                heading.append("-Code-Agent", style="bold white")
+            else:
+                heading.append(title, style="bold white")
+
+            body: Group | Text
+            if subtitle:
+                caption = Text(subtitle, style="bright_black")
+                body = Group(heading, Text(""), caption)
+            else:
+                body = heading
+            RICH_CONSOLE.print(
+                Panel(
+                    body,
+                    border_style="bright_black",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                    expand=True,
+                    subtitle=(
+                        Text("trace  tools  skills  memory", style="bright_black")
+                        if title == "DM-Code-Agent"
+                        else None
+                    ),
+                )
+            )
+            return
         print()
         print(UI.paint(title, Fore.GREEN, bright=True))
         if subtitle:
@@ -107,6 +173,14 @@ class UI:
 
     @staticmethod
     def section(title: str, subtitle: str = "") -> None:
+        if UI.rich_enabled():
+            text = Text()
+            text.append(title, style="bold white")
+            if subtitle:
+                text.append("\n")
+                text.append(subtitle, style="bright_black")
+            RICH_CONSOLE.print(Padding(text, (1, 0, 0, 0)))
+            return
         print()
         print(UI.paint(title, Fore.CYAN, bright=True))
         if subtitle:
@@ -115,6 +189,20 @@ class UI:
 
     @staticmethod
     def panel(title: str, body: str = "", *, color: str = Fore.CYAN) -> None:
+        if UI.rich_enabled():
+            style = UI._rich_color(color)
+            RICH_CONSOLE.print(
+                Panel(
+                    Text(str(body), style="default"),
+                    title=Text(f" {title} ", style=f"bold {style}"),
+                    title_align="left",
+                    border_style="bright_black",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                    expand=True,
+                )
+            )
+            return
         print()
         print(UI.paint(title, color, bright=True))
         if body:
@@ -134,6 +222,18 @@ class UI:
 
     @staticmethod
     def status(kind: str, message: str, detail: str = "") -> None:
+        if UI.rich_enabled():
+            style = UI.RICH_STYLES.get(kind, UI.RICH_STYLES["info"])
+            label = UI.RICH_LABELS.get(kind, kind.upper())
+            text = Text()
+            text.append(f" {label:<5} ", style=style)
+            text.append(" ")
+            text.append(message, style="white")
+            if detail:
+                text.append("  ")
+                text.append(detail, style="bright_black")
+            RICH_CONSOLE.print(Padding(text, (0, 0, 0, 1)))
+            return
         palette = {
             "ok": (Fore.GREEN, "ok"),
             "error": (Fore.RED, "err"),
@@ -149,6 +249,23 @@ class UI:
 
     @staticmethod
     def key_values(title: str, rows: List[tuple[str, Any]]) -> None:
+        if UI.rich_enabled():
+            table = Table.grid(padding=(0, 3))
+            table.add_column(style="bright_black", no_wrap=True)
+            table.add_column(style="bold white")
+            for key, value in rows:
+                table.add_row(str(key), str(value))
+            RICH_CONSOLE.print(
+                Panel(
+                    table,
+                    title=Text(f" {title} ", style="bold cyan"),
+                    title_align="left",
+                    border_style="bright_black",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                )
+            )
+            return
         UI.section(title)
         key_width = max((len(key) for key, _ in rows), default=0)
         for key, value in rows:
@@ -159,6 +276,26 @@ class UI:
 
     @staticmethod
     def menu(items: List[tuple[str, str]]) -> None:
+        if UI.rich_enabled():
+            table = Table.grid(expand=True, padding=(0, 2))
+            table.add_column(justify="right", no_wrap=True, width=5)
+            table.add_column(style="bold white", no_wrap=True, width=18)
+            table.add_column(style="bright_black", ratio=1)
+            for index, (title, description) in enumerate(items, start=1):
+                badge = Text(f" {index} ", style="bold black on cyan")
+                table.add_row(badge, title, description)
+            RICH_CONSOLE.print(
+                Panel(
+                    table,
+                    title=Text(" 主菜单 ", style="bold white"),
+                    title_align="left",
+                    subtitle=Text("输入编号选择操作", style="bright_black"),
+                    border_style="bright_black",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                )
+            )
+            return
         UI.section("主菜单", "输入编号选择一个操作")
         for index, (title, description) in enumerate(items, start=1):
             badge = UI.paint(f"[{index}]", Fore.GREEN, bright=True)
@@ -172,6 +309,40 @@ class UI:
         if len(text) <= limit:
             return text
         return text[: max(limit - 3, 0)].rstrip() + "..."
+
+    @staticmethod
+    def ask(
+        prompt: str,
+        *,
+        choices: List[str] | None = None,
+        default: str | None = None,
+        show_choices: bool = True,
+    ) -> str:
+        if UI.rich_enabled():
+            prompt_kwargs = {
+                "choices": choices,
+                "console": RICH_CONSOLE,
+                "show_choices": show_choices,
+            }
+            if default is not None:
+                prompt_kwargs["default"] = default
+            return Prompt.ask(Text(prompt, style="bold cyan"), **prompt_kwargs)
+        suffix = f" [{default}]" if default is not None else ""
+        return input(f"{UI.paint(prompt, Fore.CYAN)}{suffix}: ")
+
+    @staticmethod
+    def _rich_color(color: str) -> str:
+        if color == Fore.GREEN:
+            return "green"
+        if color == Fore.YELLOW:
+            return "yellow"
+        if color == Fore.RED:
+            return "red"
+        if color == Fore.MAGENTA:
+            return "magenta"
+        if color == Fore.BLUE:
+            return "blue"
+        return "cyan"
 
 
 def configure_console_encoding() -> None:
@@ -340,6 +511,31 @@ def print_menu() -> None:
 
 def show_tools(tools: List[Tool]) -> None:
     """显示可用工具列表"""
+    if UI.rich_enabled():
+        table = Table(
+            show_header=True,
+            header_style="bold white",
+            box=box.SIMPLE_HEAD,
+            border_style="bright_black",
+            pad_edge=False,
+        )
+        table.add_column("#", justify="right", style="cyan", no_wrap=True)
+        table.add_column("Tool", style="bold white", no_wrap=True)
+        table.add_column("Description", style="bright_black")
+        for idx, tool in enumerate(tools, start=1):
+            table.add_row(str(idx), tool.name, tool.description)
+        RICH_CONSOLE.print(
+            Panel(
+                table,
+                title=Text(f" 可用工具 ({len(tools)}) ", style="bold cyan"),
+                title_align="left",
+                border_style="bright_black",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+        return
+
     UI.section("可用工具", f"{len(tools)} 个工具已加载")
 
     for idx, tool in enumerate(tools, start=1):
@@ -356,6 +552,44 @@ def show_tools(tools: List[Tool]) -> None:
 def show_skills(skill_manager: SkillManager) -> None:
     """显示可用技能列表"""
     skills_info = skill_manager.get_all_skill_info()
+    if UI.rich_enabled():
+        table = Table(
+            show_header=True,
+            header_style="bold white",
+            box=box.SIMPLE_HEAD,
+            border_style="bright_black",
+            pad_edge=False,
+        )
+        table.add_column("#", justify="right", style="cyan", no_wrap=True)
+        table.add_column("Skill", no_wrap=True)
+        table.add_column("Source", style="yellow", no_wrap=True)
+        table.add_column("Tools", justify="right", style="magenta", no_wrap=True)
+        table.add_column("Description", style="bright_black")
+        for idx, info in enumerate(skills_info, start=1):
+            source = "内置" if info["is_builtin"] else "自定义"
+            skill_name = Text(str(info["display_name"]), style="bold white")
+            if info["is_active"]:
+                skill_name.append("  ACTIVE", style="bold green")
+            table.add_row(
+                str(idx),
+                skill_name,
+                source,
+                str(info["tools_count"]),
+                info["description"],
+            )
+        body = table if skills_info else Text("暂无可用技能", style="yellow")
+        RICH_CONSOLE.print(
+            Panel(
+                body,
+                title=Text(f" 可用技能 ({len(skills_info)}) ", style="bold cyan"),
+                title_align="left",
+                border_style="bright_black",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+        return
+
     UI.section("可用技能", f"{len(skills_info)} 个技能已发现")
     if not skills_info:
         UI.status("warn", "暂无可用技能")
@@ -404,7 +638,13 @@ def configure_settings(config: Config) -> None:
 
     # 修改提供商
     provider_input = (
-        input(f"LLM 提供商 (deepseek/openai/claude/gemini) [{config.provider}]: ").strip().lower()
+        UI.ask(
+            "LLM 提供商",
+            choices=["deepseek", "openai", "claude", "gemini"],
+            default=config.provider,
+        )
+        .strip()
+        .lower()
     )
     if provider_input and provider_input in ["deepseek", "openai", "claude", "gemini"]:
         if provider_input != config.provider:
@@ -426,28 +666,29 @@ def configure_settings(config: Config) -> None:
         UI.status("error", "无效的提供商")
 
     # 修改模型
-    model_input = input(f"模型名称 [{config.model}]: ").strip()
-    if model_input:
+    model_input = UI.ask("模型名称", default=config.model).strip()
+    if model_input and model_input != config.model:
         config.model = model_input
         config_changed = True
         UI.status("ok", f"已更新模型为 {model_input}")
 
     # 修改 Base URL
-    base_url_input = input(f"Base URL [{config.base_url}]: ").strip()
-    if base_url_input:
+    base_url_input = UI.ask("Base URL", default=config.base_url).strip()
+    if base_url_input and base_url_input != config.base_url:
         config.base_url = base_url_input
         config_changed = True
         UI.status("ok", f"已更新 Base URL 为 {base_url_input}")
 
     # 修改最大步骤数
     try:
-        max_steps_input = input(f"最大步骤数 [{config.max_steps}]: ").strip()
+        max_steps_input = UI.ask("最大步骤数", default=str(config.max_steps)).strip()
         if max_steps_input:
             new_max_steps = int(max_steps_input)
             if new_max_steps > 0:
-                config.max_steps = new_max_steps
-                config_changed = True
-                UI.status("ok", f"已更新最大步骤数为 {new_max_steps}")
+                if new_max_steps != config.max_steps:
+                    config.max_steps = new_max_steps
+                    config_changed = True
+                    UI.status("ok", f"已更新最大步骤数为 {new_max_steps}")
             else:
                 UI.status("error", "最大步骤数必须大于 0")
     except ValueError:
@@ -455,13 +696,14 @@ def configure_settings(config: Config) -> None:
 
     # 修改温度
     try:
-        temp_input = input(f"温度 (0.0-2.0) [{config.temperature}]: ").strip()
+        temp_input = UI.ask("温度 (0.0-2.0)", default=str(config.temperature)).strip()
         if temp_input:
             new_temp = float(temp_input)
             if 0.0 <= new_temp <= 2.0:
-                config.temperature = new_temp
-                config_changed = True
-                UI.status("ok", f"已更新温度为 {new_temp}")
+                if new_temp != config.temperature:
+                    config.temperature = new_temp
+                    config_changed = True
+                    UI.status("ok", f"已更新温度为 {new_temp}")
             else:
                 UI.status("error", "温度必须在 0.0 到 2.0 之间")
     except ValueError:
@@ -469,7 +711,9 @@ def configure_settings(config: Config) -> None:
 
     # 修改显示步骤
     show_steps_input = (
-        input(f"显示步骤 (y/n) [{'y' if config.show_steps else 'n'}]: ").strip().lower()
+        UI.ask("显示步骤", choices=["y", "n"], default="y" if config.show_steps else "n")
+        .strip()
+        .lower()
     )
     if show_steps_input in ["y", "yes", "是"]:
         if not config.show_steps:
@@ -486,7 +730,7 @@ def configure_settings(config: Config) -> None:
     if config_changed:
         print()
         save_choice = (
-            input(f"{Fore.CYAN}是否保存为永久配置？(y/n) [y]: {Style.RESET_ALL}").strip().lower()
+            UI.ask("是否保存为永久配置？", choices=["y", "n"], default="y").strip().lower()
         )
         if save_choice in ["", "y", "yes", "是"]:
             save_config_to_file(config)
@@ -497,24 +741,54 @@ def configure_settings(config: Config) -> None:
 def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
     """格式化显示任务结果"""
     if show_steps and result.get("steps"):
-        UI.section("执行步骤")
-        for idx, step in enumerate(result.get("steps", []), start=1):
-            print(
-                f"  {UI.paint(f'{idx:>2}', Fore.MAGENTA, bright=True)}  "
-                f"{UI.paint(str(step.get('action', '')), Fore.WHITE, bright=True)}"
+        if UI.rich_enabled():
+            table = Table(
+                show_header=True,
+                header_style="bold white",
+                box=box.SIMPLE_HEAD,
+                border_style="bright_black",
+                pad_edge=False,
             )
-            print(f"      {UI.paint('thought', Fore.WHITE, dim=True)}  {step.get('thought')}")
-            action_input = step.get("action_input")
-            if action_input:
-                print(
-                    f"      {UI.paint('input', Fore.WHITE, dim=True)}    "
-                    f"{json.dumps(action_input, ensure_ascii=False)}"
+            table.add_column("#", justify="right", style="cyan", no_wrap=True)
+            table.add_column("Action", style="bold white", no_wrap=True)
+            table.add_column("Thought", style="bright_black")
+            table.add_column("Observation", style="bright_black")
+            for idx, step in enumerate(result.get("steps", []), start=1):
+                table.add_row(
+                    str(idx),
+                    str(step.get("action", "")),
+                    UI.truncate(step.get("thought", ""), 120),
+                    UI.truncate(step.get("observation", ""), 140),
                 )
-            print(
-                f"      {UI.paint('observe', Fore.WHITE, dim=True)}  "
-                f"{UI.truncate(step.get('observation'))}"
+            RICH_CONSOLE.print(
+                Panel(
+                    table,
+                    title=Text(" 执行步骤 ", style="bold magenta"),
+                    title_align="left",
+                    border_style="bright_black",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                )
             )
-            print()
+        else:
+            UI.section("执行步骤")
+            for idx, step in enumerate(result.get("steps", []), start=1):
+                print(
+                    f"  {UI.paint(f'{idx:>2}', Fore.MAGENTA, bright=True)}  "
+                    f"{UI.paint(str(step.get('action', '')), Fore.WHITE, bright=True)}"
+                )
+                print(f"      {UI.paint('thought', Fore.WHITE, dim=True)}  {step.get('thought')}")
+                action_input = step.get("action_input")
+                if action_input:
+                    print(
+                        f"      {UI.paint('input', Fore.WHITE, dim=True)}    "
+                        f"{json.dumps(action_input, ensure_ascii=False)}"
+                    )
+                print(
+                    f"      {UI.paint('observe', Fore.WHITE, dim=True)}  "
+                    f"{UI.truncate(step.get('observation'))}"
+                )
+                print()
 
     final_answer = result.get("final_answer", "")
     UI.panel("最终答案", str(final_answer), color=Fore.GREEN)
@@ -630,6 +904,21 @@ def create_step_callback(show_steps: bool):
             )
         else:
             status = "error" if step.action == "error" else "ok"
+            if UI.rich_enabled():
+                text = Text()
+                text.append(f"{step_num:02d}", style="cyan")
+                text.append("  ")
+                if status == "error":
+                    text.append(" ERR ", style=UI.RICH_STYLES["error"])
+                else:
+                    text.append(" OK  ", style=UI.RICH_STYLES["ok"])
+                text.append(" ")
+                text.append(step.action, style="bold white")
+                if step.action_input:
+                    text.append("  input", style="bright_black")
+                RICH_CONSOLE.print(Padding(text, (0, 0, 0, 1)))
+                return
+
             action = UI.paint(step.action, Fore.WHITE, bright=True)
             marker = UI.paint(f"{step_num:02d}", Fore.CYAN, bright=True)
             result = UI.paint(
@@ -684,10 +973,7 @@ def multi_turn_conversation(
         while True:
             UI.section(f"对话 {conversation_count + 1}")
             UI.status("info", "当前会话记忆", format_agent_context_status(agent))
-            task = input(
-                f"{UI.paint('请输入任务', Fore.YELLOW)} "
-                f"{UI.paint('(exit 退出，reset 重置历史)', Fore.WHITE, dim=True)}\n> "
-            ).strip()
+            task = UI.ask("请输入任务 (exit 退出，reset 重置历史)").strip()
 
             if not task:
                 UI.status("error", "任务描述不能为空")
@@ -739,9 +1025,7 @@ def execute_task(
 ) -> None:
     """执行任务"""
     UI.section("执行新任务")
-    print(UI.paint("请输入任务描述（输入完成后按回车）：", Fore.YELLOW))
-
-    task = input("> ").strip()
+    task = UI.ask("请输入任务描述").strip()
 
     if not task:
         UI.status("error", "任务描述不能为空")
@@ -819,7 +1103,11 @@ def interactive_mode(config: Config) -> int:
         while True:
             try:
                 print_menu()
-                choice = input(f"{UI.paint('选择操作', Fore.CYAN)} (1-6): ").strip()
+                choice = UI.ask(
+                    "选择操作 (1-6)",
+                    choices=["1", "2", "3", "4", "5", "6"],
+                    show_choices=False,
+                ).strip()
 
                 if choice == "1":
                     # 执行新任务
