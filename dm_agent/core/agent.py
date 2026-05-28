@@ -60,6 +60,9 @@ class ReactAgent:
         "task_done": "task_complete",
         "task_complete": "task_complete",
     }
+    MEMORY_STATUS_LOG_INTERVAL = 5
+    MEMORY_STATUS_SAVED_DELTA = 8
+    MEMORY_STATUS_ITEM_DELTA = 5
 
     def __init__(
         self,
@@ -317,6 +320,8 @@ class ReactAgent:
         started_at = time.perf_counter()
         steps: List[Step] = []
         limit = max_steps or self.max_steps
+        last_logged_memory_items = 0
+        last_logged_saved_messages = 0
         metadata: Dict[str, Any] = {
             "status": "running",
             "planning_enabled": self.enable_planning,
@@ -331,6 +336,8 @@ class ReactAgent:
             "argument_error_count": 0,
             "replan_count": 0,
             "compressed_messages": 0,
+            "memory_compression_count": 0,
+            "memory_log_count": 0,
             "memory_items": 0,
             "memory_injection_count": 0,
             "failure_reason": "",
@@ -434,7 +441,6 @@ class ReactAgent:
 
             if self.enable_compression and self.compressor:
                 if self.compressor.should_compress(self.conversation_history):
-                    print("\n[memory] 整理旧对话为本地原子记忆，并召回相关记忆...")
                     compressed_history = self.compressor.compress(self.conversation_history)
                     messages_to_send = [
                         {"role": "system", "content": system_content}
@@ -452,12 +458,25 @@ class ReactAgent:
                     )
                     metadata["memory_items"] = memory_count
                     metadata["memory_injection_count"] += int(memory_block_injected)
-                    print(
-                        f"   保留最近 {self.compressor.keep_recent * 2} 条消息，"
-                        f"本地记忆 {memory_count} 条，"
-                        f"本轮{'已' if memory_block_injected else '未'}注入 <agent_memory>，"
-                        f"节省 {stats['saved_messages']} 条消息"
-                    )
+                    metadata["memory_compression_count"] += 1
+
+                    if self._should_log_memory_status(
+                        compression_count=int(metadata["memory_compression_count"]),
+                        saved_messages=int(stats["saved_messages"]),
+                        memory_items=memory_count,
+                        last_logged_saved_messages=last_logged_saved_messages,
+                        last_logged_memory_items=last_logged_memory_items,
+                    ):
+                        metadata["memory_log_count"] += 1
+                        last_logged_memory_items = memory_count
+                        last_logged_saved_messages = int(stats["saved_messages"])
+                        print("\n[memory] 已整理旧上下文并召回相关记忆")
+                        print(
+                            f"   保留最近 {self.compressor.keep_recent * 2} 条消息，"
+                            f"本地记忆 {memory_count} 条，"
+                            f"本轮{'已' if memory_block_injected else '未'}注入 <agent_memory>，"
+                            f"节省 {stats['saved_messages']} 条消息"
+                        )
 
             # 获取 AI 响应
             try:
@@ -934,6 +953,25 @@ class ReactAgent:
         """Normalize common model drift around terminal actions."""
         normalized = re.sub(r"[^a-z0-9]+", "_", str(action).strip().lower()).strip("_")
         return cls.TERMINAL_ACTION_ALIASES.get(normalized, action)
+
+    @classmethod
+    def _should_log_memory_status(
+        cls,
+        *,
+        compression_count: int,
+        saved_messages: int,
+        memory_items: int,
+        last_logged_saved_messages: int,
+        last_logged_memory_items: int,
+    ) -> bool:
+        """Return True only for meaningful memory status updates."""
+        if compression_count <= 1:
+            return True
+        if compression_count % cls.MEMORY_STATUS_LOG_INTERVAL == 0:
+            return True
+        if saved_messages - last_logged_saved_messages >= cls.MEMORY_STATUS_SAVED_DELTA:
+            return True
+        return memory_items - last_logged_memory_items >= cls.MEMORY_STATUS_ITEM_DELTA
 
     @staticmethod
     def _json_candidates(candidate: str) -> List[str]:

@@ -188,6 +188,49 @@ def test_react_agent_reset_conversation_clears_context_memory():
     assert agent.get_context_stats()["memory_items"] == 0
 
 
+def test_react_agent_throttles_memory_status_output(capsys):
+    responses = []
+    for index in range(6):
+        responses.append(
+            json.dumps(
+                {
+                    "thought": f"Echo step {index}.",
+                    "action": "echo",
+                    "action_input": {"text": str(index)},
+                }
+            )
+        )
+    responses.append(
+        json.dumps(
+            {
+                "thought": "Done.",
+                "action": "finish",
+                "action_input": "finished after repeated compression",
+            }
+        )
+    )
+
+    agent = ReactAgent(
+        FakeRespondClient(responses),
+        [
+            Tool("echo", "Echo text", lambda arguments: f"echo:{arguments['text']}"),
+            Tool("task_complete", "Finish", lambda arguments: "finished"),
+        ],
+        enable_planning=False,
+        enable_compression=True,
+    )
+    assert agent.compressor is not None
+    agent.compressor.compress_every = 1
+    agent.compressor.keep_recent = 1
+
+    result = agent.run("exercise memory output", max_steps=10)
+    output = capsys.readouterr().out
+
+    assert result["metadata"]["status"] == "success"
+    assert result["metadata"]["memory_compression_count"] > result["metadata"]["memory_log_count"]
+    assert output.count("[memory]") == result["metadata"]["memory_log_count"]
+
+
 def test_react_agent_rejects_empty_task():
     agent = ReactAgent(
         FakeRespondClient([]),
