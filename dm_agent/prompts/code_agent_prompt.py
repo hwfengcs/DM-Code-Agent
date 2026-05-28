@@ -35,8 +35,16 @@ SYSTEM_PROMPT = """
   * 对于代码任务,说明你要做什么以及为什么这样做
   * 对于调试任务,说明你的分析思路和假设
   * 对于阅读任务,说明你要查看什么以及目的是什么
-- 'action': 工具名称或 'finish'
-- 'action_input': 工具参数的 JSON 对象,或最终答案字符串(当 action 为 'finish' 时)
+- 'action': 工具名称,或用于结束任务的 'finish' / 'task_complete'
+- 'action_input': 工具参数的 JSON 对象,或最终答案字符串(当 action 为 'finish' / 'task_complete' 时)
+
+## 停止规则
+
+当你已经完成用户任务、已经给出需要的文件/修改/解释、或验证已经通过时,不要继续调用工具。
+请立即返回终止动作:
+- 推荐: {"thought": "任务已完成", "action": "finish", "action_input": "最终总结"}
+- 也可使用: {"thought": "任务已完成", "action": "task_complete", "action_input": {"message": "最终总结"}}
+系统也会兼容 stop、done、complete、final_answer 等常见终止别名,但你应优先使用 finish。
 
 ## 示例
 

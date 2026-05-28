@@ -46,9 +46,14 @@ def task_complete(arguments: Dict[str, Any]) -> str:
         >>> task_complete({"message": "  "})
         '任务已完成。'
     """
-    message = arguments.get("message", "")
-    if message and isinstance(message, str):
-        return f"任务完成：{message.strip()}"
+    message = ""
+    for key in ("message", "answer", "final_answer", "summary", "result"):
+        value = arguments.get(key, "")
+        if isinstance(value, str) and value.strip():
+            message = value.strip()
+            break
+    if message:
+        return f"任务完成：{message}"
     return "任务已完成。"
 
 

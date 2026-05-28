@@ -48,6 +48,19 @@ class ReactAgent:
         compressor (Optional[ContextCompressor]): 上下文压缩器实例
     """
 
+    TERMINAL_ACTION_ALIASES = {
+        "finish": "finish",
+        "final": "finish",
+        "final_answer": "finish",
+        "answer": "finish",
+        "done": "finish",
+        "completed": "finish",
+        "complete": "finish",
+        "stop": "finish",
+        "task_done": "task_complete",
+        "task_complete": "task_complete",
+    }
+
     def __init__(
         self,
         client: BaseLLMClient,
@@ -342,6 +355,8 @@ class ReactAgent:
                 self.enable_repeated_failure_policy_experiment
             ),
             "repeated_failure_policy_applied_count": 0,
+            "terminal_action_alias_count": 0,
+            "terminal_action_aliases": [],
             "trial": trial_number,
             "max_trials": max_trials,
             "reflexion_lesson_count": len(self.reflexion_memory),
@@ -509,7 +524,18 @@ class ReactAgent:
                 metadata["parse_repair_count"] += 1
 
             # 获取动作、thought 和输入
-            action = parsed.get("action", "").strip()
+            raw_action_value = parsed.get("action", "")
+            raw_action = "" if raw_action_value is None else str(raw_action_value).strip()
+            action = self._normalize_action(raw_action)
+            if action != raw_action:
+                metadata["terminal_action_alias_count"] += 1
+                metadata["terminal_action_aliases"].append(
+                    {
+                        "step_number": step_num,
+                        "raw": raw_action,
+                        "normalized": action,
+                    }
+                )
             thought = parsed.get("thought", "").strip()
             action_input = parsed.get("action_input")
 
@@ -903,6 +929,12 @@ class ReactAgent:
 
         raise ValueError("Response is not a valid JSON object.")
 
+    @classmethod
+    def _normalize_action(cls, action: str) -> str:
+        """Normalize common model drift around terminal actions."""
+        normalized = re.sub(r"[^a-z0-9]+", "_", str(action).strip().lower()).strip("_")
+        return cls.TERMINAL_ACTION_ALIASES.get(normalized, action)
+
     @staticmethod
     def _json_candidates(candidate: str) -> List[str]:
         candidates = [candidate]
@@ -1143,8 +1175,9 @@ class ReactAgent:
         """
         if isinstance(action_input, str):
             return action_input
-        if isinstance(action_input, dict) and "answer" in action_input:
-            value = action_input["answer"]
-            if isinstance(value, str):
-                return value
+        if isinstance(action_input, dict):
+            for key in ("answer", "message", "final_answer", "summary", "result"):
+                value = action_input.get(key)
+                if isinstance(value, str):
+                    return value
         return json.dumps(action_input, ensure_ascii=False)

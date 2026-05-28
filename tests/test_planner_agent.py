@@ -70,6 +70,60 @@ def test_react_agent_can_finish_without_tool_call():
     assert result["metadata"]["status"] == "success"
 
 
+def test_react_agent_stops_on_common_terminal_action_alias():
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "thought": "The task is already complete.",
+                    "action": "stop",
+                    "action_input": {"message": "stopped cleanly"},
+                }
+            )
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("task_complete", "Finish", lambda arguments: "finished")],
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    result = agent.run("stop when done", max_steps=3)
+
+    assert result["final_answer"] == "stopped cleanly"
+    assert result["steps"][0]["action"] == "finish"
+    assert result["metadata"]["status"] == "success"
+    assert result["metadata"]["unknown_tool_count"] == 0
+    assert result["metadata"]["terminal_action_alias_count"] == 1
+    assert result["metadata"]["terminal_action_aliases"][0]["raw"] == "stop"
+
+
+def test_task_complete_accepts_answer_shaped_completion():
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "thought": "Use the completion tool.",
+                    "action": "task_complete",
+                    "action_input": {"answer": "answer shaped completion"},
+                }
+            )
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("task_complete", "Finish", lambda arguments: f"done: {arguments['answer']}")],
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    result = agent.run("finish with answer dict")
+
+    assert result["final_answer"] == "done: answer shaped completion"
+    assert result["metadata"]["status"] == "success"
+
+
 def test_react_agent_executes_tool_then_finishes():
     client = FakeRespondClient(
         [

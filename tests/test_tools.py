@@ -114,6 +114,11 @@ def test_task_complete_accepts_message():
     assert "ready" in result
 
 
+def test_task_complete_accepts_common_final_answer_keys():
+    result = task_complete({"answer": "ready from answer"})
+    assert "ready from answer" in result
+
+
 def test_run_python_accepts_script_args(tmp_path):
     script = tmp_path / "echo_args.py"
     script.write_text(
