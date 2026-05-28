@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import textwrap
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -108,6 +110,13 @@ class UI:
         return RICH_AVAILABLE and RICH_CONSOLE is not None
 
     @staticmethod
+    def clear() -> None:
+        if UI.rich_enabled():
+            RICH_CONSOLE.clear()
+            return
+        os.system("cls" if os.name == "nt" else "clear")
+
+    @staticmethod
     def width() -> int:
         return max(72, min(UI.WIDTH, shutil.get_terminal_size((UI.WIDTH, 20)).columns))
 
@@ -193,7 +202,7 @@ class UI:
             style = UI._rich_color(color)
             RICH_CONSOLE.print(
                 Panel(
-                    Text(str(body), style="default"),
+                    UI._rich_wrapped_text(str(body), width=UI.width() - 10),
                     title=Text(f" {title} ", style=f"bold {style}"),
                     title_align="left",
                     border_style="bright_black",
@@ -219,6 +228,22 @@ class UI:
             replace_whitespace=False,
             drop_whitespace=False,
         )
+
+    @staticmethod
+    def _rich_wrapped_text(text: str, *, width: int) -> Text:
+        wrapped = Text()
+        target_width = max(36, width)
+        lines: List[str] = []
+        for raw_line in str(text).splitlines() or [""]:
+            if raw_line.strip():
+                lines.extend(UI.wrap(raw_line, width=target_width) or [""])
+            else:
+                lines.append("")
+        for index, line in enumerate(lines):
+            if index:
+                wrapped.append("\n")
+            wrapped.append(line)
+        return wrapped
 
     @staticmethod
     def status(kind: str, message: str, detail: str = "") -> None:
@@ -329,6 +354,22 @@ class UI:
             return Prompt.ask(Text(prompt, style="bold cyan"), **prompt_kwargs)
         suffix = f" [{default}]" if default is not None else ""
         return input(f"{UI.paint(prompt, Fore.CYAN)}{suffix}: ")
+
+    @staticmethod
+    def prompt_line(prompt: str, *, default: str = "") -> str:
+        if UI.rich_enabled():
+            return Prompt.ask(
+                Text(prompt, style="bold cyan"),
+                console=RICH_CONSOLE,
+                default=default,
+                show_default=False,
+            )
+        suffix = f" [{default}]" if default else ""
+        return input(f"{UI.paint(prompt, Fore.CYAN)}{suffix}: ")
+
+    @staticmethod
+    def pause(prompt: str = "按 Enter 返回") -> None:
+        UI.prompt_line(prompt, default="")
 
     @staticmethod
     def _rich_color(color: str) -> str:
@@ -890,6 +931,234 @@ def write_run_report(
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def format_duration(seconds: Any) -> str:
+    try:
+        value = float(seconds)
+    except (TypeError, ValueError):
+        return "-"
+    if value < 60:
+        return f"{value:.1f}s"
+    minutes, remainder = divmod(int(value), 60)
+    return f"{minutes}m {remainder}s"
+
+
+def default_report_path(task: str) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    slug = re.sub(r"[^a-z0-9]+", "-", task.lower()).strip("-")[:32] or "task"
+    return Path(".dm_agent") / "run_reports" / f"{timestamp}-{slug}.md"
+
+
+def format_run_status(status: Any) -> str:
+    value = str(status or "unknown")
+    labels = {
+        "success": "完成",
+        "running": "运行中",
+        "max_steps_exceeded": "达到步骤上限",
+    }
+    return labels.get(value, value)
+
+
+def format_step_input(value: Any, *, limit: int = 90) -> str:
+    if value in (None, "", {}):
+        return "-"
+    try:
+        text = json.dumps(value, ensure_ascii=False)
+    except TypeError:
+        text = str(value)
+    return UI.truncate(text, limit)
+
+
+def display_completion_screen(
+    result: Dict[str, Any],
+    *,
+    task: str | None = None,
+    context_status: str | None = None,
+    trace_path: Path | None = None,
+    report_path: Path | None = None,
+    clear_screen: bool = False,
+    review_hint: bool = False,
+) -> None:
+    if clear_screen:
+        UI.clear()
+
+    metadata = result.get("metadata", {})
+    steps = result.get("steps", [])
+    final_answer = str(result.get("final_answer", "")).strip()
+    completion_summary = str(metadata.get("completion_summary", "")).strip()
+    summary = completion_summary or final_answer or "任务已结束。"
+
+    UI.banner("任务结束", "最终总结在这里；运行过程已收纳，可按需查看。")
+    UI.panel("最终总结", summary, color=Fore.GREEN)
+    if final_answer and final_answer != summary:
+        UI.panel("最终答案", final_answer, color=Fore.CYAN)
+
+    rows: List[tuple[str, Any]] = [
+        ("状态", format_run_status(metadata.get("status"))),
+        ("步骤", len(steps)),
+        ("耗时", format_duration(metadata.get("duration_seconds"))),
+        ("工具错误", metadata.get("tool_error_count", 0)),
+        ("重规划", metadata.get("replan_count", 0)),
+    ]
+    if task:
+        rows.insert(0, ("任务", UI.truncate(task, 96)))
+    memory_count = metadata.get("memory_items")
+    if memory_count is not None:
+        rows.append(("记忆", f"{memory_count} items"))
+    if context_status:
+        rows.append(("会话", context_status))
+    if trace_path:
+        rows.append(("Trace", trace_path))
+    if report_path:
+        rows.append(("Report", report_path))
+    elif not review_hint:
+        rows.append(("过程", "使用 --report 保存 Markdown，或 --trace 保存 JSONL"))
+    UI.key_values("运行概览", rows)
+
+    if review_hint:
+        UI.status("info", "查看过程", "Enter 继续 | v 分页查看步骤 | s 保存 Markdown 报告")
+
+
+def display_step_page(result: Dict[str, Any], *, page: int, page_size: int) -> None:
+    steps = result.get("steps", [])
+    total = len(steps)
+    page_count = max(1, (total + page_size - 1) // page_size)
+    start = page * page_size
+    page_steps = steps[start : start + page_size]
+
+    UI.clear()
+    UI.banner("运行过程", f"第 {page + 1}/{page_count} 页，共 {total} 步")
+    if not page_steps:
+        UI.status("info", "本轮没有记录到步骤")
+        return
+
+    if UI.rich_enabled():
+        table = Table(
+            show_header=True,
+            header_style="bold white",
+            box=box.SIMPLE_HEAD,
+            border_style="bright_black",
+            pad_edge=False,
+        )
+        table.add_column("#", justify="right", style="cyan", no_wrap=True, width=4)
+        table.add_column("状态", no_wrap=True, width=6)
+        table.add_column("动作", style="bold white", no_wrap=True, width=18)
+        table.add_column("输入", style="bright_black", ratio=1, overflow="fold")
+        table.add_column("观察", style="bright_black", ratio=2, overflow="fold")
+        for offset, step in enumerate(page_steps, start=start + 1):
+            observation = str(step.get("observation", ""))
+            action = str(step.get("action", ""))
+            failed = action == "error" or "failed" in observation.lower()
+            status = Text("ERR", style=UI.RICH_STYLES["error"]) if failed else Text("OK", "green")
+            table.add_row(
+                str(offset),
+                status,
+                action,
+                format_step_input(step.get("action_input")),
+                UI.truncate(observation, 180),
+            )
+        RICH_CONSOLE.print(
+            Panel(
+                table,
+                title=Text(" 步骤摘要 ", style="bold magenta"),
+                title_align="left",
+                border_style="bright_black",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+    else:
+        UI.section("步骤摘要")
+        for offset, step in enumerate(page_steps, start=start + 1):
+            action = str(step.get("action", ""))
+            observation = UI.truncate(step.get("observation", ""), 180)
+            print(
+                f"  {UI.paint(f'{offset:>3}', Fore.CYAN, bright=True)}  "
+                f"{UI.paint(action, Fore.WHITE, bright=True)}"
+            )
+            print(
+                f"       {UI.paint('input', Fore.WHITE, dim=True)}  {format_step_input(step.get('action_input'))}"
+            )
+            print(f"       {UI.paint('observe', Fore.WHITE, dim=True)}  {observation}")
+            print()
+
+    UI.status("info", "导航", "n 下一页 | p 上一页 | q 返回总结")
+
+
+def browse_run_steps(result: Dict[str, Any], *, page_size: int = 12) -> None:
+    steps = result.get("steps", [])
+    if not steps:
+        UI.clear()
+        UI.status("info", "本轮没有可查看的步骤")
+        UI.pause()
+        return
+
+    page = 0
+    page_count = max(1, (len(steps) + page_size - 1) // page_size)
+    while True:
+        display_step_page(result, page=page, page_size=page_size)
+        choice = UI.prompt_line("操作", default="q").strip().lower()
+        if choice in {"", "q", "quit", "back"}:
+            return
+        if choice in {"n", "next"}:
+            page = min(page + 1, page_count - 1)
+            continue
+        if choice in {"p", "prev", "previous"}:
+            page = max(page - 1, 0)
+            continue
+        UI.status("warn", "未知操作", "请输入 n、p 或 q")
+        UI.pause()
+
+
+def review_completed_run(
+    result: Dict[str, Any],
+    *,
+    config: Config,
+    task: str,
+    trace_path: Path | None = None,
+    report_path: Path | None = None,
+    context_status: str | None = None,
+    git_status_before: List[str] | None = None,
+    git_status_after: List[str] | None = None,
+    interactive: bool = True,
+) -> Path | None:
+    current_report_path = report_path
+    while True:
+        display_completion_screen(
+            result,
+            task=task,
+            context_status=context_status,
+            trace_path=trace_path,
+            report_path=current_report_path,
+            clear_screen=True,
+            review_hint=interactive,
+        )
+        if not interactive:
+            return current_report_path
+
+        choice = UI.prompt_line("操作", default="").strip().lower()
+        if choice in {"", "c", "continue"}:
+            return current_report_path
+        if choice in {"v", "view", "steps", "process", "过程"}:
+            browse_run_steps(result)
+            continue
+        if choice in {"s", "save", "report", "保存"}:
+            current_report_path = current_report_path or default_report_path(task)
+            write_run_report(
+                current_report_path,
+                config=config,
+                task=task,
+                result=result,
+                trace_path=trace_path,
+                git_status_before=git_status_before,
+                git_status_after=git_status_after,
+            )
+            UI.status("ok", "Report 已保存", str(current_report_path))
+            UI.pause()
+            continue
+        UI.status("warn", "未知操作", "Enter 继续，v 查看步骤，s 保存报告")
+        UI.pause()
+
+
 def create_step_callback(show_steps: bool):
     """创建步骤回调函数，用于实时打印 agent 执行状态"""
 
@@ -907,6 +1176,14 @@ def create_step_callback(show_steps: bool):
             )
         else:
             status = "error" if step.action == "error" else "ok"
+            should_print = (
+                step_num == 1
+                or step_num % 10 == 0
+                or status == "error"
+                or step.action in {"finish", "task_complete"}
+            )
+            if not should_print:
+                return
             if UI.rich_enabled():
                 text = Text()
                 text.append(f"{step_num:02d}", style="cyan")
@@ -996,19 +1273,24 @@ def multi_turn_conversation(
                 UI.status("run", "正在执行任务")
 
                 # 执行任务
+                git_status_before = collect_git_status()
                 result = agent.run(task)
+                git_status_after = collect_git_status()
                 conversation_count += 1
 
-                # 显示最终结果
-                display_result(result, show_steps=False)
                 metadata = result.get("metadata", {})
-                UI.status(
-                    "info",
-                    "本轮结束后的会话记忆",
-                    (
-                        f"{format_agent_context_status(agent)} | "
-                        f"injections={metadata.get('memory_injection_count', 0)}"
-                    ),
+                context_status = (
+                    f"{format_agent_context_status(agent)} | "
+                    f"injections={metadata.get('memory_injection_count', 0)}"
+                )
+                review_completed_run(
+                    result,
+                    config=config,
+                    task=task,
+                    context_status=context_status,
+                    git_status_before=git_status_before,
+                    git_status_after=git_status_after,
+                    interactive=True,
                 )
 
             except LLMError as e:
@@ -1058,10 +1340,18 @@ def execute_task(
         UI.status("run", "正在执行任务")
 
         # 执行任务
+        git_status_before = collect_git_status()
         result = agent.run(task)
+        git_status_after = collect_git_status()
 
-        # 显示最终结果
-        display_result(result, show_steps=False)
+        review_completed_run(
+            result,
+            config=config,
+            task=task,
+            git_status_before=git_status_before,
+            git_status_after=git_status_after,
+            interactive=True,
+        )
 
     except LLMError as e:
         UI.status("error", "API 错误", str(e))
@@ -1246,12 +1536,16 @@ def run_single_task(
                 git_status_after=git_status_after,
             )
 
-        # 显示最终结果
-        display_result(result, show_steps=False)
-        if trace_writer:
-            UI.status("ok", "Trace 已写入", str(trace_writer.path))
-        if report_path:
-            UI.status("ok", "Report 已写入", str(report_path))
+        review_completed_run(
+            result,
+            config=config,
+            task=task,
+            trace_path=trace_path,
+            report_path=report_path,
+            git_status_before=git_status_before,
+            git_status_after=git_status_after,
+            interactive=False,
+        )
 
         return 0
 

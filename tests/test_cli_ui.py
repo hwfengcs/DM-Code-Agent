@@ -1,4 +1,12 @@
-from main import display_result, format_agent_context_status, print_menu
+from types import SimpleNamespace
+
+from main import (
+    create_step_callback,
+    display_completion_screen,
+    display_result,
+    format_agent_context_status,
+    print_menu,
+)
 
 
 class FakeAgent:
@@ -54,3 +62,64 @@ def test_agent_context_status_makes_memory_visible():
     assert format_agent_context_status(FakeAgent()) == (
         "history=4 messages | memory=3 items | compression=on"
     )
+
+
+def test_completion_screen_surfaces_summary_and_review_hint(capsys):
+    display_completion_screen(
+        {
+            "final_answer": "full answer",
+            "metadata": {
+                "status": "success",
+                "duration_seconds": 3.2,
+                "completion_summary": "complete summary",
+                "tool_error_count": 0,
+                "replan_count": 0,
+                "memory_items": 2,
+            },
+            "steps": [{"action": "read_file", "observation": "opened"}],
+        },
+        task="do thing",
+        context_status="history=4 messages | memory=3 items | compression=on",
+        review_hint=True,
+    )
+
+    output = capsys.readouterr().out
+
+    assert "complete summary" in output
+    assert "full answer" in output
+    assert "do thing" in output
+    assert "history=4 messages" in output
+    assert "v" in output
+    assert "s" in output
+
+
+def test_compact_step_callback_is_low_noise(capsys):
+    callback = create_step_callback(False)
+
+    for step_number in range(1, 12):
+        callback(
+            step_number,
+            SimpleNamespace(
+                action="read_file",
+                action_input={"path": f"file_{step_number}.py"},
+                thought="",
+                observation="ok",
+            ),
+        )
+    callback(
+        12,
+        SimpleNamespace(
+            action="finish",
+            action_input="done",
+            thought="",
+            observation="<finished>",
+        ),
+    )
+
+    output = capsys.readouterr().out
+
+    assert "01" in output
+    assert "10" in output
+    assert "finish" in output
+    assert "02" not in output
+    assert "09" not in output
