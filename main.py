@@ -100,31 +100,28 @@ class UI:
     @staticmethod
     def banner(title: str, subtitle: str = "") -> None:
         print()
-        UI.rule()
         print(UI.paint(title, Fore.GREEN, bright=True))
         if subtitle:
-            print(UI.paint(subtitle, Fore.WHITE, dim=True))
-        UI.rule()
+            print("  " + UI.paint(subtitle, Fore.WHITE, dim=True))
+        print()
 
     @staticmethod
     def section(title: str, subtitle: str = "") -> None:
         print()
-        print(UI.paint(f"-- {title}", Fore.CYAN, bright=True))
+        print(UI.paint(title, Fore.CYAN, bright=True))
         if subtitle:
             for line in UI.wrap(subtitle, width=UI.width() - 4):
-                print(UI.paint("| ", Fore.CYAN) + line)
-        print(UI.paint("-" * min(UI.width(), 72), Fore.CYAN, dim=True))
+                print("  " + UI.paint(line, Fore.WHITE, dim=True))
 
     @staticmethod
     def panel(title: str, body: str = "", *, color: str = Fore.CYAN) -> None:
         print()
-        print(UI.paint(f"-- {title}", color, bright=True))
+        print(UI.paint(title, color, bright=True))
         if body:
             for raw_line in str(body).splitlines() or [""]:
                 wrapped = UI.wrap(raw_line, width=UI.width() - 4) or [""]
                 for line in wrapped:
-                    print(UI.paint("| ", color) + line)
-        print(UI.paint("-" * min(UI.width(), 72), color, dim=True))
+                    print("  " + line)
 
     @staticmethod
     def wrap(text: str, *, width: int | None = None) -> List[str]:
@@ -138,14 +135,14 @@ class UI:
     @staticmethod
     def status(kind: str, message: str, detail: str = "") -> None:
         palette = {
-            "ok": (Fore.GREEN, "OK"),
-            "error": (Fore.RED, "ERR"),
-            "warn": (Fore.YELLOW, "WARN"),
-            "info": (Fore.CYAN, "INFO"),
-            "run": (Fore.MAGENTA, "RUN"),
+            "ok": (Fore.GREEN, "ok"),
+            "error": (Fore.RED, "err"),
+            "warn": (Fore.YELLOW, "warn"),
+            "info": (Fore.CYAN, "info"),
+            "run": (Fore.MAGENTA, "run"),
         }
         color, icon = palette.get(kind, palette["info"])
-        line = f"{UI.paint(f'[{icon}]', color, bright=True)} {message}"
+        line = f"{UI.paint(icon.ljust(5), color, bright=True)} {message}"
         if detail:
             line += UI.paint(f"  {detail}", Fore.WHITE, dim=True)
         print(line)
@@ -164,9 +161,9 @@ class UI:
     def menu(items: List[tuple[str, str]]) -> None:
         UI.section("主菜单", "输入编号选择一个操作")
         for index, (title, description) in enumerate(items, start=1):
-            badge = UI.paint(f"{index:>2}", Fore.GREEN, bright=True)
-            print(f"  {badge}  {UI.paint(title, Fore.WHITE, bright=True)}")
-            print(f"      {UI.paint(description, Fore.WHITE, dim=True)}")
+            badge = UI.paint(f"[{index}]", Fore.GREEN, bright=True)
+            name = UI.paint(title.ljust(14), Fore.WHITE, bright=True)
+            print(f"  {badge} {name} {UI.paint(description, Fore.WHITE, dim=True)}")
         print()
 
     @staticmethod
@@ -353,7 +350,7 @@ def show_tools(tools: List[Tool]) -> None:
         for line in UI.wrap(tool.description, width=UI.width() - 8):
             print(f"      {UI.paint(line, Fore.WHITE, dim=True)}")
 
-    UI.rule()
+    print()
 
 
 def show_skills(skill_manager: SkillManager) -> None:
@@ -384,7 +381,7 @@ def show_skills(skill_manager: SkillManager) -> None:
             )
             print()
 
-    UI.rule()
+    print()
 
 
 def configure_settings(config: Config) -> None:
@@ -494,7 +491,7 @@ def configure_settings(config: Config) -> None:
         if save_choice in ["", "y", "yes", "是"]:
             save_config_to_file(config)
 
-    print_separator("-")
+    print()
 
 
 def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
@@ -634,10 +631,12 @@ def create_step_callback(show_steps: bool):
         else:
             status = "error" if step.action == "error" else "ok"
             action = UI.paint(step.action, Fore.WHITE, bright=True)
-            print(f"  {UI.paint(f'{step_num:>2}', Fore.CYAN)}  {action}", end=" ")
-            if step.action_input:
-                print(UI.paint("with input", Fore.WHITE, dim=True), end=" ")
-            UI.status(status, "done" if status == "ok" else "failed")
+            marker = UI.paint(f"{step_num:02d}", Fore.CYAN, bright=True)
+            result = UI.paint(
+                "err" if status == "error" else "ok", Fore.RED if status == "error" else Fore.GREEN
+            )
+            suffix = UI.paint(" input", Fore.WHITE, dim=True) if step.action_input else ""
+            print(f"  {marker}  {result}  {action}{suffix}")
 
     return callback
 

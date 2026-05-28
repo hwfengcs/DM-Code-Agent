@@ -15,7 +15,8 @@ def test_cli_menu_uses_ascii_terminal_frame(capsys):
 
     output = capsys.readouterr().out
 
-    assert "-- 主菜单" in output
+    assert "主菜单" in output
+    assert "[1]" in output
     assert "执行新任务" in output
     assert "╭" not in output
     assert "╰" not in output
@@ -40,8 +41,8 @@ def test_display_result_uses_panel_style(capsys):
 
     output = capsys.readouterr().out
 
-    assert "-- 执行步骤" in output
-    assert "-- 最终答案" in output
+    assert "执行步骤" in output
+    assert "最终答案" in output
     assert "read_file" in output
     assert "done" in output
 
