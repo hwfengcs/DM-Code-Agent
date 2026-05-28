@@ -400,11 +400,11 @@ class ReactAgent:
                     self.trace_writer.record_plan(plan)
                 if plan:
                     plan_text = self.planner.get_progress()
-                    print(f"\n📋 生成的执行计划：\n{plan_text}")
+                    print(f"\n[plan] 生成的执行计划：\n{plan_text}")
             except Exception as e:
                 if self.trace_writer:
                     self.trace_writer.record_plan_error(str(e))
-                print(f"⚠️ 计划生成失败：{e}，将使用常规模式执行")
+                print(f"[warn] 计划生成失败：{e}，将使用常规模式执行")
 
         # 添加新任务到对话历史
         task_prompt: str = self._build_user_prompt(task, steps, plan)
@@ -419,7 +419,7 @@ class ReactAgent:
 
             if self.enable_compression and self.compressor:
                 if self.compressor.should_compress(self.conversation_history):
-                    print("\n🧠 整理旧对话为本地原子记忆，并召回相关记忆...")
+                    print("\n[memory] 整理旧对话为本地原子记忆，并召回相关记忆...")
                     compressed_history = self.compressor.compress(self.conversation_history)
                     messages_to_send = [
                         {"role": "system", "content": system_content}
@@ -749,7 +749,7 @@ class ReactAgent:
             if skill:
                 display_names.append(skill.get_metadata().display_name)
         if display_names:
-            print(f"\n🎯 已激活技能：{', '.join(display_names)}")
+            print(f"\n[skills] 已激活技能：{', '.join(display_names)}")
         return selected
 
     def _build_user_prompt(self, task: str, steps: List[Step], plan: List[PlanStep] = None) -> str:
@@ -770,7 +770,7 @@ class ReactAgent:
         if plan:
             lines.append("\n执行计划：")
             for plan_step in plan:
-                status = "✓" if plan_step.completed else "○"
+                status = "[done]" if plan_step.completed else "[todo]"
                 lines.append(
                     f"{status} 步骤 {plan_step.step_number}: {plan_step.action} - {plan_step.reason}"
                 )

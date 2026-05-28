@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
@@ -42,9 +44,11 @@ except ImportError:
         CYAN = ""
         MAGENTA = ""
         BLUE = ""
+        WHITE = ""
 
     class Style:
         BRIGHT = ""
+        DIM = ""
         RESET_ALL = ""
 
 
@@ -65,6 +69,114 @@ class Config:
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 
 
+class UI:
+    """Small terminal UI layer built on colorama, with no optional dependencies."""
+
+    WIDTH = 88
+
+    @staticmethod
+    def width() -> int:
+        return max(72, min(UI.WIDTH, shutil.get_terminal_size((UI.WIDTH, 20)).columns))
+
+    @staticmethod
+    def paint(text: str, color: str = "", *, bright: bool = False, dim: bool = False) -> str:
+        style = ""
+        if bright:
+            style += Style.BRIGHT
+        if dim:
+            style += getattr(Style, "DIM", "")
+        return f"{style}{color}{text}{Style.RESET_ALL}"
+
+    @staticmethod
+    def rule(label: str = "", *, color: str = Fore.CYAN) -> None:
+        width = UI.width()
+        if label:
+            prefix = f" {label} "
+            line = prefix + "-" * max(width - len(prefix), 0)
+        else:
+            line = "-" * width
+        print(UI.paint(line, color, dim=not label))
+
+    @staticmethod
+    def banner(title: str, subtitle: str = "") -> None:
+        print()
+        UI.rule()
+        print(UI.paint(title, Fore.GREEN, bright=True))
+        if subtitle:
+            print(UI.paint(subtitle, Fore.WHITE, dim=True))
+        UI.rule()
+
+    @staticmethod
+    def section(title: str, subtitle: str = "") -> None:
+        print()
+        print(UI.paint(f"-- {title}", Fore.CYAN, bright=True))
+        if subtitle:
+            for line in UI.wrap(subtitle, width=UI.width() - 4):
+                print(UI.paint("| ", Fore.CYAN) + line)
+        print(UI.paint("-" * min(UI.width(), 72), Fore.CYAN, dim=True))
+
+    @staticmethod
+    def panel(title: str, body: str = "", *, color: str = Fore.CYAN) -> None:
+        print()
+        print(UI.paint(f"-- {title}", color, bright=True))
+        if body:
+            for raw_line in str(body).splitlines() or [""]:
+                wrapped = UI.wrap(raw_line, width=UI.width() - 4) or [""]
+                for line in wrapped:
+                    print(UI.paint("| ", color) + line)
+        print(UI.paint("-" * min(UI.width(), 72), color, dim=True))
+
+    @staticmethod
+    def wrap(text: str, *, width: int | None = None) -> List[str]:
+        return textwrap.wrap(
+            str(text),
+            width=width or UI.width() - 4,
+            replace_whitespace=False,
+            drop_whitespace=False,
+        )
+
+    @staticmethod
+    def status(kind: str, message: str, detail: str = "") -> None:
+        palette = {
+            "ok": (Fore.GREEN, "OK"),
+            "error": (Fore.RED, "ERR"),
+            "warn": (Fore.YELLOW, "WARN"),
+            "info": (Fore.CYAN, "INFO"),
+            "run": (Fore.MAGENTA, "RUN"),
+        }
+        color, icon = palette.get(kind, palette["info"])
+        line = f"{UI.paint(f'[{icon}]', color, bright=True)} {message}"
+        if detail:
+            line += UI.paint(f"  {detail}", Fore.WHITE, dim=True)
+        print(line)
+
+    @staticmethod
+    def key_values(title: str, rows: List[tuple[str, Any]]) -> None:
+        UI.section(title)
+        key_width = max((len(key) for key, _ in rows), default=0)
+        for key, value in rows:
+            print(
+                f"  {UI.paint(key.ljust(key_width), Fore.WHITE, dim=True)}  "
+                f"{UI.paint(str(value), Fore.YELLOW)}"
+            )
+
+    @staticmethod
+    def menu(items: List[tuple[str, str]]) -> None:
+        UI.section("主菜单", "输入编号选择一个操作")
+        for index, (title, description) in enumerate(items, start=1):
+            badge = UI.paint(f"{index:>2}", Fore.GREEN, bright=True)
+            print(f"  {badge}  {UI.paint(title, Fore.WHITE, bright=True)}")
+            print(f"      {UI.paint(description, Fore.WHITE, dim=True)}")
+        print()
+
+    @staticmethod
+    def truncate(value: Any, limit: int = 220) -> str:
+        text = str(value)
+        if len(text) <= limit:
+            return text
+        return text[: max(limit - 3, 0)].rstrip() + "..."
+
+
 def configure_console_encoding() -> None:
     """Avoid crashes when Windows terminals cannot encode Unicode status symbols."""
     for stream in (sys.stdout, sys.stderr):
@@ -82,7 +194,7 @@ def load_config_from_file() -> Dict[str, Any]:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            print(f"{Fore.YELLOW}⚠ 配置文件加载失败：{e}，使用默认设置{Style.RESET_ALL}")
+            UI.status("warn", "配置文件加载失败，使用默认设置", str(e))
     return {}
 
 
@@ -99,9 +211,9 @@ def save_config_to_file(config: Config) -> None:
         }
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
-        print(f"{Fore.GREEN}✓ 配置已保存{Style.RESET_ALL}")
+        UI.status("ok", "配置已保存")
     except Exception as e:
-        print(f"{Fore.RED}✗ 配置保存失败：{e}{Style.RESET_ALL}")
+        UI.status("error", "配置保存失败", str(e))
 
 
 def get_api_key_for_provider(provider: str) -> str | None:
@@ -194,94 +306,102 @@ def parse_args(argv: Any) -> argparse.Namespace:
 
 def print_separator(char: str = "=", length: int = 70) -> None:
     """打印分隔线"""
-    print(f"{Fore.CYAN}{char * length}{Style.RESET_ALL}")
+    _ = (char, length)
+    UI.rule()
 
 
 def print_header(text: str) -> None:
     """打印标题"""
-    print_separator()
-    print(f"{Fore.GREEN}{Style.BRIGHT}{text.center(70)}{Style.RESET_ALL}")
-    print_separator()
+    UI.banner(text)
 
 
 def print_welcome() -> None:
     """打印欢迎界面"""
-    print("\n")
-    print_header("DM-Code-Agent")
-    print(f"{Fore.YELLOW}欢迎使用 LLM 驱动的 DM-Code-Agent 智能体系统！{Style.RESET_ALL}")
+    UI.banner("DM-Code-Agent", "Local-first code agent with trace, tools, skills, and memory.")
 
     # 显示配置文件状态
     if os.path.exists(CONFIG_FILE):
-        print(f"{Fore.GREEN}✓ 已加载配置文件: config.json{Style.RESET_ALL}")
+        UI.status("ok", "已加载配置文件", "config.json")
     else:
-        print(f"{Fore.CYAN}ℹ 使用默认配置 (max_steps=100, temperature=0.7){Style.RESET_ALL}")
+        UI.status("info", "使用默认配置", "max_steps=100 | temperature=0.7")
     print()
 
 
 def print_menu() -> None:
     """打印主菜单"""
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}主菜单：{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}  1.{Style.RESET_ALL} 执行新任务")
-    print(f"{Fore.GREEN}  2.{Style.RESET_ALL} 多轮对话模式")
-    print(f"{Fore.GREEN}  3.{Style.RESET_ALL} 查看可用工具列表")
-    print(f"{Fore.GREEN}  4.{Style.RESET_ALL} 配置设置")
-    print(f"{Fore.GREEN}  5.{Style.RESET_ALL} 查看可用技能列表")
-    print(f"{Fore.GREEN}  6.{Style.RESET_ALL} 退出程序")
-    print()
+    UI.menu(
+        [
+            ("执行新任务", "一次性运行一个代码维护任务"),
+            ("多轮对话模式", "复用当前 agent 的短期上下文和本地记忆"),
+            ("查看工具列表", "浏览文件、Shell、测试、MCP 等可用工具"),
+            ("配置设置", "切换模型、温度、最大步骤和显示选项"),
+            ("查看可用技能列表", "查看内置和自定义技能"),
+            ("退出程序", "关闭 MCP 并返回终端"),
+        ]
+    )
 
 
 def show_tools(tools: List[Tool]) -> None:
     """显示可用工具列表"""
-    print_separator("-")
-    print(f"{Fore.CYAN}{Style.BRIGHT}可用工具列表：{Style.RESET_ALL}\n")
+    UI.section("可用工具", f"{len(tools)} 个工具已加载")
 
     for idx, tool in enumerate(tools, start=1):
-        print(f"{Fore.GREEN}{idx}. {tool.name}{Style.RESET_ALL}")
-        print(f"   {Fore.YELLOW}描述：{Style.RESET_ALL}{tool.description}")
-        print()
+        print(
+            f"  {UI.paint(f'{idx:>2}', Fore.GREEN, bright=True)}  "
+            f"{UI.paint(tool.name, Fore.WHITE, bright=True)}"
+        )
+        for line in UI.wrap(tool.description, width=UI.width() - 8):
+            print(f"      {UI.paint(line, Fore.WHITE, dim=True)}")
 
-    print_separator("-")
+    UI.rule()
 
 
 def show_skills(skill_manager: SkillManager) -> None:
     """显示可用技能列表"""
-    print_separator("-")
-    print(f"{Fore.CYAN}{Style.BRIGHT}可用技能列表：{Style.RESET_ALL}\n")
-
     skills_info = skill_manager.get_all_skill_info()
+    UI.section("可用技能", f"{len(skills_info)} 个技能已发现")
     if not skills_info:
-        print(f"{Fore.YELLOW}暂无可用技能{Style.RESET_ALL}")
+        UI.status("warn", "暂无可用技能")
     else:
         for idx, info in enumerate(skills_info, start=1):
-            status = f"{Fore.GREEN}[激活]{Style.RESET_ALL}" if info["is_active"] else ""
+            status = UI.paint("active", Fore.GREEN, bright=True) if info["is_active"] else ""
             source = "内置" if info["is_builtin"] else "自定义"
-            print(f"{Fore.GREEN}{idx}. {info['display_name']}{Style.RESET_ALL} {status}")
-            print(f"   {Fore.YELLOW}标识：{Style.RESET_ALL}{info['name']}")
-            print(f"   {Fore.YELLOW}描述：{Style.RESET_ALL}{info['description']}")
-            print(
-                f"   {Fore.YELLOW}类型：{Style.RESET_ALL}{source}  {Fore.YELLOW}版本：{Style.RESET_ALL}{info['version']}  {Fore.YELLOW}专用工具：{Style.RESET_ALL}{info['tools_count']} 个"
+            header = (
+                f"  {UI.paint(f'{idx:>2}', Fore.GREEN, bright=True)}  "
+                f"{UI.paint(info['display_name'], Fore.WHITE, bright=True)}"
             )
+            print(f"{header}  {status}".rstrip())
             print(
-                f"   {Fore.YELLOW}关键词：{Style.RESET_ALL}{', '.join(info['keywords'][:8])}{'...' if len(info['keywords']) > 8 else ''}"
+                f"      {UI.paint(info['name'], Fore.YELLOW)} | {source} | "
+                f"v{info['version']} | {info['tools_count']} tools"
+            )
+            for line in UI.wrap(info["description"], width=UI.width() - 8):
+                print(f"      {UI.paint(line, Fore.WHITE, dim=True)}")
+            print(
+                f"      {UI.paint('关键词', Fore.WHITE, dim=True)}  "
+                f"{', '.join(info['keywords'][:8])}"
+                f"{'...' if len(info['keywords']) > 8 else ''}"
             )
             print()
 
-    print_separator("-")
+    UI.rule()
 
 
 def configure_settings(config: Config) -> None:
     """配置设置"""
-    print_separator("-")
-    print(f"{Fore.CYAN}{Style.BRIGHT}当前配置：{Style.RESET_ALL}\n")
-    print(f"  提供商：{Fore.YELLOW}{config.provider}{Style.RESET_ALL}")
-    print(f"  模型：{Fore.YELLOW}{config.model}{Style.RESET_ALL}")
-    print(f"  Base URL：{Fore.YELLOW}{config.base_url}{Style.RESET_ALL}")
-    print(f"  最大步骤数：{Fore.YELLOW}{config.max_steps}{Style.RESET_ALL}")
-    print(f"  温度：{Fore.YELLOW}{config.temperature}{Style.RESET_ALL}")
-    print(f"  显示步骤：{Fore.YELLOW}{'是' if config.show_steps else '否'}{Style.RESET_ALL}")
+    UI.key_values(
+        "当前配置",
+        [
+            ("Provider", config.provider),
+            ("Model", config.model),
+            ("Base URL", config.base_url),
+            ("Max steps", config.max_steps),
+            ("Temperature", config.temperature),
+            ("Show steps", "是" if config.show_steps else "否"),
+        ],
+    )
+    UI.status("info", "选择要修改的设置", "直接回车跳过")
     print()
-
-    print(f"{Fore.CYAN}选择要修改的设置（直接回车跳过）：{Style.RESET_ALL}\n")
 
     config_changed = False
 
@@ -294,12 +414,8 @@ def configure_settings(config: Config) -> None:
             # 尝试获取新提供商的 API 密钥
             new_api_key = get_api_key_for_provider(provider_input)
             if not new_api_key:
-                print(
-                    f"{Fore.RED}✗ 未找到 {provider_input.upper()}_API_KEY 环境变量{Style.RESET_ALL}"
-                )
-                print(
-                    f"{Fore.YELLOW}请在 .env 文件中配置 {provider_input.upper()}_API_KEY{Style.RESET_ALL}"
-                )
+                UI.status("error", f"未找到 {provider_input.upper()}_API_KEY 环境变量")
+                UI.status("warn", f"请在 .env 文件中配置 {provider_input.upper()}_API_KEY")
             else:
                 config.provider = provider_input
                 config.api_key = new_api_key  # 更新 API 密钥
@@ -308,25 +424,23 @@ def configure_settings(config: Config) -> None:
                 config.model = defaults.get("model", config.model)
                 config.base_url = defaults.get("base_url", config.base_url)
                 config_changed = True
-                print(
-                    f"{Fore.GREEN}✓ 已更新提供商为 {provider_input}，模型和 URL 已自动调整{Style.RESET_ALL}"
-                )
+                UI.status("ok", f"已更新提供商为 {provider_input}", "模型和 URL 已自动调整")
     elif provider_input and provider_input not in ["deepseek", "openai", "claude", "gemini"]:
-        print(f"{Fore.RED}✗ 无效的提供商{Style.RESET_ALL}")
+        UI.status("error", "无效的提供商")
 
     # 修改模型
     model_input = input(f"模型名称 [{config.model}]: ").strip()
     if model_input:
         config.model = model_input
         config_changed = True
-        print(f"{Fore.GREEN}✓ 已更新模型为 {model_input}{Style.RESET_ALL}")
+        UI.status("ok", f"已更新模型为 {model_input}")
 
     # 修改 Base URL
     base_url_input = input(f"Base URL [{config.base_url}]: ").strip()
     if base_url_input:
         config.base_url = base_url_input
         config_changed = True
-        print(f"{Fore.GREEN}✓ 已更新 Base URL 为 {base_url_input}{Style.RESET_ALL}")
+        UI.status("ok", f"已更新 Base URL 为 {base_url_input}")
 
     # 修改最大步骤数
     try:
@@ -336,11 +450,11 @@ def configure_settings(config: Config) -> None:
             if new_max_steps > 0:
                 config.max_steps = new_max_steps
                 config_changed = True
-                print(f"{Fore.GREEN}✓ 已更新最大步骤数为 {new_max_steps}{Style.RESET_ALL}")
+                UI.status("ok", f"已更新最大步骤数为 {new_max_steps}")
             else:
-                print(f"{Fore.RED}✗ 最大步骤数必须大于 0{Style.RESET_ALL}")
+                UI.status("error", "最大步骤数必须大于 0")
     except ValueError:
-        print(f"{Fore.RED}✗ 无效的数字{Style.RESET_ALL}")
+        UI.status("error", "无效的数字")
 
     # 修改温度
     try:
@@ -350,11 +464,11 @@ def configure_settings(config: Config) -> None:
             if 0.0 <= new_temp <= 2.0:
                 config.temperature = new_temp
                 config_changed = True
-                print(f"{Fore.GREEN}✓ 已更新温度为 {new_temp}{Style.RESET_ALL}")
+                UI.status("ok", f"已更新温度为 {new_temp}")
             else:
-                print(f"{Fore.RED}✗ 温度必须在 0.0 到 2.0 之间{Style.RESET_ALL}")
+                UI.status("error", "温度必须在 0.0 到 2.0 之间")
     except ValueError:
-        print(f"{Fore.RED}✗ 无效的数字{Style.RESET_ALL}")
+        UI.status("error", "无效的数字")
 
     # 修改显示步骤
     show_steps_input = (
@@ -364,12 +478,12 @@ def configure_settings(config: Config) -> None:
         if not config.show_steps:
             config.show_steps = True
             config_changed = True
-        print(f"{Fore.GREEN}✓ 已启用显示步骤{Style.RESET_ALL}")
+        UI.status("ok", "已启用显示步骤")
     elif show_steps_input in ["n", "no", "否"]:
         if config.show_steps:
             config.show_steps = False
             config_changed = True
-        print(f"{Fore.GREEN}✓ 已禁用显示步骤{Style.RESET_ALL}")
+        UI.status("ok", "已禁用显示步骤")
 
     # 保存配置
     if config_changed:
@@ -385,26 +499,28 @@ def configure_settings(config: Config) -> None:
 
 def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
     """格式化显示任务结果"""
-    print_separator("-")
     if show_steps and result.get("steps"):
-        print(f"{Fore.CYAN}{Style.BRIGHT}执行步骤：{Style.RESET_ALL}\n")
+        UI.section("执行步骤")
         for idx, step in enumerate(result.get("steps", []), start=1):
-            print(f"{Fore.MAGENTA}步骤 {idx}:{Style.RESET_ALL}")
-            print(f"  {Fore.YELLOW}思考：{Style.RESET_ALL}{step.get('thought')}")
-            print(f"  {Fore.YELLOW}动作：{Style.RESET_ALL}{step.get('action')}")
+            print(
+                f"  {UI.paint(f'{idx:>2}', Fore.MAGENTA, bright=True)}  "
+                f"{UI.paint(str(step.get('action', '')), Fore.WHITE, bright=True)}"
+            )
+            print(f"      {UI.paint('thought', Fore.WHITE, dim=True)}  {step.get('thought')}")
             action_input = step.get("action_input")
             if action_input:
                 print(
-                    f"  {Fore.YELLOW}输入：{Style.RESET_ALL}{json.dumps(action_input, ensure_ascii=False)}"
+                    f"      {UI.paint('input', Fore.WHITE, dim=True)}    "
+                    f"{json.dumps(action_input, ensure_ascii=False)}"
                 )
-            print(f"  {Fore.YELLOW}观察：{Style.RESET_ALL}{step.get('observation')}")
+            print(
+                f"      {UI.paint('observe', Fore.WHITE, dim=True)}  "
+                f"{UI.truncate(step.get('observation'))}"
+            )
             print()
 
-    print(f"{Fore.GREEN}{Style.BRIGHT}最终答案：{Style.RESET_ALL}\n")
     final_answer = result.get("final_answer", "")
-    print(final_answer)
-    print()
-    print_separator("-")
+    UI.panel("最终答案", str(final_answer), color=Fore.GREEN)
 
 
 def collect_git_status() -> List[str]:
@@ -505,25 +621,23 @@ def create_step_callback(show_steps: bool):
 
     def callback(step_num: int, step: Any) -> None:
         if show_steps:
-            print(f"\n{Fore.MAGENTA}{Style.BRIGHT}[步骤 {step_num}]{Style.RESET_ALL}")
-            print(f"  {Fore.YELLOW}思考：{Style.RESET_ALL}{step.thought}")
-            print(f"  {Fore.YELLOW}动作：{Style.RESET_ALL}{step.action}")
-            if step.action_input:
-                print(
-                    f"  {Fore.YELLOW}输入：{Style.RESET_ALL}{json.dumps(step.action_input, ensure_ascii=False)}"
-                )
-            print(f"  {Fore.YELLOW}观察：{Style.RESET_ALL}{step.observation}")
-        else:
-            # 即使不显示详细步骤，也显示简要进度
-            print(
-                f"{Fore.CYAN}[步骤 {step_num}] {step.action}{Style.RESET_ALL}", end=" ", flush=True
+            UI.panel(
+                f"Step {step_num:02d} | {step.action}",
+                (
+                    f"thought  {step.thought}\n"
+                    f"input    "
+                    f"{json.dumps(step.action_input, ensure_ascii=False) if step.action_input else '-'}\n"
+                    f"observe  {UI.truncate(step.observation, 360)}"
+                ),
+                color=Fore.MAGENTA,
             )
-            if step.action == "finish" or step.action == "task_complete":
-                print(f"{Fore.GREEN}✓{Style.RESET_ALL}")
-            elif step.action == "error":
-                print(f"{Fore.RED}✗{Style.RESET_ALL}")
-            else:
-                print(f"{Fore.GREEN}✓{Style.RESET_ALL}")
+        else:
+            status = "error" if step.action == "error" else "ok"
+            action = UI.paint(step.action, Fore.WHITE, bright=True)
+            print(f"  {UI.paint(f'{step_num:>2}', Fore.CYAN)}  {action}", end=" ")
+            if step.action_input:
+                print(UI.paint("with input", Fore.WHITE, dim=True), end=" ")
+            UI.status(status, "done" if status == "ok" else "failed")
 
     return callback
 
@@ -532,11 +646,11 @@ def multi_turn_conversation(
     config: Config, tools: List[Tool], skill_manager: SkillManager | None = None
 ) -> None:
     """多轮对话模式"""
-    print_separator("-")
-    print(f"{Fore.CYAN}{Style.BRIGHT}多轮对话模式{Style.RESET_ALL}\n")
-    print(f"{Fore.YELLOW}进入多轮对话模式，智能体会记住之前的所有对话内容{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}输入 'exit' 退出对话模式，输入 'reset' 重置对话历史{Style.RESET_ALL}\n")
-    print_separator("-")
+    UI.section(
+        "多轮对话",
+        "同一个 agent 实例会保留当前会话，并使用本地原子记忆整理旧上下文。"
+        "输入 exit 退出，输入 reset 重置。",
+    )
 
     try:
         # 创建客户端和智能体
@@ -560,66 +674,59 @@ def multi_turn_conversation(
         conversation_count = 0
 
         while True:
-            print(f"\n{Fore.CYAN}[对话 {conversation_count + 1}]{Style.RESET_ALL}")
+            UI.section(f"对话 {conversation_count + 1}")
             task = input(
-                f"{Fore.YELLOW}请输入任务（exit 退出，reset 重置历史）：{Style.RESET_ALL}\n> "
+                f"{UI.paint('请输入任务', Fore.YELLOW)} "
+                f"{UI.paint('(exit 退出，reset 重置历史)', Fore.WHITE, dim=True)}\n> "
             ).strip()
 
             if not task:
-                print(f"{Fore.RED}✗ 任务描述不能为空{Style.RESET_ALL}")
+                UI.status("error", "任务描述不能为空")
                 continue
 
             if task.lower() == "exit":
-                print(f"\n{Fore.YELLOW}退出多轮对话模式{Style.RESET_ALL}")
+                UI.status("info", "退出多轮对话模式")
                 break
 
             if task.lower() == "reset":
                 agent.reset_conversation()
                 conversation_count = 0
-                print(f"{Fore.GREEN}✓ 对话历史已重置{Style.RESET_ALL}")
+                UI.status("ok", "对话历史已重置")
                 continue
 
             try:
-                print(f"\n{Fore.CYAN}正在执行任务...{Style.RESET_ALL}\n")
-                print_separator("-")
+                UI.status("run", "正在执行任务")
 
                 # 执行任务
                 result = agent.run(task)
                 conversation_count += 1
 
                 # 显示最终结果
-                print(f"\n{Fore.GREEN}{Style.BRIGHT}最终答案：{Style.RESET_ALL}\n")
-                print(result.get("final_answer", ""))
-                print()
-                print_separator("-")
+                display_result(result, show_steps=False)
 
             except LLMError as e:
-                print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
-                print_separator("-")
+                UI.status("error", "API 错误", str(e))
             except KeyboardInterrupt:
-                print(f"\n\n{Fore.YELLOW}退出多轮对话模式{Style.RESET_ALL}")
+                UI.status("info", "退出多轮对话模式")
                 break
             except Exception as e:
-                print(f"\n{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}")
-                print_separator("-")
+                UI.status("error", "发生错误", str(e))
 
     except Exception as e:
-        print(f"\n{Fore.RED}{Style.BRIGHT}✗ 初始化错误：{Style.RESET_ALL}{e}")
-        print_separator("-")
+        UI.status("error", "初始化错误", str(e))
 
 
 def execute_task(
     config: Config, tools: List[Tool], skill_manager: SkillManager | None = None
 ) -> None:
     """执行任务"""
-    print_separator("-")
-    print(f"{Fore.CYAN}{Style.BRIGHT}执行新任务{Style.RESET_ALL}\n")
-    print(f"{Fore.YELLOW}请输入任务描述（输入完成后按回车）：{Style.RESET_ALL}")
+    UI.section("执行新任务")
+    print(UI.paint("请输入任务描述（输入完成后按回车）：", Fore.YELLOW))
 
     task = input("> ").strip()
 
     if not task:
-        print(f"{Fore.RED}✗ 任务描述不能为空{Style.RESET_ALL}")
+        UI.status("error", "任务描述不能为空")
         return
 
     try:
@@ -643,27 +750,20 @@ def execute_task(
             skill_manager=skill_manager,
         )
 
-        print(f"\n{Fore.CYAN}正在执行任务...{Style.RESET_ALL}\n")
-        print_separator("-")
+        UI.status("run", "正在执行任务")
 
         # 执行任务
         result = agent.run(task)
 
         # 显示最终结果
-        print(f"\n{Fore.GREEN}{Style.BRIGHT}最终答案：{Style.RESET_ALL}\n")
-        print(result.get("final_answer", ""))
-        print()
-        print_separator("-")
+        display_result(result, show_steps=False)
 
     except LLMError as e:
-        print(f"\n{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}")
-        print_separator("-")
+        UI.status("error", "API 错误", str(e))
     except KeyboardInterrupt:
-        print(f"\n\n{Fore.YELLOW}任务已被用户中断{Style.RESET_ALL}")
-        print_separator("-")
+        UI.status("warn", "任务已被用户中断")
     except Exception as e:
-        print(f"\n{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}")
-        print_separator("-")
+        UI.status("error", "发生错误", str(e))
 
 
 def interactive_mode(config: Config) -> int:
@@ -675,33 +775,33 @@ def interactive_mode(config: Config) -> int:
     mcp_manager = MCPManager(mcp_config)
 
     # 启动所有启用的 MCP 服务器
-    print(f"{Fore.CYAN}正在加载 MCP 服务器...{Style.RESET_ALL}")
+    UI.status("run", "正在加载 MCP 服务器")
     started_count = mcp_manager.start_all()
     if started_count > 0:
-        print(f"{Fore.GREEN}✓ 成功启动 {started_count} 个 MCP 服务器{Style.RESET_ALL}")
+        UI.status("ok", f"成功启动 {started_count} 个 MCP 服务器")
     else:
-        print(f"{Fore.YELLOW}ℹ 未启用 MCP 服务器{Style.RESET_ALL}")
+        UI.status("info", "未启用 MCP 服务器")
 
     # 获取包含 MCP 工具的工具列表
     mcp_tools = mcp_manager.get_tools()
     tools = default_tools(include_mcp=True, mcp_tools=mcp_tools)
 
     if mcp_tools:
-        print(f"{Fore.GREEN}✓ 加载了 {len(mcp_tools)} 个 MCP 工具{Style.RESET_ALL}")
+        UI.status("ok", f"加载了 {len(mcp_tools)} 个 MCP 工具")
 
     # 初始化技能管理器
     skill_manager = SkillManager()
     skill_count = skill_manager.load_all()
     if skill_count > 0:
-        print(f"{Fore.GREEN}✓ 加载了 {skill_count} 个技能{Style.RESET_ALL}")
+        UI.status("ok", f"加载了 {skill_count} 个技能")
     else:
-        print(f"{Fore.YELLOW}ℹ 未加载任何技能{Style.RESET_ALL}")
+        UI.status("info", "未加载任何技能")
 
     try:
         while True:
             try:
                 print_menu()
-                choice = input(f"{Fore.CYAN}请选择操作 (1-6): {Style.RESET_ALL}").strip()
+                choice = input(f"{UI.paint('选择操作', Fore.CYAN)} (1-6): ").strip()
 
                 if choice == "1":
                     # 执行新任务
@@ -725,26 +825,26 @@ def interactive_mode(config: Config) -> int:
 
                 elif choice == "6":
                     # 退出程序
-                    print(f"\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
+                    UI.status("info", "感谢使用，再见")
                     return 0
 
                 else:
-                    print(f"{Fore.RED}✗ 无效的选择，请输入 1-6{Style.RESET_ALL}")
+                    UI.status("error", "无效的选择", "请输入 1-6")
 
             except KeyboardInterrupt:
-                print(f"\n\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
+                UI.status("info", "感谢使用，再见")
                 return 0
             except EOFError:
-                print(f"\n\n{Fore.YELLOW}感谢使用！再见！{Style.RESET_ALL}\n")
+                UI.status("info", "感谢使用，再见")
                 return 0
             except Exception as e:
-                print(f"\n{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}\n")
+                UI.status("error", "发生错误", str(e))
 
     finally:
         # 清理 MCP 资源
-        print(f"{Fore.CYAN}正在关闭 MCP 服务器...{Style.RESET_ALL}")
+        UI.status("run", "正在关闭 MCP 服务器")
         mcp_manager.stop_all()
-        print(f"{Fore.GREEN}✓ MCP 服务器已关闭{Style.RESET_ALL}")
+        UI.status("ok", "MCP 服务器已关闭")
 
 
 def run_single_task(
@@ -765,7 +865,7 @@ def run_single_task(
         # 启动 MCP 服务器
         started_count = mcp_manager.start_all()
         if started_count > 0:
-            print(f"{Fore.GREEN}✓ 启动了 {started_count} 个 MCP 服务器{Style.RESET_ALL}")
+            UI.status("ok", f"启动了 {started_count} 个 MCP 服务器")
 
         # 获取工具
         mcp_tools = mcp_manager.get_tools()
@@ -812,8 +912,16 @@ def run_single_task(
             trace_writer=trace_writer,
         )
 
-        print(f"\n{Fore.CYAN}正在执行任务：{Style.RESET_ALL}{task}\n")
-        print_separator()
+        UI.panel(
+            "Run",
+            (
+                f"task       {task}\n"
+                f"provider   {config.provider}\n"
+                f"model      {config.model}\n"
+                f"max steps  {config.max_steps}"
+            ),
+            color=Fore.CYAN,
+        )
 
         git_status_before = collect_git_status()
         result = agent.run(task)
@@ -830,21 +938,18 @@ def run_single_task(
             )
 
         # 显示最终结果
-        print(f"\n{Fore.GREEN}{Style.BRIGHT}最终答案：{Style.RESET_ALL}\n")
-        print(result.get("final_answer", ""))
-        print()
-        print_separator()
+        display_result(result, show_steps=False)
         if trace_writer:
-            print(f"{Fore.CYAN}Trace 已写入：{trace_writer.path}{Style.RESET_ALL}")
+            UI.status("ok", "Trace 已写入", str(trace_writer.path))
         if report_path:
-            print(f"{Fore.CYAN}Report 已写入：{report_path}{Style.RESET_ALL}")
+            UI.status("ok", "Report 已写入", str(report_path))
 
         return 0
 
     except LLMError as e:
         if trace_writer:
             trace_writer.record("run_error", {"error_type": "LLMError", "message": str(e)})
-        print(f"{Fore.RED}{Style.BRIGHT}✗ API 错误：{Style.RESET_ALL}{e}", file=sys.stderr)
+        print(f"{UI.paint('[ERR] API 错误', Fore.RED, bright=True)} {e}", file=sys.stderr)
         return 1
     except Exception as e:
         if trace_writer:
@@ -852,7 +957,7 @@ def run_single_task(
                 "run_error",
                 {"error_type": type(e).__name__, "message": str(e)},
             )
-        print(f"{Fore.RED}{Style.BRIGHT}✗ 发生错误：{Style.RESET_ALL}{e}", file=sys.stderr)
+        print(f"{UI.paint('[ERR] 发生错误', Fore.RED, bright=True)} {e}", file=sys.stderr)
         return 1
     finally:
         if trace_writer:
@@ -873,7 +978,7 @@ def main(argv: Any = None) -> int:
 
     # 检查 API 密钥
     if not args.api_key:
-        print(f"{Fore.RED}✗ 缺少 API 密钥。{Style.RESET_ALL}", file=sys.stderr)
+        print(UI.paint("[ERR] 缺少 API 密钥", Fore.RED, bright=True), file=sys.stderr)
         print(f"请提供 --api-key 或设置环境变量 {args.provider.upper()}_API_KEY。", file=sys.stderr)
         return 2
 
