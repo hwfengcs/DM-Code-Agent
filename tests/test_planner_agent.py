@@ -105,6 +105,35 @@ def test_react_agent_executes_tool_then_finishes():
     assert result["metadata"]["tool_error_count"] == 0
 
 
+def test_react_agent_reset_conversation_clears_context_memory():
+    agent = ReactAgent(
+        FakeRespondClient([]),
+        [Tool("task_complete", "Finish", lambda arguments: "finished")],
+        enable_planning=False,
+        enable_compression=True,
+    )
+    agent.conversation_history = [
+        {"role": "user", "content": "Task: inspect app.py"},
+        {"role": "assistant", "content": "Tool read_file app.py succeeded"},
+        {"role": "user", "content": "Observation: pytest failed in app.py"},
+        {"role": "assistant", "content": "Tool edit_file app.py completed"},
+        {"role": "user", "content": "Observation: pytest passed in app.py"},
+        {"role": "assistant", "content": "Tool read_file tests/test_app.py succeeded"},
+        {"role": "user", "content": "Summarize app.py"},
+    ]
+
+    assert agent.compressor is not None
+    agent.compressor.compress(agent.conversation_history)
+
+    assert agent.get_context_stats()["conversation_messages"] == 7
+    assert agent.get_context_stats()["memory_items"] > 0
+
+    agent.reset_conversation()
+
+    assert agent.get_context_stats()["conversation_messages"] == 0
+    assert agent.get_context_stats()["memory_items"] == 0
+
+
 def test_react_agent_rejects_empty_task():
     agent = ReactAgent(
         FakeRespondClient([]),

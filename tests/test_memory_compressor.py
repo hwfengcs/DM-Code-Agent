@@ -80,3 +80,21 @@ def test_context_compressor_reports_memory_stats():
 
     assert stats["saved_messages"] >= 1
     assert stats["memory_items"] == compressor.memory_count
+
+
+def test_context_compressor_reset_clears_local_memory():
+    compressor = ContextCompressor(compress_every=1, keep_recent=1)
+    compressor.compress(
+        [
+            {"role": "user", "content": "Task: inspect app.py"},
+            {"role": "assistant", "content": "Tool read_file app.py succeeded"},
+            {"role": "user", "content": "Summarize app.py"},
+        ]
+    )
+
+    assert compressor.memory_count > 0
+
+    compressor.reset()
+
+    assert compressor.memory_count == 0
+    assert compressor.turn_count == 0

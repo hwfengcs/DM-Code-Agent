@@ -1,4 +1,13 @@
-from main import display_result, print_menu
+from main import display_result, format_agent_context_status, print_menu
+
+
+class FakeAgent:
+    def get_context_stats(self):
+        return {
+            "conversation_messages": 4,
+            "memory_items": 3,
+            "compression_enabled": True,
+        }
 
 
 def test_cli_menu_uses_ascii_terminal_frame(capsys):
@@ -35,3 +44,9 @@ def test_display_result_uses_panel_style(capsys):
     assert "-- 最终答案" in output
     assert "read_file" in output
     assert "done" in output
+
+
+def test_agent_context_status_makes_memory_visible():
+    assert format_agent_context_status(FakeAgent()) == (
+        "history=4 messages | memory=3 items | compression=on"
+    )

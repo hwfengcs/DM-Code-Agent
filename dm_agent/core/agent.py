@@ -1111,6 +1111,16 @@ class ReactAgent:
         清空所有对话历史记录，为新任务做准备。
         """
         self.conversation_history = []
+        if self.compressor:
+            self.compressor.reset()
+
+    def get_context_stats(self) -> Dict[str, Any]:
+        """Return current in-memory conversation and context-memory state."""
+        return {
+            "conversation_messages": len(self.conversation_history),
+            "compression_enabled": self.enable_compression,
+            "memory_items": self.compressor.memory_count if self.compressor else 0,
+        }
 
     def get_conversation_history(self) -> List[Dict[str, str]]:
         """获取对话历史

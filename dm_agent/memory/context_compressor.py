@@ -85,6 +85,9 @@ class Mem0StyleMemory:
     def items(self) -> List[MemoryItem]:
         return list(self._items.values())
 
+    def clear(self) -> None:
+        self._items.clear()
+
     def add(
         self,
         text: str,
@@ -357,6 +360,11 @@ class ContextCompressor:
     @property
     def memory_count(self) -> int:
         return len(self.memory)
+
+    def reset(self) -> None:
+        self.memory.clear()
+        self.turn_count = 0
+        self._compression_count = 0
 
     def should_compress(self, history: List[Dict[str, str]]) -> bool:
         user_messages = [msg for msg in history if msg.get("role") == "user"]

@@ -642,6 +642,15 @@ def create_step_callback(show_steps: bool):
     return callback
 
 
+def format_agent_context_status(agent: ReactAgent) -> str:
+    stats = agent.get_context_stats()
+    return (
+        f"history={stats['conversation_messages']} messages | "
+        f"memory={stats['memory_items']} items | "
+        f"compression={'on' if stats['compression_enabled'] else 'off'}"
+    )
+
+
 def multi_turn_conversation(
     config: Config, tools: List[Tool], skill_manager: SkillManager | None = None
 ) -> None:
@@ -649,7 +658,7 @@ def multi_turn_conversation(
     UI.section(
         "多轮对话",
         "同一个 agent 实例会保留当前会话，并使用本地原子记忆整理旧上下文。"
-        "输入 exit 退出，输入 reset 重置。",
+        "这份记忆只在当前 CLI 进程内连续；输入 exit 退出，输入 reset 重置。",
     )
 
     try:
@@ -675,6 +684,7 @@ def multi_turn_conversation(
 
         while True:
             UI.section(f"对话 {conversation_count + 1}")
+            UI.status("info", "当前会话记忆", format_agent_context_status(agent))
             task = input(
                 f"{UI.paint('请输入任务', Fore.YELLOW)} "
                 f"{UI.paint('(exit 退出，reset 重置历史)', Fore.WHITE, dim=True)}\n> "
@@ -691,7 +701,7 @@ def multi_turn_conversation(
             if task.lower() == "reset":
                 agent.reset_conversation()
                 conversation_count = 0
-                UI.status("ok", "对话历史已重置")
+                UI.status("ok", "对话历史和本地记忆已重置")
                 continue
 
             try:
@@ -703,6 +713,15 @@ def multi_turn_conversation(
 
                 # 显示最终结果
                 display_result(result, show_steps=False)
+                metadata = result.get("metadata", {})
+                UI.status(
+                    "info",
+                    "本轮结束后的会话记忆",
+                    (
+                        f"{format_agent_context_status(agent)} | "
+                        f"injections={metadata.get('memory_injection_count', 0)}"
+                    ),
+                )
 
             except LLMError as e:
                 UI.status("error", "API 错误", str(e))
