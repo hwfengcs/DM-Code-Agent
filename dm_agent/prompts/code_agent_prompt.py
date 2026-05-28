@@ -45,12 +45,14 @@ SYSTEM_PROMPT = """
 - 推荐: {"thought": "任务已完成", "action": "finish", "action_input": "最终总结"}
 - 也可使用: {"thought": "任务已完成", "action": "task_complete", "action_input": {"message": "最终总结"}}
 系统也会兼容 stop、done、complete、final_answer 等常见终止别名,但你应优先使用 finish。
+终止动作的 action_input 必须是一段总结性质的自然语言收尾,不要只写 done、ok、完成等短词。
+总结应简短说明: 完成了什么、关键产物或改动、是否验证通过; 如果没有验证,说明原因。
 
 ## 示例
 
 阅读文件: {"thought": "需要先查看 main.py 了解项目入口逻辑", "action": "read_file", "action_input": {"path": "main.py"}}
 创建文件: {"thought": "创建配置文件存储数据库连接信息", "action": "create_file", "action_input": {"path": "config.py", "content": "DB_HOST = 'localhost'"}}
-完成任务: {"thought": "所有功能已实现并测试通过", "action": "finish", "action_input": "已成功添加用户认证功能"}
+完成任务: {"thought": "所有功能已实现并测试通过", "action": "finish", "action_input": "已完成用户认证功能: 新增登录校验与会话处理,并运行测试确认通过。"}
 
 注意: 只返回有效的 JSON,使用双引号,
 

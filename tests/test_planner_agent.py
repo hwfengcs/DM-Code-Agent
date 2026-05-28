@@ -99,6 +99,31 @@ def test_react_agent_stops_on_common_terminal_action_alias():
     assert result["metadata"]["terminal_action_aliases"][0]["raw"] == "stop"
 
 
+def test_react_agent_adds_completion_summary_for_terse_finish():
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "thought": "The task is complete.",
+                    "action": "finish",
+                    "action_input": "ok",
+                }
+            )
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("task_complete", "Finish", lambda arguments: "finished")],
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    result = agent.run("finish tersely")
+
+    assert result["final_answer"] == "ok"
+    assert result["metadata"]["completion_summary"] == "任务已完成。结果：ok"
+
+
 def test_task_complete_accepts_answer_shaped_completion():
     client = FakeRespondClient(
         [

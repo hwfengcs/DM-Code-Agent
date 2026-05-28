@@ -792,6 +792,9 @@ def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
 
     final_answer = result.get("final_answer", "")
     UI.panel("最终答案", str(final_answer), color=Fore.GREEN)
+    completion_summary = str(result.get("metadata", {}).get("completion_summary", "")).strip()
+    if completion_summary and completion_summary != str(final_answer).strip():
+        UI.panel("本轮总结", completion_summary, color=Fore.CYAN)
 
 
 def collect_git_status() -> List[str]:

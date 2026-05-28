@@ -63,6 +63,21 @@ class ReactAgent:
     MEMORY_STATUS_LOG_INTERVAL = 5
     MEMORY_STATUS_SAVED_DELTA = 8
     MEMORY_STATUS_ITEM_DELTA = 5
+    TERSE_COMPLETION_ANSWERS = {
+        "done",
+        "ok",
+        "complete",
+        "completed",
+        "finished",
+        "success",
+        "fixed",
+        "recovered",
+        "repaired",
+        "完成",
+        "已完成",
+        "成功",
+        "修复完成",
+    }
 
     def __init__(
         self,
@@ -395,6 +410,8 @@ class ReactAgent:
             )
 
         def finish_result(final_answer: str) -> Dict[str, Any]:
+            if metadata.get("status") == "success":
+                metadata["completion_summary"] = self._build_completion_summary(final_answer, steps)
             result = {
                 "final_answer": final_answer,
                 "steps": [step.__dict__ for step in steps],
@@ -1219,3 +1236,33 @@ class ReactAgent:
                 if isinstance(value, str):
                     return value
         return json.dumps(action_input, ensure_ascii=False)
+
+    @classmethod
+    def _build_completion_summary(cls, final_answer: str, steps: List[Step]) -> str:
+        answer = str(final_answer or "").strip()
+        if cls._looks_like_completion_summary(answer):
+            return answer
+        if answer:
+            return f"任务已完成。结果：{answer}"
+
+        tool_actions = []
+        for step in steps:
+            action = str(step.action or "")
+            if action in {"finish", "task_complete", "error"}:
+                continue
+            if action not in tool_actions:
+                tool_actions.append(action)
+        if tool_actions:
+            actions = ", ".join(tool_actions[:5])
+            suffix = " 等步骤" if len(tool_actions) > 5 else ""
+            return f"任务已完成。本轮通过 {actions}{suffix} 完成处理。"
+        return "任务已完成。本轮对话已收尾。"
+
+    @classmethod
+    def _looks_like_completion_summary(cls, text: str) -> bool:
+        compact = " ".join(str(text or "").split())
+        if not compact:
+            return False
+        if compact.lower() in cls.TERSE_COMPLETION_ANSWERS:
+            return False
+        return len(compact) >= 12

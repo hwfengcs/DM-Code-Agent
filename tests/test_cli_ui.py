@@ -27,6 +27,7 @@ def test_display_result_uses_panel_style(capsys):
     display_result(
         {
             "final_answer": "done",
+            "metadata": {"completion_summary": "任务已完成。结果：done"},
             "steps": [
                 {
                     "thought": "inspect",
@@ -43,6 +44,8 @@ def test_display_result_uses_panel_style(capsys):
 
     assert "执行步骤" in output
     assert "最终答案" in output
+    assert "本轮总结" in output
+    assert "任务已完成" in output
     assert "read_file" in output
     assert "done" in output
 
