@@ -1,11 +1,18 @@
 from types import SimpleNamespace
 
+from dm_agent import Tool
+
 from main import (
+    Config,
+    create_agent,
     create_step_callback,
     display_completion_screen,
     display_result,
     format_agent_context_status,
+    parse_args,
     print_menu,
+    resolve_advanced_features,
+    validate_feature_args,
 )
 
 
@@ -16,6 +23,11 @@ class FakeAgent:
             "memory_items": 3,
             "compression_enabled": True,
         }
+
+
+class FakeClient:
+    def respond(self, messages, **extra):
+        raise AssertionError("FakeClient should not be called during construction")
 
 
 def test_cli_menu_renders_modern_command_palette(capsys):
@@ -123,3 +135,74 @@ def test_compact_step_callback_is_low_noise(capsys):
     assert "finish" in output
     assert "02" not in output
     assert "09" not in output
+
+
+def test_cli_advanced_features_default_off(monkeypatch):
+    monkeypatch.setattr("main.load_config_from_file", lambda: {})
+
+    args = parse_args(["do maintenance"])
+
+    assert args.enable_reflexion is False
+    assert args.max_trials == 3
+    assert args.enable_critic is False
+    assert args.enable_adaptive_replanning is False
+    assert args.max_replans == -1
+    assert args.enable_repeated_failure_policy_experiment is False
+    assert args.enable_evolution is False
+    assert validate_feature_args(args) == ""
+
+
+def test_cli_advanced_features_wire_into_agent(monkeypatch):
+    monkeypatch.setattr("main.load_config_from_file", lambda: {})
+    args = parse_args(
+        [
+            "do maintenance",
+            "--enable-reflexion",
+            "--max-trials",
+            "2",
+            "--enable-critic",
+            "--enable-evolution",
+        ]
+    )
+    assert validate_feature_args(args) == ""
+
+    config = Config(
+        api_key="test-key",
+        enable_reflexion=args.enable_reflexion,
+        max_trials=args.max_trials,
+        enable_critic=args.enable_critic,
+        enable_evolution=args.enable_evolution,
+    )
+
+    advanced = resolve_advanced_features(config)
+    assert advanced["reflexion"] is True
+    assert advanced["critic"] is True
+    assert advanced["adaptive_replanning"] is True
+    assert advanced["repeated_failure_policy_experiment"] is True
+
+    agent = create_agent(
+        config,
+        FakeClient(),
+        [Tool("noop", "No operation.", lambda arguments: "ok")],
+    )
+
+    assert agent.enable_reflexion is True
+    assert agent.max_trials == 2
+    assert agent.critic is not None
+    assert agent.enable_adaptive_replanning is True
+    assert agent.enable_repeated_failure_policy_experiment is True
+
+
+def test_cli_advanced_feature_validation(monkeypatch):
+    monkeypatch.setattr("main.load_config_from_file", lambda: {})
+
+    bad_trials = parse_args(["task", "--max-trials", "0"])
+    assert "--max-trials" in validate_feature_args(bad_trials)
+
+    bad_replans = parse_args(["task", "--enable-repeated-failure-policy-experiment"])
+    assert "--enable-adaptive-replanning" in validate_feature_args(bad_replans)
+
+    evolution_preset = parse_args(
+        ["task", "--enable-repeated-failure-policy-experiment", "--enable-evolution"]
+    )
+    assert validate_feature_args(evolution_preset) == ""

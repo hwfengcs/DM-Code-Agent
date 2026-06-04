@@ -18,6 +18,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 from dm_agent import (
+    CriticAgent,
     LLMError,
     ReactAgent,
     Tool,
@@ -80,6 +81,13 @@ class Config:
     max_steps: int = 100
     temperature: float = 0.7
     show_steps: bool = False
+    enable_reflexion: bool = False
+    max_trials: int = 3
+    enable_critic: bool = False
+    enable_adaptive_replanning: bool = False
+    max_replans: int = -1
+    enable_repeated_failure_policy_experiment: bool = False
+    enable_evolution: bool = False
 
 
 # 配置文件路径
@@ -417,6 +425,15 @@ def save_config_to_file(config: Config) -> None:
             "max_steps": config.max_steps,
             "temperature": config.temperature,
             "show_steps": config.show_steps,
+            "enable_reflexion": config.enable_reflexion,
+            "max_trials": config.max_trials,
+            "enable_critic": config.enable_critic,
+            "enable_adaptive_replanning": config.enable_adaptive_replanning,
+            "max_replans": config.max_replans,
+            "enable_repeated_failure_policy_experiment": (
+                config.enable_repeated_failure_policy_experiment
+            ),
+            "enable_evolution": config.enable_evolution,
         }
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
@@ -435,6 +452,56 @@ def get_api_key_for_provider(provider: str) -> str | None:
     }
     env_var = provider_env_map.get(provider.lower())
     return os.getenv(env_var) if env_var else None
+
+
+def resolve_advanced_features(config: Config) -> Dict[str, bool]:
+    """Return effective advanced feature switches for one agent run."""
+    adaptive_replanning = config.enable_adaptive_replanning or config.enable_evolution
+    repeated_failure_policy = (
+        config.enable_repeated_failure_policy_experiment or config.enable_evolution
+    )
+    return {
+        "reflexion": config.enable_reflexion,
+        "critic": config.enable_critic,
+        "adaptive_replanning": adaptive_replanning,
+        "repeated_failure_policy_experiment": repeated_failure_policy,
+        "evolution": config.enable_evolution,
+    }
+
+
+def format_advanced_feature_status(config: Config) -> str:
+    """Compact human-readable summary of advanced feature switches."""
+    advanced = resolve_advanced_features(config)
+    enabled = [
+        label
+        for key, label in [
+            ("reflexion", "reflexion"),
+            ("critic", "critic"),
+            ("adaptive_replanning", "adaptive-replan"),
+            ("repeated_failure_policy_experiment", "loop-break"),
+            ("evolution", "evolution"),
+        ]
+        if advanced[key]
+    ]
+    return ", ".join(enabled) if enabled else "off"
+
+
+def validate_feature_args(args: argparse.Namespace) -> str:
+    """Validate default-off advanced feature CLI arguments."""
+    if args.max_trials < 1:
+        return "--max-trials must be at least 1."
+    if args.max_replans < -1:
+        return "--max-replans must be -1 or greater."
+    if (
+        args.enable_repeated_failure_policy_experiment
+        and not args.enable_adaptive_replanning
+        and not args.enable_evolution
+    ):
+        return (
+            "--enable-repeated-failure-policy-experiment requires "
+            "--enable-adaptive-replanning or --enable-evolution."
+        )
+    return ""
 
 
 def parse_args(argv: Any) -> argparse.Namespace:
@@ -489,6 +556,48 @@ def parse_args(argv: Any) -> argparse.Namespace:
         action="store_true",
         default=saved_config.get("show_steps", False),
         help="打印智能体执行的中间 ReAct 步骤。",
+    )
+    parser.add_argument(
+        "--enable-reflexion",
+        action="store_true",
+        default=saved_config.get("enable_reflexion", False),
+        help="启用失败后的 Reflexion 反思重试。默认关闭。",
+    )
+    parser.add_argument(
+        "--max-trials",
+        type=int,
+        default=saved_config.get("max_trials", 3),
+        help="启用 Reflexion 时最多尝试的轮数（默认：3）。",
+    )
+    parser.add_argument(
+        "--enable-critic",
+        action="store_true",
+        default=saved_config.get("enable_critic", False),
+        help="启用完成前 Critic 审查门禁。默认关闭。",
+    )
+    parser.add_argument(
+        "--enable-adaptive-replanning",
+        action="store_true",
+        default=saved_config.get("enable_adaptive_replanning", False),
+        help="启用基于失败信号的自适应重规划。默认关闭。",
+    )
+    parser.add_argument(
+        "--max-replans",
+        type=int,
+        default=saved_config.get("max_replans", -1),
+        help="自适应重规划最多触发次数；-1 表示不限（默认：-1）。",
+    )
+    parser.add_argument(
+        "--enable-repeated-failure-policy-experiment",
+        action="store_true",
+        default=saved_config.get("enable_repeated_failure_policy_experiment", False),
+        help="启用重复失败时的实验性跳出策略。默认关闭。",
+    )
+    parser.add_argument(
+        "--enable-evolution",
+        action="store_true",
+        default=saved_config.get("enable_evolution", False),
+        help="启用实验性进化恢复模式：自动打开自适应重规划和重复失败跳出策略。默认关闭。",
     )
     parser.add_argument(
         "--interactive",
@@ -659,6 +768,15 @@ def show_skills(skill_manager: SkillManager) -> None:
     print()
 
 
+def ask_bool_setting(label: str, current: bool) -> bool:
+    value = UI.ask(label, choices=["y", "n"], default="y" if current else "n").strip().lower()
+    if value in {"y", "yes", "是"}:
+        return True
+    if value in {"n", "no", "否"}:
+        return False
+    return current
+
+
 def configure_settings(config: Config) -> None:
     """配置设置"""
     UI.key_values(
@@ -670,6 +788,9 @@ def configure_settings(config: Config) -> None:
             ("Max steps", config.max_steps),
             ("Temperature", config.temperature),
             ("Show steps", "是" if config.show_steps else "否"),
+            ("Advanced", format_advanced_feature_status(config)),
+            ("Reflexion max trials", config.max_trials),
+            ("Max replans", config.max_replans),
         ],
     )
     UI.status("info", "选择要修改的设置", "直接回车跳过")
@@ -751,21 +872,77 @@ def configure_settings(config: Config) -> None:
         UI.status("error", "无效的数字")
 
     # 修改显示步骤
-    show_steps_input = (
-        UI.ask("显示步骤", choices=["y", "n"], default="y" if config.show_steps else "n")
-        .strip()
-        .lower()
+    new_show_steps = ask_bool_setting("显示步骤", config.show_steps)
+    if new_show_steps != config.show_steps:
+        config.show_steps = new_show_steps
+        config_changed = True
+    UI.status("ok", "已启用显示步骤" if config.show_steps else "已禁用显示步骤")
+
+    UI.section(
+        "高级功能",
+        "这些能力会增加模型调用或改变恢复策略；默认关闭，建议按任务显式启用。",
     )
-    if show_steps_input in ["y", "yes", "是"]:
-        if not config.show_steps:
-            config.show_steps = True
-            config_changed = True
-        UI.status("ok", "已启用显示步骤")
-    elif show_steps_input in ["n", "no", "否"]:
-        if config.show_steps:
-            config.show_steps = False
-            config_changed = True
-        UI.status("ok", "已禁用显示步骤")
+
+    new_reflexion = ask_bool_setting("启用 Reflexion 反思重试", config.enable_reflexion)
+    if new_reflexion != config.enable_reflexion:
+        config.enable_reflexion = new_reflexion
+        config_changed = True
+    if config.enable_reflexion:
+        try:
+            max_trials_input = UI.ask("反思最大尝试轮数", default=str(config.max_trials)).strip()
+            if max_trials_input:
+                new_max_trials = int(max_trials_input)
+                if new_max_trials >= 1:
+                    if new_max_trials != config.max_trials:
+                        config.max_trials = new_max_trials
+                        config_changed = True
+                else:
+                    UI.status("error", "反思最大尝试轮数必须至少为 1")
+        except ValueError:
+            UI.status("error", "无效的数字")
+
+    new_critic = ask_bool_setting("启用 Critic 完成审查", config.enable_critic)
+    if new_critic != config.enable_critic:
+        config.enable_critic = new_critic
+        config_changed = True
+
+    new_adaptive = ask_bool_setting("启用自适应重规划", config.enable_adaptive_replanning)
+    if new_adaptive != config.enable_adaptive_replanning:
+        config.enable_adaptive_replanning = new_adaptive
+        config_changed = True
+    if config.enable_adaptive_replanning:
+        try:
+            max_replans_input = UI.ask(
+                "最大重规划次数 (-1 表示不限)", default=str(config.max_replans)
+            ).strip()
+            if max_replans_input:
+                new_max_replans = int(max_replans_input)
+                if new_max_replans >= -1:
+                    if new_max_replans != config.max_replans:
+                        config.max_replans = new_max_replans
+                        config_changed = True
+                else:
+                    UI.status("error", "最大重规划次数必须为 -1 或更大")
+        except ValueError:
+            UI.status("error", "无效的数字")
+
+    new_loop_break = ask_bool_setting(
+        "启用重复失败跳出实验", config.enable_repeated_failure_policy_experiment
+    )
+    if new_loop_break != config.enable_repeated_failure_policy_experiment:
+        config.enable_repeated_failure_policy_experiment = new_loop_break
+        config_changed = True
+    if config.enable_repeated_failure_policy_experiment and not config.enable_adaptive_replanning:
+        config.enable_adaptive_replanning = True
+        config_changed = True
+        UI.status("info", "已同步启用自适应重规划", "重复失败跳出实验依赖重规划")
+
+    new_evolution = ask_bool_setting("启用进化恢复模式", config.enable_evolution)
+    if new_evolution != config.enable_evolution:
+        config.enable_evolution = new_evolution
+        config_changed = True
+    if config.enable_evolution and not config.enable_adaptive_replanning:
+        UI.status("info", "进化恢复会在运行时自动启用自适应重规划和重复失败跳出")
 
     # 保存配置
     if config_changed:
@@ -885,6 +1062,7 @@ def write_run_report(
         f"- Steps: `{len(steps)}`",
         f"- Tool errors: `{metadata.get('tool_error_count', 0)}`",
         f"- Replans: `{metadata.get('replan_count', 0)}`",
+        f"- Advanced features: `{format_advanced_feature_status(config)}`",
     ]
     if trace_path:
         lines.append(f"- Trace: `{trace_path}`")
@@ -1210,6 +1388,34 @@ def create_step_callback(show_steps: bool):
     return callback
 
 
+def create_agent(
+    config: Config,
+    client: Any,
+    tools: List[Tool],
+    *,
+    step_callback: Any = None,
+    skill_manager: SkillManager | None = None,
+    trace_writer: TraceWriter | None = None,
+) -> ReactAgent:
+    """Create a ReactAgent with the CLI's default-off advanced switches."""
+    advanced = resolve_advanced_features(config)
+    return ReactAgent(
+        client,
+        tools,
+        max_steps=config.max_steps,
+        temperature=config.temperature,
+        step_callback=step_callback,
+        skill_manager=skill_manager,
+        trace_writer=trace_writer,
+        enable_reflexion=advanced["reflexion"],
+        max_trials=config.max_trials,
+        critic=CriticAgent(client) if advanced["critic"] else None,
+        enable_adaptive_replanning=advanced["adaptive_replanning"],
+        max_replans=config.max_replans,
+        enable_repeated_failure_policy_experiment=(advanced["repeated_failure_policy_experiment"]),
+    )
+
+
 def format_agent_context_status(agent: ReactAgent) -> str:
     stats = agent.get_context_stats()
     return (
@@ -1239,11 +1445,10 @@ def multi_turn_conversation(
         )
         step_callback = create_step_callback(config.show_steps)
 
-        agent = ReactAgent(
+        agent = create_agent(
+            config,
             client,
             tools,
-            max_steps=config.max_steps,
-            temperature=config.temperature,
             step_callback=step_callback,
             skill_manager=skill_manager,
         )
@@ -1328,11 +1533,10 @@ def execute_task(
         # 创建步骤回调函数
         step_callback = create_step_callback(config.show_steps)
 
-        agent = ReactAgent(
+        agent = create_agent(
+            config,
             client,
             tools,
-            max_steps=config.max_steps,
-            temperature=config.temperature,
             step_callback=step_callback,
             skill_manager=skill_manager,
         )
@@ -1480,6 +1684,7 @@ def run_single_task(
             model=config.model,
             base_url=config.base_url,
         )
+        advanced = resolve_advanced_features(config)
         if trace_path:
             trace_writer = TraceWriter(trace_path, capture_llm_io=trace_llm_io)
             trace_writer.record(
@@ -1495,17 +1700,25 @@ def run_single_task(
                     "mcp_tool_count": len(mcp_tools),
                     "skill_count": skill_count,
                     "trace_llm_io": trace_llm_io,
+                    "reflexion_enabled": advanced["reflexion"],
+                    "max_trials": config.max_trials,
+                    "critic_enabled": advanced["critic"],
+                    "adaptive_replanning_enabled": advanced["adaptive_replanning"],
+                    "max_replans": config.max_replans,
+                    "repeated_failure_policy_experiment_enabled": (
+                        advanced["repeated_failure_policy_experiment"]
+                    ),
+                    "evolution_enabled": advanced["evolution"],
                 },
             )
 
         # 创建步骤回调函数
         step_callback = create_step_callback(config.show_steps)
 
-        agent = ReactAgent(
+        agent = create_agent(
+            config,
             client,
             tools,
-            max_steps=config.max_steps,
-            temperature=config.temperature,
             step_callback=step_callback,
             skill_manager=skill_manager,
             trace_writer=trace_writer,
@@ -1517,7 +1730,8 @@ def run_single_task(
                 f"task       {task}\n"
                 f"provider   {config.provider}\n"
                 f"model      {config.model}\n"
-                f"max steps  {config.max_steps}"
+                f"max steps  {config.max_steps}\n"
+                f"advanced   {format_advanced_feature_status(config)}"
             ),
             color=Fore.CYAN,
         )
@@ -1575,6 +1789,12 @@ def main(argv: Any = None) -> int:
     load_dotenv()
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
+    feature_error = validate_feature_args(args)
+    if feature_error:
+        print(UI.paint("[ERR] 高级功能参数无效", Fore.RED, bright=True), file=sys.stderr)
+        print(feature_error, file=sys.stderr)
+        return 2
+
     # 如果没有提供 API 密钥，尝试根据提供商获取
     if not args.api_key:
         args.api_key = get_api_key_for_provider(args.provider)
@@ -1605,6 +1825,13 @@ def main(argv: Any = None) -> int:
         max_steps=args.max_steps,
         temperature=args.temperature,
         show_steps=args.show_steps,
+        enable_reflexion=args.enable_reflexion,
+        max_trials=args.max_trials,
+        enable_critic=args.enable_critic,
+        enable_adaptive_replanning=args.enable_adaptive_replanning,
+        max_replans=args.max_replans,
+        enable_repeated_failure_policy_experiment=(args.enable_repeated_failure_policy_experiment),
+        enable_evolution=args.enable_evolution,
     )
 
     # 如果提供了任务参数，直接执行任务

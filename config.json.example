@@ -5,5 +5,12 @@
   "max_steps": 100,
   "temperature": 0.7,
   "show_steps": false,
+  "enable_reflexion": false,
+  "max_trials": 3,
+  "enable_critic": false,
+  "enable_adaptive_replanning": false,
+  "max_replans": -1,
+  "enable_repeated_failure_policy_experiment": false,
+  "enable_evolution": false,
   "_comment": "Gemini uses the google.genai SDK and does not require base_url."
 }
