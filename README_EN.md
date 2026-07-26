@@ -68,6 +68,9 @@
 | Critic + Self-Consistency | ✅ P4 impl | Peer review gate before acceptance + N-way independent selection (majority vote / critic score / test pass), with candidate disagreement and confidence metadata | [04](docs/research-log/04-critic-and-consistency.md) |
 | Adaptive Replanning + Token economics | ✅ P5 impl | Default-off error-signal-to-strategy replanning plus offline token / cost-per-success reports; real cross-model runs are frozen | [05](docs/research-log/05-adaptive-and-economics.md) |
 | Final write-up + release checklist | ✅ P6 docs | Release narrative, distribution checklist, and interview bullets without unrun evaluation claims | [06](docs/research-log/06-final-writeup.md) |
+| Long-context guards (truncation / token budget / edit guard) | ✅ post-v2 | Default-on: observation truncation with paging hints, budget-triggered compression, read-before-edit blocking; memory hygiene and LLM summaries stay default-off | [23](docs/research-log/23-observation-truncation-and-token-budget.md) [24](docs/research-log/24-memory-hygiene-and-recall.md) |
+| Fault tolerance (unified retry / atomic IO / checkpoint / breaker) | ✅ post-v2 | Unified transient-failure retry across all four providers, atomic writes + pre-write backups, run-level checkpoint/resume, progress-carrying replan; circuit breaker default-off | [25](docs/research-log/25-unified-llm-retry-and-atomic-io.md) [26](docs/research-log/26-run-checkpoint-and-progress-carrying-replan.md) [27](docs/research-log/27-tool-circuit-breaker-experiment.md) |
+| Evals loop (recovery rate / capability profile / CI gates) | ✅ post-v2 | Recovery success rate, per-tag aggregation, hallucination proxy signals, repeat variance, per-test partial credit; CI keyless-eval 100% gate + manifest guard | [28](docs/research-log/28-evals-recovery-capability-and-gates.md) |
 
 ## Research Log
 
@@ -106,7 +109,9 @@ It is designed to be a developer tool you can audit rather than a black-box codi
 | Capability | Description |
 | --- | --- |
 | ReAct Agent | The model emits `thought/action/action_input`; the agent executes tools and feeds observations back |
-| Task Planner | Generates a 3-8 step plan and can replan after failures |
+| Context Guards | Default-on: long observations are truncated with paging hints, an estimated token budget triggers early compression, and `edit_file` requires a prior read |
+| Fault Tolerance | Unified transient LLM-failure retry, atomic file writes + pre-write backups, configurable MCP timeout with one reconnect, and `--checkpoint/--resume` run recovery |
+| Task Planner | Generates a 3-8 step plan and can replan after failures; replans keep completed steps and respect a replan budget |
 | Adaptive Replanning | Default-off mapping from tool/parse/test/critic/max-step failures to recovery strategies, with repeated-failure signals |
 | Reflexion | Default-off trial lessons can be injected into the next attempt |
 | Context Memory | Mem0-style local add/search memory compression with scoped atomic memories and recent-turn retention |
@@ -269,6 +274,20 @@ python -m black --check .
 - [MCP_GUIDE.md](MCP_GUIDE.md)
 - [SKILL_GUIDE.md](SKILL_GUIDE.md)
 - [CHANGELOG.md](CHANGELOG.md)
+
+## Version Evolution
+
+What each major version added and removed, and why. Full entries live in [CHANGELOG.md](CHANGELOG.md).
+
+| Version | Theme | Added (highlights) | Removed / Replaced |
+| --- | --- | --- | --- |
+| v1.5.0 | Initial public release | ReAct loop + Planner/Replan + context compression; DeepSeek/OpenAI/Claude/Gemini providers; MCP and skill systems; JSONL trace + replay; coding/maintenance hidden-test benchmarks; keyless deterministic evals; Ubuntu+Windows CI | — |
+| v1.6.0 | Governance and v2 kickoff | CHANGELOG, code of conduct, issue/PR templates; `docs/research-log/` devlog system; README rewrite (comparison table, Algorithm Highlights) | Cleaned up thinking-TODO comments in `agent.py`/`planner.py` |
+| v1.7.0 | SWE-bench Lite harness | `swebench_lite` adapter: fixed 50-instance subset (seed=42), per-instance git workspaces, Tier-1 host verifier, 9-category failure-mode analyzer | — |
+| v1.7.1 | Tier-1 baseline release | First public baseline: 0.0% resolved / 72.0% patch-applied (not leaderboard-comparable; host noise audited); instance-level resume/checkpoint; DeepSeek transient-failure retry; Windows output-decoding fix | — |
+| v2.0.0 | Algorithm stack | Reflexion (episodic memory), Critic completion gate, Self-Consistency N-way selection, Adaptive Replanning, offline token economics — all default-off and keyless-testable; P6 release materials | Froze real SWE-bench / Docker / cross-model score claims (no unrun numbers are ever published) |
+| Post-v2.0 (observability batch) | Trace and evaluation provenance | `dm-agent-trace analyze / analyze-dir / diff`; Wilson 95% confidence intervals; manifest fingerprint provenance + `dm-agent-manifest-diff`; self-consistency uncertainty metadata and patch-fingerprint voting; economics confidence intervals (devlogs 07–22) | **Removed the entire RAG / repository-index retrieval chain** (CLI entry point, context exports, opt-in flags, optional dependency extra), replaced by Mem0-style local atomic memory — local-first, zero new runtime dependencies |
+| Post-v2.0 (2026-07 upgrade) | Long context / fault tolerance / evals loop | Default-on guards: observation truncation with paging hints, token-budget compression, read-before-edit guard, unified LLM retry, atomic writes + backups; `--checkpoint/--resume`, progress-carrying replan; default-off modules: memory hygiene, LLM summaries, circuit breaker; evals: recovery success rate, per-tag capability profile, hallucination proxy signals, repeat variance, CI 100% eval gate + manifest guard (devlogs 23–28) | Fixed swebench failure taxonomy (max-steps no longer mislabeled as regression); trace schema 1.0→1.1 is purely additive, no breaking removals |
 
 ## License
 

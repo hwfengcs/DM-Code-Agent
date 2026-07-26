@@ -289,6 +289,20 @@ python -m black --check .
 - [SKILL_GUIDE.md](SKILL_GUIDE.md)：内置和自定义 skill
 - [CHANGELOG.md](CHANGELOG.md)：版本变更
 
+## 版本演进
+
+每个大版本"加了什么、删了什么、为什么",完整条目见 [CHANGELOG.md](CHANGELOG.md)。
+
+| 版本 | 主题 | 新增(代表性) | 移除 / 替换 |
+| --- | --- | --- | --- |
+| v1.5.0 | 初始公开版 | ReAct 循环 + Planner/Replan + 上下文压缩;DeepSeek/OpenAI/Claude/Gemini 四家适配;MCP、Skill 系统;JSONL trace + replay;coding/maintenance hidden-test benchmark;keyless 确定性 eval;Ubuntu+Windows CI | — |
+| v1.6.0 | 治理与 v2 启动 | CHANGELOG、行为准则、issue/PR 模板;`docs/research-log/` devlog 体系;README 重写(对标表、Algorithm Highlights) | 清理 `agent.py`/`planner.py` 内的 thinking TODO 注释 |
+| v1.7.0 | SWE-bench Lite 接入 | `swebench_lite` 适配层:固定 50 题子集(seed=42)、per-instance git 工作区、Tier-1 host verifier、9 类失败模式分析器 | — |
+| v1.7.1 | Tier-1 基线发布 | 首个公开基线:0.0% resolved / 72.0% patch-applied(非官方口径,含 host 噪声审计);instance 级 resume/checkpoint;DeepSeek 瞬时故障重试;Windows 输出解码修复 | — |
+| v2.0.0 | 算法栈落地 | Reflexion(episodic memory)、Critic 完成门、Self-Consistency 多路选优、Adaptive Replanning、离线 token economics——全部默认关闭、keyless 可测;P6 发布材料 | 冻结真实 SWE-bench / Docker / 跨模型跑分声明(未运行的分数一律不写) |
+| v2.0 之后(可观测性批次) | Trace 与评测溯源 | `dm-agent-trace analyze / analyze-dir / diff`;benchmark Wilson 95% 置信区间;manifest 指纹溯源 + `dm-agent-manifest-diff`;self-consistency 不确定性元数据与 patch 指纹投票;economics 置信区间(devlog 07–22) | **删除整条 RAG / 仓库索引检索链路**(CLI 入口、context 导出、opt-in flags、可选依赖 extra),替换为 Mem0 风格本地原子记忆——本地优先、零新增运行时依赖 |
+| v2.0 之后(2026-07 三问题升级) | 长上下文 / 容错 / Evals 闭环 | 默认开护栏:观察截断+分页提示、token 预算触发压缩、read-before-edit 守卫、统一 LLM 重试、原子写+备份;`--checkpoint/--resume` 断点续跑、进度保留 replan;默认关模块:memory hygiene、LLM 摘要、熔断器;Evals 侧:恢复成功率、per-tag 能力画像、幻觉代理指标、repeat 方差、CI 100% eval 门禁 + manifest 守卫(devlog 23–28) | 修正 swebench 失败分类(max-steps 不再误标 regression);trace schema 1.0→1.1 纯增量,无破坏性删除 |
+
 ## Roadmap
 
 v2 本地算法栈已经按 [`docs/research-log/00-kickoff.md`](docs/research-log/00-kickoff.md) 的路线图交付到 P6：
