@@ -5,6 +5,10 @@
   "max_steps": 100,
   "temperature": 0.7,
   "show_steps": false,
+  "max_observation_chars": 8000,
+  "context_token_budget": 24000,
+  "enable_edit_guard": true,
+  "llm_max_retries": 2,
   "enable_reflexion": false,
   "max_trials": 3,
   "enable_critic": false,
@@ -12,5 +16,11 @@
   "max_replans": -1,
   "enable_repeated_failure_policy_experiment": false,
   "enable_evolution": false,
+  "enable_memory_hygiene": false,
+  "enable_llm_compression": false,
+  "enable_circuit_breaker": false,
+  "circuit_breaker_threshold": 3,
+  "circuit_breaker_cooldown": 5,
+  "reflexion_memory_file": "",
   "_comment": "Gemini uses the google.genai SDK and does not require base_url."
 }

@@ -5,13 +5,22 @@ from __future__ import annotations
 import json
 import re
 import time
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..clients.base_client import BaseLLMClient
 from ..tools.base import Tool
 from ..prompts import build_code_agent_prompt
 from ..memory.context_compressor import ContextCompressor
+from ..memory.context_budget import (
+    FileLedger,
+    estimate_messages_tokens,
+    truncate_observation,
+)
+from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
+from .circuit_breaker import STATE_OPEN, ToolCircuitBreaker
 from .critic import CriticAgent, CriticReview
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
@@ -63,6 +72,8 @@ class ReactAgent:
     MEMORY_STATUS_LOG_INTERVAL = 5
     MEMORY_STATUS_SAVED_DELTA = 8
     MEMORY_STATUS_ITEM_DELTA = 5
+    # 非 adaptive 默认路径的 replan 成本护栏（max_replans>=0 时以其为准）。
+    DEFAULT_REPLAN_BUDGET = 5
     TERSE_COMPLETION_ANSWERS = {
         "done",
         "ok",
@@ -101,6 +112,14 @@ class ReactAgent:
         replan_policy: Optional[AdaptiveReplanPolicy] = None,
         max_replans: int = -1,
         enable_repeated_failure_policy_experiment: bool = False,
+        max_observation_chars: int = 8000,
+        context_token_budget: int = 24000,
+        enable_edit_guard: bool = True,
+        enable_memory_hygiene: bool = False,
+        enable_llm_compression: bool = False,
+        enable_circuit_breaker: bool = False,
+        circuit_breaker_threshold: int = 3,
+        circuit_breaker_cooldown: int = 5,
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -148,10 +167,36 @@ class ReactAgent:
         self.planner = TaskPlanner(client, tools) if enable_planning else None
 
         # 上下文压缩器：默认先充分利用现代 LLM 上下文，长会话再分批压缩。
+        # token 预算超限时也会提前触发压缩（0 表示只按消息节奏压缩）。
         self.enable_compression = enable_compression
+        self.context_token_budget = max(0, int(context_token_budget))
+        self.enable_memory_hygiene = enable_memory_hygiene
+        self.enable_llm_compression = enable_llm_compression
         self.compressor = (
-            ContextCompressor(client, compress_every=20, keep_recent=8)
+            ContextCompressor(
+                client,
+                compress_every=20,
+                keep_recent=8,
+                token_budget=self.context_token_budget,
+                enable_hygiene=enable_memory_hygiene,
+                use_llm_summary=enable_llm_compression,
+            )
             if enable_compression
+            else None
+        )
+        # 单条工具观察的字符上限；0 表示不截断。
+        self.max_observation_chars = max(0, int(max_observation_chars))
+        # read-before-edit 守卫：edit_file 前必须读过目标文件，且写后需重读。
+        self.enable_edit_guard = enable_edit_guard
+        self._file_ledger = FileLedger()
+        # 工具熔断器（默认关）：同一 action+error 连续失败达到阈值后临时禁用。
+        self.enable_circuit_breaker = enable_circuit_breaker
+        self._circuit_breaker = (
+            ToolCircuitBreaker(
+                threshold=circuit_breaker_threshold,
+                cooldown_steps=circuit_breaker_cooldown,
+            )
+            if enable_circuit_breaker
             else None
         )
 
@@ -163,7 +208,11 @@ class ReactAgent:
         self._last_parse_repaired = False
         self.enable_reflexion = enable_reflexion
         self.max_trials = max_trials
-        self.reflexion_memory = reflexion_memory or EpisodicMemory()
+        # 显式判 None：空 EpisodicMemory 是 falsy，`or` 会丢弃注入的实例
+        # （如 --reflexion-memory-file 加载出的空记忆）。
+        self.reflexion_memory = (
+            reflexion_memory if reflexion_memory is not None else EpisodicMemory()
+        )
         self.reflector = reflector or (Reflector(client) if enable_reflexion else None)
         self.critic = critic
         self.enable_adaptive_replanning = enable_adaptive_replanning
@@ -171,10 +220,24 @@ class ReactAgent:
         self.max_replans = max_replans
         self.enable_repeated_failure_policy_experiment = enable_repeated_failure_policy_experiment
 
-    def run(self, task: str, *, max_steps: Optional[int] = None) -> Dict[str, Any]:
+    def run(
+        self,
+        task: str,
+        *,
+        max_steps: Optional[int] = None,
+        checkpoint_path: Optional[Path] = None,
+        resume_state: Optional[RunCheckpoint] = None,
+    ) -> Dict[str, Any]:
         """Execute a task, optionally retrying failed trials with Reflexion."""
         if not self.enable_reflexion:
-            return self._run_once(task, max_steps=max_steps)
+            return self._run_once(
+                task,
+                max_steps=max_steps,
+                checkpoint_path=checkpoint_path,
+                resume_state=resume_state,
+            )
+        if checkpoint_path is not None or resume_state is not None:
+            raise ValueError("checkpoint/resume 暂不支持与 Reflexion 多 trial 同时使用。")
         return self._run_with_reflexion(task, max_steps=max_steps)
 
     def _run_with_reflexion(
@@ -301,6 +364,8 @@ class ReactAgent:
         trial_number: int = 1,
         max_trials: int = 1,
         reflexion_prompt: str = "",
+        checkpoint_path: Optional[Path] = None,
+        resume_state: Optional[RunCheckpoint] = None,
     ) -> Dict[str, Any]:
         """
         执行指定任务
@@ -335,6 +400,9 @@ class ReactAgent:
         started_at = time.perf_counter()
         steps: List[Step] = []
         limit = max_steps or self.max_steps
+        self._file_ledger.reset()
+        run_token = getattr(self.trace_writer, "run_id", "") or uuid.uuid4().hex[:12]
+        retry_baseline = getattr(self.client, "total_respond_retries", 0)
         last_logged_memory_items = 0
         last_logged_saved_messages = 0
         metadata: Dict[str, Any] = {
@@ -350,12 +418,29 @@ class ReactAgent:
             "unknown_tool_count": 0,
             "argument_error_count": 0,
             "replan_count": 0,
+            "replan_budget_exhausted_count": 0,
             "compressed_messages": 0,
             "memory_compression_count": 0,
+            "budget_compression_count": 0,
+            "truncation_count": 0,
+            "truncated_chars_saved": 0,
+            "edit_guard_enabled": self.enable_edit_guard,
+            "edit_guard_block_count": 0,
+            "memory_hygiene_enabled": self.enable_memory_hygiene,
+            "llm_compression_enabled": self.enable_llm_compression,
+            "circuit_breaker_enabled": self.enable_circuit_breaker,
+            "circuit_breaker_block_count": 0,
+            "circuit_breaker_trip_count": 0,
+            "memory_invalidation_count": 0,
+            "llm_summary_count": 0,
+            "llm_summary_error_count": 0,
             "memory_log_count": 0,
             "memory_items": 0,
             "memory_injection_count": 0,
             "failure_reason": "",
+            "llm_retry_count": 0,
+            "backup_count": 0,
+            "backup_dir": "",
             "reflexion_enabled": self.enable_reflexion,
             "critic_enabled": self.critic is not None,
             "critic_review_count": 0,
@@ -391,6 +476,9 @@ class ReactAgent:
                     "temperature": self.temperature,
                     "planning_enabled": self.enable_planning,
                     "compression_enabled": self.enable_compression,
+                    "max_observation_chars": self.max_observation_chars,
+                    "context_token_budget": self.context_token_budget,
+                    "edit_guard_enabled": self.enable_edit_guard,
                     "skills_enabled": bool(self.skill_manager),
                     "reflexion_enabled": self.enable_reflexion,
                     "critic_enabled": self.critic is not None,
@@ -410,6 +498,11 @@ class ReactAgent:
             )
 
         def finish_result(final_answer: str) -> Dict[str, Any]:
+            metadata["llm_retry_count"] = (
+                getattr(self.client, "total_respond_retries", 0) - retry_baseline
+            )
+            if metadata.get("backup_count"):
+                print(f"[backup] 修改前的原文件备份目录：{metadata['backup_dir']}")
             if metadata.get("status") == "success":
                 metadata["completion_summary"] = self._build_completion_summary(final_answer, steps)
             result = {
@@ -429,27 +522,48 @@ class ReactAgent:
         if reflexion_prompt:
             self.system_prompt += "\n\n" + reflexion_prompt
 
-        # 第一步：生成计划（如果启用）
+        # 第一步：生成计划（如果启用）；resume 时改为恢复既有状态
         plan: List[PlanStep] = []
-        if self.enable_planning and self.planner:
-            try:
-                plan = self.planner.plan(task)
-                metadata["initial_plan_steps"] = len(plan)
-                if self.trace_writer:
-                    self.trace_writer.record_plan(plan)
-                if plan:
-                    plan_text = self.planner.get_progress()
-                    print(f"\n[plan] 生成的执行计划：\n{plan_text}")
-            except Exception as e:
-                if self.trace_writer:
-                    self.trace_writer.record_plan_error(str(e))
-                print(f"[warn] 计划生成失败：{e}，将使用常规模式执行")
+        resume_from = 0
+        if resume_state is not None:
+            plan, resume_from = self._restore_from_checkpoint(resume_state, steps, metadata)
+            if self.trace_writer:
+                self.trace_writer.record(
+                    "run_resumed",
+                    {"from_step": resume_from, "history_messages": len(self.conversation_history)},
+                )
+            print(f"[resume] 已恢复 checkpoint，从第 {resume_from + 1} 步继续执行")
+        else:
+            if self.enable_planning and self.planner:
+                try:
+                    plan = self.planner.plan(task)
+                    metadata["initial_plan_steps"] = len(plan)
+                    if self.trace_writer:
+                        self.trace_writer.record_plan(plan)
+                    if plan:
+                        plan_text = self.planner.get_progress()
+                        print(f"\n[plan] 生成的执行计划：\n{plan_text}")
+                except Exception as e:
+                    if self.trace_writer:
+                        self.trace_writer.record_plan_error(str(e))
+                    print(f"[warn] 计划生成失败：{e}，将使用常规模式执行")
 
-        # 添加新任务到对话历史
-        task_prompt: str = self._build_user_prompt(task, steps, plan)
-        self.conversation_history.append({"role": "user", "content": task_prompt})
+            # 添加新任务到对话历史
+            task_prompt: str = self._build_user_prompt(task, steps, plan)
+            self.conversation_history.append({"role": "user", "content": task_prompt})
 
-        for step_num in range(1, limit + 1):
+        for step_num in range(resume_from + 1, limit + 1):
+            # 每步开始前落盘上一步完成后的快照（若启用 checkpoint）。
+            if checkpoint_path is not None:
+                self._save_checkpoint_snapshot(
+                    checkpoint_path,
+                    task=task,
+                    step_count=step_num - 1,
+                    steps=steps,
+                    metadata=metadata,
+                    plan=plan,
+                    limit=limit,
+                )
             # 第二步：整理旧上下文为本地记忆（如果需要）
             system_content = self.system_prompt
             messages_to_send = [
@@ -458,10 +572,40 @@ class ReactAgent:
 
             if self.enable_compression and self.compressor:
                 if self.compressor.should_compress(self.conversation_history):
+                    trigger = self.compressor.last_trigger
+                    trigger_tokens = self.compressor.last_estimated_tokens
                     compressed_history = self.compressor.compress(self.conversation_history)
                     messages_to_send = [
                         {"role": "system", "content": system_content}
                     ] + compressed_history
+
+                    if trigger == "token_budget":
+                        metadata["budget_compression_count"] += 1
+                        if self.trace_writer:
+                            self.trace_writer.record(
+                                "context_budget",
+                                {
+                                    "step_number": step_num,
+                                    "phase": "forced_compress",
+                                    "estimated_tokens": trigger_tokens,
+                                    "budget": self.compressor.token_budget,
+                                },
+                            )
+                    if (
+                        self.trace_writer
+                        and 0
+                        < self.compressor.token_budget
+                        < estimate_messages_tokens(compressed_history)
+                    ):
+                        self.trace_writer.record(
+                            "context_budget",
+                            {
+                                "step_number": step_num,
+                                "phase": "post_compress_still_over",
+                                "estimated_tokens": estimate_messages_tokens(compressed_history),
+                                "budget": self.compressor.token_budget,
+                            },
+                        )
 
                     # 显示压缩统计
                     stats = self.compressor.get_compression_stats(
@@ -476,6 +620,27 @@ class ReactAgent:
                     metadata["memory_items"] = memory_count
                     metadata["memory_injection_count"] += int(memory_block_injected)
                     metadata["memory_compression_count"] += 1
+
+                    if self.enable_memory_hygiene:
+                        superseded_total = self.compressor.memory.superseded_count
+                        superseded_delta = superseded_total - int(
+                            metadata["memory_invalidation_count"]
+                        )
+                        metadata["memory_invalidation_count"] = superseded_total
+                        if superseded_delta > 0 and self.trace_writer:
+                            self.trace_writer.record(
+                                "memory_invalidation",
+                                {
+                                    "step_number": step_num,
+                                    "superseded": superseded_delta,
+                                    "total": superseded_total,
+                                },
+                            )
+                    if self.enable_llm_compression:
+                        metadata["llm_summary_count"] = self.compressor.llm_summary_count
+                        metadata["llm_summary_error_count"] = (
+                            self.compressor.llm_summary_error_count
+                        )
 
                     if self._should_log_memory_status(
                         compression_count=int(metadata["memory_compression_count"]),
@@ -670,6 +835,7 @@ class ReactAgent:
                 continue
 
             error_kind = ""
+            guard_blocked = False
 
             # task_complete 工具可以接受字符串或空参数
             if action == "task_complete":
@@ -681,11 +847,23 @@ class ReactAgent:
                 elif not isinstance(action_input, dict):
                     action_input = {}
                 try:
-                    observation = tool.execute(action_input)
+                    observation = self._bound_observation(
+                        tool.execute(action_input),
+                        action=action,
+                        action_input=action_input,
+                        metadata=metadata,
+                        step_num=step_num,
+                    )
                 except Exception as exc:  # noqa: BLE001 - 将工具错误传递给 LLM
                     metadata["tool_error_count"] += 1
                     metadata["failure_reason"] = str(exc)
-                    observation = f"Tool execution failed: {exc}"
+                    observation = self._bound_observation(
+                        f"Tool execution failed: {exc}",
+                        action=action,
+                        action_input=action_input,
+                        metadata=metadata,
+                        step_num=step_num,
+                    )
                     error_kind = "tool_error"
                 else:
                     accepted, observation, _review = self._review_completion(
@@ -709,13 +887,85 @@ class ReactAgent:
                 observation = "Tool arguments must be a JSON object."
                 error_kind = "invalid_arguments"
             else:
-                try:
-                    observation = tool.execute(action_input)
-                except Exception as exc:  # noqa: BLE001 - 将工具错误传递给 LLM
-                    metadata["tool_error_count"] += 1
-                    metadata["failure_reason"] = str(exc)
-                    observation = f"Tool execution failed: {exc}"
-                    error_kind = "tool_error"
+                breaker_message = (
+                    self._circuit_breaker.intercept(action, step_num)
+                    if self._circuit_breaker is not None
+                    else None
+                )
+                guard_reason = (
+                    ""
+                    if breaker_message is not None
+                    else self._check_edit_guard(action, action_input)
+                )
+                if breaker_message is not None:
+                    guard_blocked = True  # 熔断拦截同样不计入计划完成
+                    metadata["circuit_breaker_block_count"] += 1
+                    observation = breaker_message
+                    if self.trace_writer:
+                        self.trace_writer.record(
+                            "circuit_breaker",
+                            {
+                                "step_number": step_num,
+                                "action": action,
+                                "phase": "blocked",
+                            },
+                        )
+                elif guard_reason:
+                    guard_blocked = True
+                    metadata["edit_guard_block_count"] += 1
+                    observation = self._edit_guard_message(
+                        str(action_input.get("path", "")), guard_reason
+                    )
+                    if self.trace_writer:
+                        self.trace_writer.record(
+                            "edit_guard",
+                            {
+                                "step_number": step_num,
+                                "path": str(action_input.get("path", "")),
+                                "reason": guard_reason,
+                            },
+                        )
+                else:
+                    if action in self._WRITE_NOTE_ACTIONS:
+                        self._backup_before_write(action_input, metadata, step_num, run_token)
+                    try:
+                        observation = self._bound_observation(
+                            tool.execute(action_input),
+                            action=action,
+                            action_input=action_input,
+                            metadata=metadata,
+                            step_num=step_num,
+                        )
+                    except Exception as exc:  # noqa: BLE001 - 将工具错误传递给 LLM
+                        metadata["tool_error_count"] += 1
+                        metadata["failure_reason"] = str(exc)
+                        observation = self._bound_observation(
+                            f"Tool execution failed: {exc}",
+                            action=action,
+                            action_input=action_input,
+                            metadata=metadata,
+                            step_num=step_num,
+                        )
+                        error_kind = "tool_error"
+                    else:
+                        self._note_file_access(action, action_input, observation, step_num)
+                    if self._circuit_breaker is not None:
+                        state = self._circuit_breaker.record(
+                            action,
+                            error_kind or "",
+                            failed=self._is_failure_observation(observation),
+                            step=step_num,
+                        )
+                        metadata["circuit_breaker_trip_count"] = self._circuit_breaker.total_trips
+                        if state == STATE_OPEN and self.trace_writer:
+                            self.trace_writer.record(
+                                "circuit_breaker",
+                                {
+                                    "step_number": step_num,
+                                    "action": action,
+                                    "phase": "opened",
+                                },
+                            )
 
             step = Step(
                 thought=thought,
@@ -734,13 +984,12 @@ class ReactAgent:
                     failed=self._is_failure_observation(observation),
                 )
 
-            # 更新计划进度（如果有计划）
-            if plan and self.planner:
-                # 查找当前步骤对应的计划步骤
-                for plan_step in plan:
-                    if plan_step.action == action and not plan_step.completed:
-                        self.planner.mark_completed(plan_step.step_number, observation)
-                        break
+            # 更新计划进度（如果有计划；被守卫拦下的编辑不算完成）。
+            # 只有下一个待办步骤的动作匹配时才标记，消除同名动作的二义性。
+            if plan and self.planner and not guard_blocked:
+                next_step = self.planner.get_next_step()
+                if next_step and next_step.action == action:
+                    self.planner.mark_completed(next_step.step_number, observation)
 
             # 将工具执行结果添加到历史记录
             tool_info = f"执行工具 {action}，输入：{json.dumps(action_input, ensure_ascii=False)}\n观察：{observation}"
@@ -777,6 +1026,17 @@ class ReactAgent:
         metadata["status"] = "max_steps_exceeded"
         metadata["duration_seconds"] = time.perf_counter() - started_at
         metadata["failure_reason"] = metadata["failure_reason"] or "Max steps exceeded"
+        if checkpoint_path is not None:
+            # 步数耗尽也落一份终态快照：换更大的 --max-steps 即可 resume 续跑。
+            self._save_checkpoint_snapshot(
+                checkpoint_path,
+                task=task,
+                step_count=limit,
+                steps=steps,
+                metadata=metadata,
+                plan=plan,
+                limit=limit,
+            )
         return finish_result("Reached step limit without completion.")
 
     def _apply_skills_for_task(self, task: str) -> List[str]:
@@ -1041,6 +1301,228 @@ class ReactAgent:
             return False
         return isinstance(parsed, dict)
 
+    _READ_NOTE_ACTIONS = frozenset({"read_file", "search_in_file"})
+    _WRITE_NOTE_ACTIONS = frozenset({"edit_file", "create_file"})
+
+    def _check_edit_guard(self, action: str, action_input: Any) -> str:
+        """返回拦截原因（never_read/stale_read），允许执行时返回空串。"""
+        if not self.enable_edit_guard or action != "edit_file":
+            return ""
+        if not isinstance(action_input, dict):
+            return ""
+        path = action_input.get("path")
+        if not isinstance(path, str) or not path:
+            return ""
+        return self._file_ledger.check_edit(path) or ""
+
+    @staticmethod
+    def _edit_guard_message(path: str, reason: str) -> str:
+        # 文案刻意避开失败关键词（error/失败/不存在等），拦截不应触发 replan。
+        if reason == "stale_read":
+            return (
+                f"Edit blocked: {path} changed after your last read in this run. "
+                "Re-read the target range with read_file (line_start/line_end) to get "
+                "current line numbers, then edit."
+            )
+        return (
+            f"Edit blocked: {path} has not been read in this run yet. "
+            "Read the target range with read_file (line_start/line_end) first, then edit."
+        )
+
+    @staticmethod
+    def _observation_reports_missing_path(observation: str) -> bool:
+        text = str(observation).strip()
+        return (
+            len(text) <= 300
+            and text.startswith(("文件 ", "路径 "))
+            and text.endswith(("不存在。", "不是文件。"))
+        )
+
+    def _note_file_access(
+        self, action: str, action_input: Any, observation: str, step: int
+    ) -> None:
+        """登记成功的文件读写，为 read-before-edit 守卫提供依据。"""
+        if not isinstance(action_input, dict):
+            return
+        path = action_input.get("path")
+        if not isinstance(path, str) or not path:
+            return
+        if self._observation_reports_missing_path(observation):
+            return
+        if action in self._READ_NOTE_ACTIONS:
+            self._file_ledger.note_read(path, step)
+        elif action in self._WRITE_NOTE_ACTIONS:
+            self._file_ledger.note_write(path, step)
+
+    def _restore_from_checkpoint(
+        self,
+        resume_state: RunCheckpoint,
+        steps: List[Step],
+        metadata: Dict[str, Any],
+    ) -> tuple[List[PlanStep], int]:
+        """从 checkpoint 恢复对话/步骤/计划/记忆，返回 (plan, 已消耗步数)。"""
+        resume_from = max(0, int(resume_state.step_count))
+        self.conversation_history = [dict(message) for message in resume_state.conversation_history]
+        for raw_step in resume_state.steps:
+            steps.append(
+                Step(
+                    thought=str(raw_step.get("thought", "")),
+                    action=str(raw_step.get("action", "")),
+                    action_input=raw_step.get("action_input"),
+                    observation=str(raw_step.get("observation", "")),
+                    raw=str(raw_step.get("raw", "")),
+                )
+            )
+        restored_metadata = dict(resume_state.metadata)
+        restored_metadata["status"] = "running"
+        restored_metadata.pop("duration_seconds", None)
+        metadata.update(restored_metadata)
+        metadata["resumed_from_step"] = resume_from
+
+        plan: List[PlanStep] = [
+            PlanStep(
+                step_number=int(item.get("step_number", index + 1)),
+                action=str(item.get("action", "")),
+                reason=str(item.get("reason", "")),
+                completed=bool(item.get("completed", False)),
+                result=item.get("result"),
+            )
+            for index, item in enumerate(resume_state.plan)
+        ]
+        if plan and self.planner:
+            self.planner.current_plan = plan
+        if resume_state.compressor_state and self.compressor:
+            self.compressor.restore_state(resume_state.compressor_state)
+        if resume_state.reflexion_memory:
+            self.reflexion_memory = EpisodicMemory.from_dict(resume_state.reflexion_memory)
+        self._warn_on_config_mismatch(resume_state.agent_config)
+        return plan, resume_from
+
+    def _warn_on_config_mismatch(self, saved_config: Dict[str, Any]) -> None:
+        current = {
+            "temperature": self.temperature,
+            "model": getattr(self.client, "model", ""),
+            "enable_planning": self.enable_planning,
+            "enable_compression": self.enable_compression,
+            "enable_edit_guard": self.enable_edit_guard,
+            "max_observation_chars": self.max_observation_chars,
+            "context_token_budget": self.context_token_budget,
+        }
+        for key, value in current.items():
+            saved = saved_config.get(key)
+            if saved is not None and saved != value:
+                print(f"[warn] resume 配置不一致：{key} checkpoint={saved} 当前={value}")
+
+    def _save_checkpoint_snapshot(
+        self,
+        path: Path,
+        *,
+        task: str,
+        step_count: int,
+        steps: List[Step],
+        metadata: Dict[str, Any],
+        plan: List[PlanStep],
+        limit: int,
+    ) -> None:
+        checkpoint = RunCheckpoint(
+            task=task,
+            step_count=step_count,
+            conversation_history=[dict(message) for message in self.conversation_history],
+            steps=[dict(step.__dict__) for step in steps],
+            metadata=json.loads(json.dumps(metadata, ensure_ascii=False, default=str)),
+            plan=[
+                {
+                    "step_number": step.step_number,
+                    "action": step.action,
+                    "reason": step.reason,
+                    "completed": step.completed,
+                    "result": step.result,
+                }
+                for step in plan
+            ],
+            compressor_state=self.compressor.export_state() if self.compressor else None,
+            reflexion_memory=(
+                self.reflexion_memory.to_dict() if len(self.reflexion_memory) else None
+            ),
+            agent_config={
+                "max_steps": limit,
+                "temperature": self.temperature,
+                "model": getattr(self.client, "model", ""),
+                "enable_planning": self.enable_planning,
+                "enable_compression": self.enable_compression,
+                "enable_edit_guard": self.enable_edit_guard,
+                "max_observation_chars": self.max_observation_chars,
+                "context_token_budget": self.context_token_budget,
+            },
+            cwd=str(Path.cwd()),
+        )
+        try:
+            save_checkpoint(path, checkpoint)
+        except OSError as exc:
+            print(f"[warn] checkpoint 保存失败：{exc}")
+            return
+        if self.trace_writer:
+            self.trace_writer.record(
+                "checkpoint_saved",
+                {"step_number": step_count, "path": str(path)},
+            )
+
+    def _backup_before_write(
+        self, action_input: Any, metadata: Dict[str, Any], step_num: int, run_token: str
+    ) -> None:
+        """写入类工具执行前备份原文件（尽力而为，失败不影响任务）。"""
+        if not isinstance(action_input, dict):
+            return
+        path = action_input.get("path")
+        if not isinstance(path, str) or not path:
+            return
+        backup_path = backup_file(path, run_id=run_token, step=step_num)
+        if backup_path is None:
+            return
+        metadata["backup_count"] += 1
+        metadata["backup_dir"] = str(backup_path.parent)
+        if self.trace_writer:
+            self.trace_writer.record(
+                "file_backup",
+                {
+                    "step_number": step_num,
+                    "path": path,
+                    "backup_path": str(backup_path),
+                },
+            )
+
+    def _bound_observation(
+        self,
+        observation: Any,
+        *,
+        action: str,
+        action_input: Any,
+        metadata: Dict[str, Any],
+        step_num: int,
+    ) -> str:
+        """截断超长观察并记录审计信息；模型、历史与 trace 看到同一份文本。"""
+        result = truncate_observation(
+            str(observation),
+            max_chars=self.max_observation_chars,
+            action=action,
+            action_input=action_input,
+        )
+        if result.truncated:
+            metadata["truncation_count"] += 1
+            metadata["truncated_chars_saved"] += result.original_chars - result.kept_chars
+            if self.trace_writer:
+                self.trace_writer.record(
+                    "observation_truncated",
+                    {
+                        "step_number": step_num,
+                        "action": action,
+                        "original_chars": result.original_chars,
+                        "kept_chars": result.kept_chars,
+                        "original_lines": result.original_lines,
+                    },
+                )
+        return result.text
+
     @staticmethod
     def _is_failure_observation(observation: str) -> bool:
         failure_markers = [
@@ -1120,6 +1602,30 @@ class ReactAgent:
                 metadata["replan_skipped_count"] += 1
                 if decision.strategy == "replan_budget_exhausted":
                     metadata["replan_maxed_count"] += 1
+                return plan
+        else:
+            # 非 adaptive 默认路径此前没有任何预算：每个失败观察都会触发一次
+            # 完整的 planner LLM 调用。这里加一道成本护栏。
+            budget = self.max_replans if self.max_replans >= 0 else self.DEFAULT_REPLAN_BUDGET
+            if int(metadata.get("replan_count", 0)) >= budget:
+                metadata["replan_skipped_count"] += 1
+                metadata["replan_budget_exhausted_count"] = (
+                    int(metadata.get("replan_budget_exhausted_count", 0)) + 1
+                )
+                if self.trace_writer:
+                    self.trace_writer.record(
+                        "replan_decision",
+                        {
+                            "step_number": step_number,
+                            "action": action,
+                            "should_replan": False,
+                            "strategy": "replan_budget_exhausted",
+                            "reason": (
+                                "Default replan budget exhausted "
+                                f"({metadata.get('replan_count', 0)}/{budget})."
+                            ),
+                        },
+                    )
                 return plan
 
         try:

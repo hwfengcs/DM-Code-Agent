@@ -26,6 +26,8 @@ from dm_agent import (
     default_tools,
     PROVIDER_DEFAULTS,
 )
+from dm_agent.core.checkpoint import RunCheckpoint, load_checkpoint
+from dm_agent.core.reflexion import EpisodicMemory
 from dm_agent.mcp import MCPManager, load_mcp_config
 from dm_agent.skills import SkillManager
 from dm_agent.tracing import TraceWriter
@@ -81,6 +83,10 @@ class Config:
     max_steps: int = 100
     temperature: float = 0.7
     show_steps: bool = False
+    max_observation_chars: int = 8000
+    context_token_budget: int = 24000
+    enable_edit_guard: bool = True
+    llm_max_retries: int = 2
     enable_reflexion: bool = False
     max_trials: int = 3
     enable_critic: bool = False
@@ -88,6 +94,12 @@ class Config:
     max_replans: int = -1
     enable_repeated_failure_policy_experiment: bool = False
     enable_evolution: bool = False
+    enable_memory_hygiene: bool = False
+    enable_llm_compression: bool = False
+    enable_circuit_breaker: bool = False
+    circuit_breaker_threshold: int = 3
+    circuit_breaker_cooldown: int = 5
+    reflexion_memory_file: str = ""
 
 
 # 配置文件路径
@@ -425,6 +437,10 @@ def save_config_to_file(config: Config) -> None:
             "max_steps": config.max_steps,
             "temperature": config.temperature,
             "show_steps": config.show_steps,
+            "max_observation_chars": config.max_observation_chars,
+            "context_token_budget": config.context_token_budget,
+            "enable_edit_guard": config.enable_edit_guard,
+            "llm_max_retries": config.llm_max_retries,
             "enable_reflexion": config.enable_reflexion,
             "max_trials": config.max_trials,
             "enable_critic": config.enable_critic,
@@ -434,6 +450,12 @@ def save_config_to_file(config: Config) -> None:
                 config.enable_repeated_failure_policy_experiment
             ),
             "enable_evolution": config.enable_evolution,
+            "enable_memory_hygiene": config.enable_memory_hygiene,
+            "enable_llm_compression": config.enable_llm_compression,
+            "enable_circuit_breaker": config.enable_circuit_breaker,
+            "circuit_breaker_threshold": config.circuit_breaker_threshold,
+            "circuit_breaker_cooldown": config.circuit_breaker_cooldown,
+            "reflexion_memory_file": config.reflexion_memory_file,
         }
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
@@ -466,6 +488,9 @@ def resolve_advanced_features(config: Config) -> Dict[str, bool]:
         "adaptive_replanning": adaptive_replanning,
         "repeated_failure_policy_experiment": repeated_failure_policy,
         "evolution": config.enable_evolution,
+        "memory_hygiene": config.enable_memory_hygiene,
+        "llm_compression": config.enable_llm_compression,
+        "circuit_breaker": config.enable_circuit_breaker,
     }
 
 
@@ -480,6 +505,9 @@ def format_advanced_feature_status(config: Config) -> str:
             ("adaptive_replanning", "adaptive-replan"),
             ("repeated_failure_policy_experiment", "loop-break"),
             ("evolution", "evolution"),
+            ("memory_hygiene", "memory-hygiene"),
+            ("llm_compression", "llm-compression"),
+            ("circuit_breaker", "circuit-breaker"),
         ]
         if advanced[key]
     ]
@@ -492,6 +520,20 @@ def validate_feature_args(args: argparse.Namespace) -> str:
         return "--max-trials must be at least 1."
     if args.max_replans < -1:
         return "--max-replans must be -1 or greater."
+    if args.max_observation_chars != 0 and args.max_observation_chars < 200:
+        return "--max-observation-chars must be 0 (disabled) or at least 200."
+    if args.context_token_budget < 0:
+        return "--context-token-budget must be 0 (disabled) or greater."
+    if args.llm_max_retries < 0:
+        return "--llm-max-retries must be 0 or greater."
+    if args.circuit_breaker_threshold < 2:
+        return "--circuit-breaker-threshold must be at least 2."
+    if args.circuit_breaker_cooldown < 1:
+        return "--circuit-breaker-cooldown must be at least 1."
+    if args.enable_reflexion and (
+        getattr(args, "checkpoint", None) or getattr(args, "resume", None)
+    ):
+        return "--checkpoint/--resume 暂不支持与 --enable-reflexion 同时使用。"
     if (
         args.enable_repeated_failure_policy_experiment
         and not args.enable_adaptive_replanning
@@ -558,6 +600,31 @@ def parse_args(argv: Any) -> argparse.Namespace:
         help="打印智能体执行的中间 ReAct 步骤。",
     )
     parser.add_argument(
+        "--max-observation-chars",
+        type=int,
+        default=saved_config.get("max_observation_chars", 8000),
+        help="单条工具观察的字符上限，超出部分截断并附分页提示；0 表示不截断（默认：8000）。",
+    )
+    parser.add_argument(
+        "--context-token-budget",
+        type=int,
+        default=saved_config.get("context_token_budget", 24000),
+        help="对话历史的估算 token 预算，超限提前触发本地压缩；0 表示只按消息节奏压缩（默认：24000）。",
+    )
+    parser.add_argument(
+        "--disable-edit-guard",
+        dest="enable_edit_guard",
+        action="store_false",
+        default=saved_config.get("enable_edit_guard", True),
+        help="关闭 read-before-edit 守卫（默认开启：edit_file 前必须读过目标文件，写后需重读）。",
+    )
+    parser.add_argument(
+        "--llm-max-retries",
+        type=int,
+        default=saved_config.get("llm_max_retries", 2),
+        help="LLM 瞬时故障（超时/断连/429/5xx）的统一重试次数；0 表示不重试（默认：2）。",
+    )
+    parser.add_argument(
         "--enable-reflexion",
         action="store_true",
         default=saved_config.get("enable_reflexion", False),
@@ -600,6 +667,36 @@ def parse_args(argv: Any) -> argparse.Namespace:
         help="启用实验性进化恢复模式：自动打开自适应重规划和重复失败跳出策略。默认关闭。",
     )
     parser.add_argument(
+        "--enable-memory-hygiene",
+        action="store_true",
+        default=saved_config.get("enable_memory_hygiene", False),
+        help="启用记忆卫生：成功后降权相关失败记忆，并把召回锚定到任务原文。默认关闭。",
+    )
+    parser.add_argument(
+        "--enable-llm-compression",
+        action="store_true",
+        default=saved_config.get("enable_llm_compression", False),
+        help="启用 LLM 摘要压缩：折叠旧上下文时额外生成一条摘要记忆（消耗模型调用）。默认关闭。",
+    )
+    parser.add_argument(
+        "--enable-circuit-breaker",
+        action="store_true",
+        default=saved_config.get("enable_circuit_breaker", False),
+        help="启用工具熔断：同一工具同类错误连续失败达到阈值后临时禁用并引导换路。默认关闭。",
+    )
+    parser.add_argument(
+        "--circuit-breaker-threshold",
+        type=int,
+        default=saved_config.get("circuit_breaker_threshold", 3),
+        help="触发熔断所需的连续失败次数（默认：3，最小 2）。",
+    )
+    parser.add_argument(
+        "--circuit-breaker-cooldown",
+        type=int,
+        default=saved_config.get("circuit_breaker_cooldown", 5),
+        help="熔断后允许探针重试前的冷却步数（默认：5，最小 1）。",
+    )
+    parser.add_argument(
         "--interactive",
         action="store_true",
         help="启动交互式菜单模式。",
@@ -608,6 +705,21 @@ def parse_args(argv: Any) -> argparse.Namespace:
         "--trace",
         type=Path,
         help="将本次任务的结构化执行轨迹写入 JSONL 文件。",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        type=Path,
+        help="每步结束后把 run 状态原子写入该 JSON 文件，用于崩溃后 --resume 续跑。",
+    )
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        help="从 --checkpoint 生成的文件恢复运行；任务参数可省略（取 checkpoint 内任务）。",
+    )
+    parser.add_argument(
+        "--reflexion-memory-file",
+        default=saved_config.get("reflexion_memory_file", ""),
+        help="Reflexion 经验教训的持久化文件（可选）；启动时加载，结束时保存。",
     )
     parser.add_argument(
         "--trace-llm-io",
@@ -1396,6 +1508,7 @@ def create_agent(
     step_callback: Any = None,
     skill_manager: SkillManager | None = None,
     trace_writer: TraceWriter | None = None,
+    reflexion_memory: EpisodicMemory | None = None,
 ) -> ReactAgent:
     """Create a ReactAgent with the CLI's default-off advanced switches."""
     advanced = resolve_advanced_features(config)
@@ -1407,13 +1520,52 @@ def create_agent(
         step_callback=step_callback,
         skill_manager=skill_manager,
         trace_writer=trace_writer,
+        max_observation_chars=config.max_observation_chars,
+        context_token_budget=config.context_token_budget,
+        enable_edit_guard=config.enable_edit_guard,
+        enable_memory_hygiene=advanced["memory_hygiene"],
+        enable_llm_compression=advanced["llm_compression"],
+        enable_circuit_breaker=advanced["circuit_breaker"],
+        circuit_breaker_threshold=config.circuit_breaker_threshold,
+        circuit_breaker_cooldown=config.circuit_breaker_cooldown,
         enable_reflexion=advanced["reflexion"],
         max_trials=config.max_trials,
+        reflexion_memory=reflexion_memory,
         critic=CriticAgent(client) if advanced["critic"] else None,
         enable_adaptive_replanning=advanced["adaptive_replanning"],
         max_replans=config.max_replans,
         enable_repeated_failure_policy_experiment=(advanced["repeated_failure_policy_experiment"]),
     )
+
+
+def load_reflexion_memory_file(path_value: str) -> EpisodicMemory | None:
+    """从文件加载持久化的 Reflexion 经验；文件不存在时返回空记忆。"""
+    if not path_value:
+        return None
+    path = Path(path_value)
+    if not path.exists():
+        return EpisodicMemory()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return EpisodicMemory.from_dict(data)
+    except (OSError, ValueError) as e:
+        UI.status("warn", "Reflexion 记忆文件加载失败，使用空记忆", str(e))
+        return EpisodicMemory()
+
+
+def save_reflexion_memory_file(path_value: str, memory: EpisodicMemory | None) -> None:
+    if not path_value or memory is None:
+        return
+    path = Path(path_value)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+        tmp_path.write_text(
+            json.dumps(memory.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        os.replace(tmp_path, path)
+    except OSError as e:
+        UI.status("warn", "Reflexion 记忆文件保存失败", str(e))
 
 
 def format_agent_context_status(agent: ReactAgent) -> str:
@@ -1442,6 +1594,7 @@ def multi_turn_conversation(
             api_key=config.api_key,
             model=config.model,
             base_url=config.base_url,
+            respond_retries=config.llm_max_retries,
         )
         step_callback = create_step_callback(config.show_steps)
 
@@ -1528,6 +1681,7 @@ def execute_task(
             api_key=config.api_key,
             model=config.model,
             base_url=config.base_url,
+            respond_retries=config.llm_max_retries,
         )
 
         # 创建步骤回调函数
@@ -1657,6 +1811,8 @@ def run_single_task(
     trace_path: Path | None = None,
     trace_llm_io: bool = False,
     report_path: Path | None = None,
+    checkpoint_path: Path | None = None,
+    resume_state: RunCheckpoint | None = None,
 ) -> int:
     """运行单个任务（命令行模式）"""
     # 初始化 MCP
@@ -1683,6 +1839,7 @@ def run_single_task(
             api_key=config.api_key,
             model=config.model,
             base_url=config.base_url,
+            respond_retries=config.llm_max_retries,
         )
         advanced = resolve_advanced_features(config)
         if trace_path:
@@ -1696,6 +1853,9 @@ def run_single_task(
                     "max_steps": config.max_steps,
                     "temperature": config.temperature,
                     "show_steps": config.show_steps,
+                    "max_observation_chars": config.max_observation_chars,
+                    "context_token_budget": config.context_token_budget,
+                    "edit_guard_enabled": config.enable_edit_guard,
                     "mcp_started_count": started_count,
                     "mcp_tool_count": len(mcp_tools),
                     "skill_count": skill_count,
@@ -1715,6 +1875,7 @@ def run_single_task(
         # 创建步骤回调函数
         step_callback = create_step_callback(config.show_steps)
 
+        reflexion_memory = load_reflexion_memory_file(config.reflexion_memory_file)
         agent = create_agent(
             config,
             client,
@@ -1722,6 +1883,7 @@ def run_single_task(
             step_callback=step_callback,
             skill_manager=skill_manager,
             trace_writer=trace_writer,
+            reflexion_memory=reflexion_memory,
         )
 
         UI.panel(
@@ -1737,8 +1899,9 @@ def run_single_task(
         )
 
         git_status_before = collect_git_status()
-        result = agent.run(task)
+        result = agent.run(task, checkpoint_path=checkpoint_path, resume_state=resume_state)
         git_status_after = collect_git_status()
+        save_reflexion_memory_file(config.reflexion_memory_file, agent.reflexion_memory)
         if report_path:
             write_run_report(
                 report_path,
@@ -1825,6 +1988,10 @@ def main(argv: Any = None) -> int:
         max_steps=args.max_steps,
         temperature=args.temperature,
         show_steps=args.show_steps,
+        max_observation_chars=args.max_observation_chars,
+        context_token_budget=args.context_token_budget,
+        enable_edit_guard=args.enable_edit_guard,
+        llm_max_retries=args.llm_max_retries,
         enable_reflexion=args.enable_reflexion,
         max_trials=args.max_trials,
         enable_critic=args.enable_critic,
@@ -1832,7 +1999,31 @@ def main(argv: Any = None) -> int:
         max_replans=args.max_replans,
         enable_repeated_failure_policy_experiment=(args.enable_repeated_failure_policy_experiment),
         enable_evolution=args.enable_evolution,
+        enable_memory_hygiene=args.enable_memory_hygiene,
+        enable_llm_compression=args.enable_llm_compression,
+        enable_circuit_breaker=args.enable_circuit_breaker,
+        circuit_breaker_threshold=args.circuit_breaker_threshold,
+        circuit_breaker_cooldown=args.circuit_breaker_cooldown,
+        reflexion_memory_file=str(args.reflexion_memory_file or ""),
     )
+
+    # --resume：从 checkpoint 恢复任务（任务参数可省略）
+    resume_state: RunCheckpoint | None = None
+    if args.resume:
+        try:
+            resume_state = load_checkpoint(args.resume)
+        except ValueError as e:
+            print(UI.paint("[ERR] checkpoint 加载失败", Fore.RED, bright=True), file=sys.stderr)
+            print(str(e), file=sys.stderr)
+            return 2
+        if args.task and args.task.strip() != resume_state.task.strip():
+            print(
+                UI.paint("[ERR] --resume 的任务与命令行任务不一致", Fore.RED, bright=True),
+                file=sys.stderr,
+            )
+            print("省略任务参数即可沿用 checkpoint 中的原始任务。", file=sys.stderr)
+            return 2
+        args.task = resume_state.task
 
     # 如果提供了任务参数，直接执行任务
     if args.task:
@@ -1842,6 +2033,8 @@ def main(argv: Any = None) -> int:
             trace_path=args.trace,
             trace_llm_io=args.trace_llm_io,
             report_path=args.report,
+            checkpoint_path=args.checkpoint,
+            resume_state=resume_state,
         )
 
     # 如果指定了交互模式或没有提供任务，进入交互式菜单
