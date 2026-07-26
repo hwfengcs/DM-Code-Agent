@@ -31,7 +31,14 @@ class DeepSeekClient(BaseLLMClient):
         retry_backoff: float = 1.0,
         retry_status_codes: Optional[Iterable[int]] = None,
     ) -> None:
-        super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
+        super().__init__(
+            api_key,
+            model=model,
+            base_url=base_url,
+            timeout=timeout,
+            # DeepSeek 自带按状态码的内部重试循环；关闭基类重试避免双重退避。
+            respond_retries=0,
+        )
         if max_retries < 0:
             raise ValueError("max_retries must be >= 0.")
         if retry_backoff < 0:

@@ -60,6 +60,8 @@ def create_llm_client(
             "base_url": base_url or "",  # OpenAI SDK 不需要 base_url
             "timeout": timeout,
         }
+        if "respond_retries" in kwargs:
+            params["respond_retries"] = kwargs["respond_retries"]
         return OpenAIClient(**params)
 
     elif provider_lower == "claude":
@@ -71,6 +73,8 @@ def create_llm_client(
         }
         if "anthropic_version" in kwargs:
             params["anthropic_version"] = kwargs["anthropic_version"]
+        if "respond_retries" in kwargs:
+            params["respond_retries"] = kwargs["respond_retries"]
         return ClaudeClient(**params)
 
     elif provider_lower == "gemini":
@@ -80,6 +84,8 @@ def create_llm_client(
             "base_url": base_url or "",  # Gemini 不需要 base_url
             "timeout": timeout,
         }
+        if "respond_retries" in kwargs:
+            params["respond_retries"] = kwargs["respond_retries"]
         return GeminiClient(**params)
 
     else:

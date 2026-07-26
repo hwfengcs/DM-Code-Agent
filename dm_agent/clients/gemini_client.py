@@ -11,7 +11,7 @@ try:
 except ImportError:
     GENAI_AVAILABLE = False
 
-from .base_client import BaseLLMClient, LLMError
+from .base_client import BaseLLMClient, LLMError, classify_retryable_exception
 
 
 class GeminiClient(BaseLLMClient):
@@ -24,11 +24,18 @@ class GeminiClient(BaseLLMClient):
         model: str = "gemini-2.5-flash",
         base_url: str = "",  # Gemini 不需要 base_url
         timeout: int = 600,
+        respond_retries: int = 2,
     ) -> None:
         if not GENAI_AVAILABLE:
             raise ImportError("google-genai 未安装。请运行: pip install google-genai")
 
-        super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
+        super().__init__(
+            api_key,
+            model=model,
+            base_url=base_url,
+            timeout=timeout,
+            respond_retries=respond_retries,
+        )
 
         # 创建 genai 客户端实例
         self.client = genai.Client(api_key=self.api_key)
@@ -51,7 +58,7 @@ class GeminiClient(BaseLLMClient):
             return {"response": response}
 
         except Exception as e:
-            raise LLMError(f"Gemini API 调用失败: {e}")
+            raise LLMError(f"Gemini API 调用失败: {e}", retryable=classify_retryable_exception(e))
 
     def extract_text(self, data: Dict[str, Any]) -> str:
         """从 Gemini 响应中提取文本内容。"""

@@ -29,6 +29,8 @@ class MCPServerConfig:
     env: Optional[Dict[str, str]] = None
     # 服务器是否启用
     enabled: bool = True
+    # 单次 JSON-RPC 请求的超时秒数
+    timeout: float = 5.0
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "MCPServerConfig":
@@ -54,6 +56,7 @@ class MCPServerConfig:
             args=data.get("args", []),
             env=data.get("env"),
             enabled=data.get("enabled", True),
+            timeout=float(data.get("timeout", 5.0)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -77,6 +80,8 @@ class MCPServerConfig:
             result["env"] = self.env
         if not self.enabled:
             result["enabled"] = self.enabled
+        if self.timeout != 5.0:
+            result["timeout"] = self.timeout
         return result
 
 

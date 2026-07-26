@@ -340,6 +340,103 @@ def test_react_agent_replans_after_tool_failure():
     assert result["metadata"]["replan_count"] == 1
 
 
+def test_task_planner_replan_carries_completed_progress():
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "read_file", "reason": "inspect"},
+                        {"step": 2, "action": "edit_file", "reason": "fix"},
+                        {"step": 3, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "run_tests", "reason": "verify differently"},
+                        {"step": 2, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+        ]
+    )
+    tools = [
+        Tool("read_file", "Read", lambda arguments: "content"),
+        Tool("edit_file", "Edit", lambda arguments: "edited"),
+        Tool("run_tests", "Test", lambda arguments: "passed"),
+        Tool("task_complete", "Finish", lambda arguments: "done"),
+    ]
+    planner = TaskPlanner(client, tools)
+    plan = planner.plan("fix a bug")
+    planner.mark_completed(1, "read ok")
+
+    completed = [step for step in plan if step.completed]
+    new_plan = planner.replan("fix a bug", completed, "edit went sideways")
+
+    assert [step.action for step in new_plan] == ["read_file", "run_tests", "task_complete"]
+    assert [step.step_number for step in new_plan] == [1, 2, 3]
+    assert new_plan[0].completed is True
+    assert new_plan[1].completed is False
+    assert planner.get_next_step().action == "run_tests"
+    # Progress display keeps completed work visible after the replan.
+    assert "1/3" in planner.get_progress()
+
+
+def test_react_agent_default_replan_path_has_budget(tmp_path):
+    trace_path = tmp_path / "budget.jsonl"
+    # Initial plan + first agent action, then one replan per failure until the
+    # default budget (patched to 1) is exhausted, then a final completion.
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "explode", "reason": "trigger failure"},
+                        {"step": 2, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            json.dumps({"thought": "Try once.", "action": "explode", "action_input": {}}),
+            json.dumps({"plan": [{"step": 1, "action": "explode", "reason": "retry"}]}),
+            json.dumps({"thought": "Try twice.", "action": "explode", "action_input": {}}),
+            json.dumps(
+                {
+                    "thought": "Stop retrying.",
+                    "action": "task_complete",
+                    "action_input": {"message": "stopped within budget"},
+                }
+            ),
+        ]
+    )
+    writer = TraceWriter(trace_path)
+    agent = ReactAgent(
+        client,
+        [
+            Tool("explode", "Fail", lambda arguments: (_ for _ in ()).throw(RuntimeError("boom"))),
+            Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done")),
+        ],
+        enable_planning=True,
+        enable_compression=False,
+        trace_writer=writer,
+    )
+    agent.DEFAULT_REPLAN_BUDGET = 1
+
+    result = agent.run("stay within default replan budget")
+    writer.close()
+
+    assert result["final_answer"] == "stopped within budget"
+    assert result["metadata"]["replan_count"] == 1
+    assert result["metadata"]["replan_budget_exhausted_count"] == 1
+    decisions = [
+        event["payload"]
+        for event in load_trace_events(trace_path)
+        if event["event"] == "replan_decision"
+    ]
+    assert decisions[-1]["strategy"] == "replan_budget_exhausted"
+
+
 def test_adaptive_replan_policy_classifies_failure_signals():
     policy = AdaptiveReplanPolicy()
 

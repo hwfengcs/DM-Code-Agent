@@ -2,10 +2,38 @@
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from typing import Any, Dict
 
 from .base import _require_str
+
+
+def _atomic_write_text(path: Path, content: str) -> str:
+    """原子写入：同目录临时文件 + os.replace，避免中断留下半写文件。
+
+    Windows 上目标被占用时 os.replace 可能抛 PermissionError；小睡后重试一次，
+    仍失败则回退普通写入并在返回值中注明。返回空串表示原子写成功。
+    """
+    tmp_path = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+    try:
+        tmp_path.write_text(content, encoding="utf-8")
+        try:
+            os.replace(tmp_path, path)
+            return ""
+        except PermissionError:
+            time.sleep(0.05)
+            os.replace(tmp_path, path)
+            return ""
+    except OSError:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
+        path.write_text(content, encoding="utf-8")
+        return " (non-atomic fallback)"
 
 
 def create_file(arguments: Dict[str, Any]) -> str:
@@ -17,8 +45,8 @@ def create_file(arguments: Dict[str, Any]) -> str:
 
     path = Path(path_value)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
-    return f"已将 {len(content)} 个字符写入 {path}。"
+    note = _atomic_write_text(path, content)
+    return f"已将 {len(content)} 个字符写入 {path}。{note}".rstrip()
 
 
 def read_file(arguments: Dict[str, Any]) -> str:
@@ -155,7 +183,7 @@ def edit_file(arguments: Dict[str, Any]) -> str:
             return f"行号 {line_start} 超出文件范围（共 {len(lines)} 行）。"
 
         lines.insert(start_idx, content)
-        path.write_text("".join(lines), encoding="utf-8")
+        _atomic_write_text(path, "".join(lines))
         return f"已在 {path} 的第 {line_start} 行插入 {len(content)} 个字符。"
 
     elif operation in ["replace", "delete"]:
@@ -177,12 +205,12 @@ def edit_file(arguments: Dict[str, Any]) -> str:
                 content += "\n"
 
             lines[start_idx:end_idx] = [content]
-            path.write_text("".join(lines), encoding="utf-8")
+            _atomic_write_text(path, "".join(lines))
             return f"已替换 {path} 的第 {line_start}-{line_end} 行。"
 
         else:  # delete
             del lines[start_idx:end_idx]
-            path.write_text("".join(lines), encoding="utf-8")
+            _atomic_write_text(path, "".join(lines))
             return f"已删除 {path} 的第 {line_start}-{line_end} 行。"
 
 

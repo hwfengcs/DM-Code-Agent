@@ -29,6 +29,8 @@ class MCPManager:
         self.config = config or MCPConfig()
         self.clients: Dict[str, MCPClient] = {}
         self._tools_cache: List[Tool] = []
+        # 每个服务器的自动重连次数（用于审计与测试）
+        self.reconnect_counts: Dict[str, int] = {}
 
     def start_all(self) -> int:
         """
@@ -90,7 +92,11 @@ class MCPManager:
 
         # 创建并启动客户端
         client = MCPClient(
-            name=name, command=server_config.command, args=server_config.args, env=server_config.env
+            name=name,
+            command=server_config.command,
+            args=server_config.args,
+            env=server_config.env,
+            request_timeout=server_config.timeout,
         )
 
         if client.start():
@@ -215,9 +221,16 @@ class MCPManager:
             """
             client = self.clients.get(server_name)
             if not client or not client.is_running():
-                return f"❌ MCP 服务器 '{server_name}' 未运行"
+                client = self._try_reconnect(server_name)
+                if client is None:
+                    return f"❌ MCP 服务器 '{server_name}' 未运行"
 
             result = client.call_tool(tool_name, arguments)
+            if result is None and not client.is_running():
+                # 调用期间进程死亡：单次重连后重试一次。
+                client = self._try_reconnect(server_name)
+                if client is not None:
+                    result = client.call_tool(tool_name, arguments)
             if result is None:
                 return f"❌ 调用 MCP 工具 '{tool_name}' 失败"
 
@@ -226,6 +239,18 @@ class MCPManager:
         return Tool(
             name=f"mcp_{server_name}_{tool_name}", description=full_description, runner=runner
         )
+
+    def _try_reconnect(self, server_name: str) -> Optional[MCPClient]:
+        """对已配置且启用的服务器做单次重连；成功返回新客户端，失败返回 None。"""
+        server_config = self.config.servers.get(server_name)
+        if not server_config or not server_config.enabled:
+            return None
+        self.reconnect_counts[server_name] = self.reconnect_counts.get(server_name, 0) + 1
+        print(f"🔁 尝试重连 MCP 服务器 '{server_name}'...")
+        self.stop_server(server_name)
+        if self.start_server(server_name):
+            return self.clients.get(server_name)
+        return None
 
     def get_tools(self) -> List[Tool]:
         """

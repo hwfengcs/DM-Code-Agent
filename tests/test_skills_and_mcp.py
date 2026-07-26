@@ -68,3 +68,82 @@ def test_mcp_config_round_trip_and_enabled_filter():
 
     assert set(restored.servers) == {"enabled", "disabled"}
     assert list(restored.get_enabled_servers()) == ["enabled"]
+
+
+def test_mcp_config_parses_and_round_trips_timeout():
+    config = MCPConfig.from_dict(
+        {
+            "mcpServers": {
+                "slow": {"command": "npx", "args": ["tool"], "timeout": 30},
+                "default": {"command": "npx", "args": ["tool"]},
+            }
+        }
+    )
+
+    assert config.servers["slow"].timeout == 30.0
+    assert config.servers["default"].timeout == 5.0
+
+    data = config.to_dict()
+    assert data["mcpServers"]["slow"]["timeout"] == 30.0
+    assert "timeout" not in data["mcpServers"]["default"]
+
+
+def test_mcp_tool_wrapper_reconnects_once_when_server_dies():
+    from dm_agent.mcp.manager import MCPManager
+
+    class StubClient:
+        def __init__(self, *, running=True, result="ok"):
+            self.running = running
+            self.result = result
+            self.calls = 0
+
+        def is_running(self):
+            return self.running
+
+        def call_tool(self, tool_name, arguments):
+            self.calls += 1
+            return self.result
+
+        def stop(self):
+            self.running = False
+
+    manager = MCPManager(
+        MCPConfig(servers={"srv": MCPServerConfig("srv", "echo", ["hi"], enabled=True)})
+    )
+    dead = StubClient(running=False)
+    fresh = StubClient(running=True, result="reconnected result")
+    manager.clients["srv"] = dead
+
+    def fake_start_server(name):
+        manager.clients[name] = fresh
+        return True
+
+    manager.start_server = fake_start_server  # type: ignore[method-assign]
+
+    tool = manager._create_tool_wrapper(
+        server_name="srv", tool_name="ping", description="ping", input_schema={}
+    )
+    observation = tool.execute({})
+
+    assert observation == "reconnected result"
+    assert manager.reconnect_counts["srv"] == 1
+    assert fresh.calls == 1
+    assert dead.calls == 0
+
+
+def test_mcp_tool_wrapper_reports_when_reconnect_fails():
+    from dm_agent.mcp.manager import MCPManager
+
+    manager = MCPManager(
+        MCPConfig(servers={"srv": MCPServerConfig("srv", "echo", ["hi"], enabled=True)})
+    )
+
+    manager.start_server = lambda name: False  # type: ignore[method-assign]
+
+    tool = manager._create_tool_wrapper(
+        server_name="srv", tool_name="ping", description="ping", input_schema={}
+    )
+    observation = tool.execute({})
+
+    assert "未运行" in observation
+    assert manager.reconnect_counts["srv"] == 1

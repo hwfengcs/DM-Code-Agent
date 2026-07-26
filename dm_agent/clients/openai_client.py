@@ -11,7 +11,7 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-from .base_client import BaseLLMClient, LLMError
+from .base_client import BaseLLMClient, LLMError, classify_retryable_exception
 
 
 class OpenAIClient(BaseLLMClient):
@@ -24,11 +24,18 @@ class OpenAIClient(BaseLLMClient):
         model: str = "gpt-5",
         base_url: str = "",  # OpenAI SDK 不需要 base_url
         timeout: int = 600,
+        respond_retries: int = 2,
     ) -> None:
         if not OPENAI_AVAILABLE:
             raise ImportError("openai 未安装。请运行: pip install openai")
 
-        super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
+        super().__init__(
+            api_key,
+            model=model,
+            base_url=base_url,
+            timeout=timeout,
+            respond_retries=respond_retries,
+        )
 
         # 创建 OpenAI 客户端实例
         # 官方 SDK 不需要手动设置 base_url
@@ -58,7 +65,7 @@ class OpenAIClient(BaseLLMClient):
             return {"response": response}
 
         except Exception as e:
-            raise LLMError(f"OpenAI API 调用失败: {e}")
+            raise LLMError(f"OpenAI API 调用失败: {e}", retryable=classify_retryable_exception(e))
 
     def extract_text(self, data: Dict[str, Any]) -> str:
         """从 OpenAI 响应中提取文本内容。"""

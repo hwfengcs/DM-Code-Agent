@@ -463,17 +463,21 @@ class TaskPlanner:
 
         try:
             plan_data = self._parse_plan_response(response)
-            steps = []
-            for item in plan_data.get("plan", []):
+            # 保留已完成步骤的进度，新步骤编号顺延——重规划不再把已完成
+            # 工作显示为待办，进度统计跨 replan 连续。
+            carried = [step for step in completed_steps if step.completed]
+            next_number = max((step.step_number for step in carried), default=0)
+            steps: List[PlanStep] = []
+            for offset, item in enumerate(plan_data.get("plan", []), start=1):
                 steps.append(
                     PlanStep(
-                        step_number=item["step"],
+                        step_number=next_number + offset,
                         action=item["action"],
                         reason=item["reason"],
                     )
                 )
-            self.current_plan = steps
-            return steps
+            self.current_plan = carried + steps
+            return self.current_plan
         except Exception as e:
             print(f"警告：重新规划失败 - {e}")
             return []

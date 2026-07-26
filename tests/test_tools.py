@@ -4,7 +4,13 @@ from dm_agent.tools import task_complete
 from dm_agent.tools.code_analysis_tools import get_code_metrics, get_function_signature, parse_ast
 from dm_agent.tools.code_index_tools import build_code_index, dependency_graph, search_symbol
 from dm_agent.tools.execution_tools import run_python
-from dm_agent.tools.file_tools import create_file, edit_file, read_file, search_in_file
+from dm_agent.tools.file_tools import (
+    _atomic_write_text,
+    create_file,
+    edit_file,
+    read_file,
+    search_in_file,
+)
 
 
 def test_file_tools_create_read_edit_and_search(tmp_path):
@@ -129,3 +135,34 @@ def test_run_python_accepts_script_args(tmp_path):
     result = run_python({"path": str(script), "args": ["left", "right"]})
     assert "left|right" in result
     assert "returncode: 0" in result
+
+
+def test_atomic_write_replaces_content_without_tmp_residue(tmp_path):
+    target = tmp_path / "atomic.txt"
+    target.write_text("before", encoding="utf-8")
+
+    note = _atomic_write_text(target, "after")
+
+    assert note == ""
+    assert target.read_text(encoding="utf-8") == "after"
+    leftovers = [p.name for p in tmp_path.iterdir() if ".tmp-" in p.name]
+    assert leftovers == []
+
+
+def test_create_and_edit_file_use_atomic_write(tmp_path):
+    target = tmp_path / "sub" / "file.txt"
+    create_file({"path": str(target), "content": "line1\nline2\n"})
+    assert target.read_text(encoding="utf-8") == "line1\nline2\n"
+
+    edit_file(
+        {
+            "path": str(target),
+            "operation": "replace",
+            "line_start": 1,
+            "line_end": 1,
+            "content": "LINE1",
+        }
+    )
+    assert target.read_text(encoding="utf-8") == "LINE1\nline2\n"
+    leftovers = [p.name for p in target.parent.iterdir() if ".tmp-" in p.name]
+    assert leftovers == []

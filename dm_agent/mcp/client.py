@@ -30,7 +30,12 @@ class MCPClient:
     """
 
     def __init__(
-        self, name: str, command: str, args: List[str], env: Optional[Dict[str, str]] = None
+        self,
+        name: str,
+        command: str,
+        args: List[str],
+        env: Optional[Dict[str, str]] = None,
+        request_timeout: float = 5.0,
     ):
         """
         初始化 MCP 客户端
@@ -40,6 +45,7 @@ class MCPClient:
             command (str): 启动命令（如 'npx'、'python' 等）
             args (List[str]): 命令参数列表（如 ['@playwright/mcp@latest']）
             env (Optional[Dict[str, str]], optional): 环境变量字典，None表示使用默认环境
+            request_timeout (float, optional): 单次 JSON-RPC 请求的超时秒数，默认 5 秒
 
         Examples:
             >>> client = MCPClient("playwright", "npx", ["@playwright/mcp@latest"])
@@ -50,6 +56,7 @@ class MCPClient:
         self.command = command
         self.args = args
         self.env = env
+        self.request_timeout = max(0.1, float(request_timeout))
         self.process: Optional[subprocess.Popen] = None
         self.tools: List[Dict[str, Any]] = []
         self._lock = Lock()
@@ -207,7 +214,8 @@ class MCPClient:
                 self.process.stdin.flush()
 
                 timeout_count = 0
-                while timeout_count < 50:  # 5 秒超时
+                max_polls = max(1, int(self.request_timeout / 0.1))
+                while timeout_count < max_polls:
                     try:
                         response_line = self._stdout_queue.get(timeout=0.1)
                         response = json.loads(response_line)

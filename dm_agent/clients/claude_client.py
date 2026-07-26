@@ -11,7 +11,7 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
-from .base_client import BaseLLMClient, LLMError
+from .base_client import BaseLLMClient, LLMError, classify_retryable_exception
 
 
 class ClaudeClient(BaseLLMClient):
@@ -25,11 +25,18 @@ class ClaudeClient(BaseLLMClient):
         base_url: str = "",  # Claude SDK 不需要 base_url
         timeout: int = 600,
         anthropic_version: str = "2023-06-01",
+        respond_retries: int = 2,
     ) -> None:
         if not ANTHROPIC_AVAILABLE:
             raise ImportError("anthropic 未安装。请运行: pip install anthropic")
 
-        super().__init__(api_key, model=model, base_url=base_url, timeout=timeout)
+        super().__init__(
+            api_key,
+            model=model,
+            base_url=base_url,
+            timeout=timeout,
+            respond_retries=respond_retries,
+        )
         self.anthropic_version = anthropic_version
 
         # 创建 Anthropic 客户端实例
@@ -72,7 +79,7 @@ class ClaudeClient(BaseLLMClient):
             return {"response": response}
 
         except Exception as e:
-            raise LLMError(f"Claude API 调用失败: {e}")
+            raise LLMError(f"Claude API 调用失败: {e}", retryable=classify_retryable_exception(e))
 
     def extract_text(self, data: Dict[str, Any]) -> str:
         """从 Claude 响应中提取文本内容。"""

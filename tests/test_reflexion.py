@@ -8,7 +8,7 @@ from dm_agent.benchmarks.swebench_lite.models import (
     SWEBenchVerification,
 )
 from dm_agent.core.agent import ReactAgent
-from dm_agent.core.reflexion import EpisodicMemory, Reflector
+from dm_agent.core.reflexion import EpisodicMemory, Lesson, Reflector
 from dm_agent.tools.base import Tool
 
 
@@ -179,3 +179,24 @@ def test_swebench_runner_reflexion_retries_after_hidden_failure(
         "Read the failing behavior before editing again."
     ]
     assert result.request_count == 3
+
+
+def test_reflexion_memory_file_roundtrip(tmp_path):
+    from main import load_reflexion_memory_file, save_reflexion_memory_file
+
+    path = tmp_path / "lessons.json"
+    memory = EpisodicMemory()
+    memory.add("Always run the tests before finishing.", metadata={"trial": 1})
+    save_reflexion_memory_file(str(path), memory)
+
+    loaded = load_reflexion_memory_file(str(path))
+    assert loaded is not None
+    assert len(loaded) == 1
+    assert loaded.lessons[0].text == "Always run the tests before finishing."
+    assert isinstance(loaded.lessons[0], Lesson)
+
+    missing = load_reflexion_memory_file(str(tmp_path / "missing.json"))
+    assert isinstance(missing, EpisodicMemory)
+    assert len(missing) == 0
+
+    assert load_reflexion_memory_file("") is None
