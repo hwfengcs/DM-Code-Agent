@@ -279,3 +279,29 @@ This entry is now **frozen** as the P1 harness and Tier-1 baseline record.
 Entry 02 can use the trace taxonomy for Reflexion design and measure relative
 gains against this 0.0% line, but a leaderboard-comparable score should wait
 for Tier-2 Docker verification.
+
+## Errata (2026-07)
+
+The failure-mode analyzer shipped with this baseline matched the agent
+terminal status string `"max_steps"`, but the agent actually writes
+`"max_steps_exceeded"` (and the runner derives
+`agent_status_max_steps_exceeded` as the failure reason). As a result, runs
+that hit the step budget fell through to later rules and were mostly counted
+as `regression` when their patch applied but pass-to-pass tests were not
+fully green.
+
+Impact and scope:
+
+- The **failure-mode distribution above is distorted**: part of the
+  `regression=36` bucket is really `max_steps`. The per-instance
+  `failure_reason` fields in `bench_reports/swebench_lite_baseline.json`
+  were always correct; only the aggregated category table is affected.
+- The **frozen headline numbers are unaffected**: `resolved` /
+  `patch_applied` are computed by the verifier and never pass through
+  `categorize_failure`.
+- The analyzer now accepts both status spellings plus an
+  `agent_status_max_steps*` failure-reason fallback (see
+  `dm_agent/benchmarks/swebench_lite/analyzer.py`). Historical tables in this
+  entry are intentionally left as published; re-run
+  `dm-agent-trace analyze-dir` / the analyzer over the stored raw JSON if you
+  need a corrected distribution.

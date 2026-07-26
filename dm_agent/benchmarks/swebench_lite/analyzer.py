@@ -49,8 +49,12 @@ def categorize_failure(result: SWEBenchResult) -> FailureCategory:
         # Fall through: workspace setup or another upstream issue.
 
     # 3. Agent-side terminal states (signaled by metadata.status / failure_reason).
+    # The agent writes ``max_steps_exceeded`` (core/agent.py); ``max_steps`` is kept
+    # for older traces. failure_reason covers results whose metadata was trimmed.
     status = metadata.get("status")
-    if status == "max_steps":
+    if status in {"max_steps", "max_steps_exceeded"}:
+        return FailureCategory.MAX_STEPS
+    if str(result.failure_reason or "").startswith("agent_status_max_steps"):
         return FailureCategory.MAX_STEPS
     if status in {"parse_error", "agent_status_parse_error"}:
         return FailureCategory.PARSE_ERROR

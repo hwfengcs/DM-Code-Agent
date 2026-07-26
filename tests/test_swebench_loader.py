@@ -237,6 +237,37 @@ def test_categorize_failure_max_steps_metadata() -> None:
     assert categorize_failure(result) is FailureCategory.MAX_STEPS
 
 
+def test_categorize_failure_max_steps_exceeded_status() -> None:
+    """The agent writes ``max_steps_exceeded``; it must not fall through to REGRESSION."""
+    result = _result(
+        metadata={"status": "max_steps_exceeded"},
+        verification=SWEBenchVerification(
+            patch_applied=True,
+            fail_to_pass_pass=0,
+            fail_to_pass_total=2,
+            pass_to_pass_pass=1,
+            pass_to_pass_total=2,
+        ),
+    )
+    assert categorize_failure(result) is FailureCategory.MAX_STEPS
+
+
+def test_categorize_failure_max_steps_failure_reason_fallback() -> None:
+    """Trimmed metadata still categorizes via the agent_status_max_steps* failure reason."""
+    result = _result(
+        failure_reason="agent_status_max_steps_exceeded",
+        metadata={},
+        verification=SWEBenchVerification(
+            patch_applied=True,
+            fail_to_pass_pass=0,
+            fail_to_pass_total=2,
+            pass_to_pass_pass=1,
+            pass_to_pass_total=2,
+        ),
+    )
+    assert categorize_failure(result) is FailureCategory.MAX_STEPS
+
+
 def test_summarize_failure_modes_distribution() -> None:
     successes = [
         _result(success=True),
