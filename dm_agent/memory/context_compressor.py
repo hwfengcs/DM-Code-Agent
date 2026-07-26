@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from ..clients.base_client import BaseLLMClient
+from .context_budget import estimate_messages_tokens
 
 MEMORY_TYPES = {"episodic", "semantic", "procedural"}
 _TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+|[\u4e00-\u9fff]+")
@@ -76,6 +77,7 @@ class Mem0StyleMemory:
         if max_items < 1:
             raise ValueError("max_items must be at least 1")
         self.max_items = max_items
+        self.superseded_count = 0
         self._items: Dict[str, MemoryItem] = {}
 
     def __len__(self) -> int:
@@ -132,6 +134,7 @@ class Mem0StyleMemory:
         *,
         scope: Optional[Dict[str, str]] = None,
         turn: int = 0,
+        invalidate_on_success: bool = False,
     ) -> List[str]:
         memory_ids: List[str] = []
         for message in messages:
@@ -146,7 +149,34 @@ class Mem0StyleMemory:
                 )
                 if memory_id:
                     memory_ids.append(memory_id)
+            if invalidate_on_success:
+                content = str(message.get("content", ""))
+                if _message_reports_success(content):
+                    files = set(_FILE_PATTERN.findall(content))
+                    self.supersede_failures(files, turn=turn)
         return memory_ids
+
+    def supersede_failures(self, files: set[str], *, turn: int) -> int:
+        """Mark failure memories about ``files`` as superseded by a later success.
+
+        The text (and therefore the dedup fingerprint) stays untouched; the item
+        only loses importance and gets a staleness annotation at render time.
+        """
+        if not files:
+            return 0
+        superseded = 0
+        for item in self._items.values():
+            if not item.text.startswith("Observed failure"):
+                continue
+            if item.metadata.get("superseded_at_turn") is not None:
+                continue
+            item_files = set(item.metadata.get("files") or [])
+            if item_files & files:
+                item.metadata["superseded_at_turn"] = turn
+                item.importance = max(0.0, item.importance * 0.3)
+                superseded += 1
+        self.superseded_count += superseded
+        return superseded
 
     def search(
         self,
@@ -184,6 +214,8 @@ class Mem0StyleMemory:
                 + min(item.access_count, 5) * 0.02
                 + recency * 0.05
             )
+            if item.metadata.get("superseded_at_turn") is not None:
+                score *= 0.25
             scored.append((item, score))
 
         if not scored and not (query_tokens or query_files):
@@ -216,7 +248,14 @@ class Mem0StyleMemory:
             item = hit.item
             files = item.metadata.get("files") or []
             suffix = f" files={','.join(files[:3])}" if files else ""
-            lines.append(f"{hit.rank}. [{item.type} score={hit.score:.3f}{suffix}] {item.text}")
+            stale_note = (
+                " (possibly stale: later success touched these files)"
+                if item.metadata.get("superseded_at_turn") is not None
+                else ""
+            )
+            lines.append(
+                f"{hit.rank}. [{item.type} score={hit.score:.3f}{suffix}] {item.text}{stale_note}"
+            )
         lines.append("</agent_memory>")
         return "\n".join(lines)
 
@@ -325,6 +364,47 @@ class Mem0StyleMemory:
         )
         return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
 
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化记忆存储（用于 run 级 checkpoint）。"""
+        return {
+            "max_items": self.max_items,
+            "superseded_count": self.superseded_count,
+            "items": [
+                {
+                    "id": item.id,
+                    "text": item.text,
+                    "type": item.type,
+                    "scope": dict(item.scope),
+                    "metadata": dict(item.metadata),
+                    "importance": item.importance,
+                    "created_at_turn": item.created_at_turn,
+                    "last_accessed_turn": item.last_accessed_turn,
+                    "access_count": item.access_count,
+                }
+                for item in self._items.values()
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Mem0StyleMemory":
+        memory = cls(max_items=int(data.get("max_items", 80)))
+        memory.superseded_count = int(data.get("superseded_count", 0))
+        for raw in data.get("items", []):
+            item = MemoryItem(
+                id=str(raw.get("id", "")),
+                text=str(raw.get("text", "")),
+                type=str(raw.get("type", "episodic")),
+                scope={str(k): str(v) for k, v in (raw.get("scope") or {}).items()},
+                metadata=dict(raw.get("metadata") or {}),
+                importance=float(raw.get("importance", 0.5)),
+                created_at_turn=int(raw.get("created_at_turn", 0)),
+                last_accessed_turn=int(raw.get("last_accessed_turn", 0)),
+                access_count=int(raw.get("access_count", 0)),
+            )
+            if item.id:
+                memory._items[item.id] = item
+        return memory
+
 
 class ContextCompressor:
     """Compress conversation history via scoped atomic memories.
@@ -343,6 +423,9 @@ class ContextCompressor:
         memory: Optional[Mem0StyleMemory] = None,
         memory_limit: int = 5,
         scope: Optional[Dict[str, str]] = None,
+        token_budget: int = 24000,
+        enable_hygiene: bool = False,
+        use_llm_summary: bool = False,
     ) -> None:
         if compress_every < 1:
             raise ValueError("compress_every must be at least 1")
@@ -351,9 +434,22 @@ class ContextCompressor:
         self.client = client
         self.compress_every = compress_every
         self.keep_recent = keep_recent
-        self.memory = memory or Mem0StyleMemory()
+        # 显式判 None：空记忆的 __len__ 为 0（falsy），`memory or ...` 会把
+        # 调用方注入的空实例悄悄替换掉，破坏注入语义。
+        self.memory = memory if memory is not None else Mem0StyleMemory()
         self.memory_limit = memory_limit
         self.scope = scope or {"agent_id": "dm-code-agent"}
+        # Estimated-token ceiling for the pending history; 0 disables the
+        # size-based trigger and falls back to pure message-count cadence.
+        self.token_budget = max(0, int(token_budget))
+        # Hygiene（默认关）：成功消息使相关失败记忆降权 + 召回 query 锚定任务原文。
+        self.enable_hygiene = enable_hygiene
+        # LLM 摘要（默认关）：折叠旧消息时额外生成一条语义摘要记忆，出错时静默回退。
+        self.use_llm_summary = use_llm_summary
+        self.llm_summary_count = 0
+        self.llm_summary_error_count = 0
+        self.last_trigger: str = ""
+        self.last_estimated_tokens: int = 0
         self.turn_count = 0
         self._compression_count = 0
         self._last_compressed_turn_count = 0
@@ -374,7 +470,14 @@ class ContextCompressor:
         non_system_messages = [msg for msg in history if msg.get("role") != "system"]
         has_old_messages = len(non_system_messages) > self.keep_recent * 2
         new_turns_since_last = self.turn_count - self._last_compressed_turn_count
-        return has_old_messages and new_turns_since_last >= self.compress_every
+        cadence_reached = new_turns_since_last >= self.compress_every
+        self.last_estimated_tokens = estimate_messages_tokens(history)
+        over_budget = 0 < self.token_budget < self.last_estimated_tokens
+        self.last_trigger = ""
+        if has_old_messages and (cadence_reached or over_budget):
+            self.last_trigger = "cadence" if cadence_reached else "token_budget"
+            return True
+        return False
 
     def compress(self, history: List[Dict[str, str]]) -> List[Dict[str, str]]:
         if not history:
@@ -400,9 +503,16 @@ class ContextCompressor:
                 older_messages,
                 scope=self.scope,
                 turn=self._compression_count,
+                invalidate_on_success=self.enable_hygiene,
             )
+            if self.use_llm_summary and self.client is not None:
+                self._add_llm_summary(older_messages)
 
         query = "\n".join(message.get("content", "") for message in recent_messages[-4:])
+        if self.enable_hygiene:
+            task_anchor = _first_user_content(history)
+            if task_anchor:
+                query = task_anchor[:400] + "\n" + query
         memory_block = self.memory.render(
             query,
             scope=self.scope,
@@ -411,6 +521,40 @@ class ContextCompressor:
         )
         memory_messages = [{"role": "user", "content": memory_block}] if memory_block else []
         return system_messages + memory_messages + recent_messages
+
+    def _add_llm_summary(self, older_messages: List[Dict[str, str]]) -> None:
+        """Fold older messages into one LLM-written semantic memory (best effort)."""
+        digest_lines = [
+            f"[{message.get('role', '')}] {_compact(str(message.get('content', '')), limit=400)}"
+            for message in older_messages
+        ]
+        digest = "\n".join(digest_lines)[:6000]
+        prompt = [
+            {
+                "role": "system",
+                "content": (
+                    "你负责压缩智能体的旧对话上下文。用不超过500字总结以下旧消息中的"
+                    "关键事实、涉及文件、已做决定和未解决问题。只输出摘要正文。"
+                ),
+            },
+            {"role": "user", "content": digest},
+        ]
+        try:
+            summary = str(self.client.respond(prompt, temperature=0.0)).strip()
+        except Exception:  # noqa: BLE001 - 摘要失败时静默回退纯规则压缩
+            self.llm_summary_error_count += 1
+            return
+        if not summary:
+            return
+        self.memory.add(
+            "Summary of earlier context: " + summary[:500],
+            type="semantic",
+            scope=self.scope,
+            metadata={"source": "llm_summary"},
+            importance=0.75,
+            turn=self._compression_count,
+        )
+        self.llm_summary_count += 1
 
     def get_compression_stats(
         self, original: List[Dict[str, str]], compressed: List[Dict[str, str]]
@@ -422,6 +566,25 @@ class ContextCompressor:
             "saved_messages": len(original) - len(compressed),
             "memory_items": self.memory_count,
         }
+
+    def export_state(self) -> Dict[str, Any]:
+        """导出压缩器可恢复状态（记忆 + 压缩节奏），用于 checkpoint。"""
+        return {
+            "memory": self.memory.to_dict(),
+            "turn_count": self.turn_count,
+            "compression_count": self._compression_count,
+            "last_compressed_turn_count": self._last_compressed_turn_count,
+            "llm_summary_count": self.llm_summary_count,
+            "llm_summary_error_count": self.llm_summary_error_count,
+        }
+
+    def restore_state(self, state: Dict[str, Any]) -> None:
+        self.memory = Mem0StyleMemory.from_dict(state.get("memory") or {})
+        self.turn_count = int(state.get("turn_count", 0))
+        self._compression_count = int(state.get("compression_count", 0))
+        self._last_compressed_turn_count = int(state.get("last_compressed_turn_count", 0))
+        self.llm_summary_count = int(state.get("llm_summary_count", 0))
+        self.llm_summary_error_count = int(state.get("llm_summary_error_count", 0))
 
 
 def _compact(text: str, *, limit: int) -> str:
@@ -486,6 +649,20 @@ def _first_matching_line(text: str, markers: Iterable[str]) -> str:
         lowered = line.lower()
         if any(marker in lowered for marker in lowered_markers):
             return line.strip()
+    return ""
+
+
+def _message_reports_success(content: str) -> bool:
+    lowered = str(content or "").lower()
+    return "returncode: 0" in lowered or any(
+        marker in lowered for marker in (m.lower() for m in _SUCCESS_MARKERS)
+    )
+
+
+def _first_user_content(history: List[Dict[str, str]]) -> str:
+    for message in history:
+        if message.get("role") == "user":
+            return str(message.get("content", ""))
     return ""
 
 
