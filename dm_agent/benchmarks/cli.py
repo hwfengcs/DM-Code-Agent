@@ -12,6 +12,7 @@ from .models import BenchmarkRunConfig
 from .runner import (
     BENCH_VARIANTS,
     DEFAULT_BENCH_VARIANTS,
+    build_benchmark_manifest,
     run_benchmark_suite,
     write_json_report,
     write_markdown_report,
@@ -115,6 +116,19 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         help="Selection strategy when --self-consistency-runs is greater than 1.",
     )
     parser.add_argument("--test-timeout", type=int, default=30, help="Hidden test timeout.")
+    parser.add_argument(
+        "--per-test-credit",
+        action="store_true",
+        help=(
+            "Advisory: also run hidden tests node-by-node and report partial "
+            "credit (strict scoring unchanged). Default is off."
+        ),
+    )
+    parser.add_argument(
+        "--manifest-only",
+        type=Path,
+        help="Write the suite manifest JSON to this path and exit (keyless, no runs).",
+    )
     parser.add_argument(
         "--keep-workspaces",
         action="store_true",
@@ -385,6 +399,20 @@ def main(argv: Any = None) -> int:
             return _list_swebench_lite(args)
         return _run_swebench_lite(args)
 
+    if args.manifest_only:
+        tasks = get_benchmark_tasks(args.suite)
+        manifest = build_benchmark_manifest(
+            suite=args.suite,
+            tasks=tasks,
+            variants=BENCH_VARIANTS,
+        )
+        args.manifest_only.parent.mkdir(parents=True, exist_ok=True)
+        args.manifest_only.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"Manifest written: {args.manifest_only} ({manifest['suite_signature']})")
+        return 0
+
     if args.list:
         tasks = [task.to_public_dict() for task in get_benchmark_tasks(args.suite)]
         variants = [variant.__dict__ for variant in BENCH_VARIANTS]
@@ -436,6 +464,7 @@ def main(argv: Any = None) -> int:
                 enable_critic=args.enable_critic,
                 self_consistency_runs=args.self_consistency_runs,
                 self_consistency_strategy=args.self_consistency_strategy,
+                per_test_credit=args.per_test_credit,
             ),
         )
     except ValueError as exc:

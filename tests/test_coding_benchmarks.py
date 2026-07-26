@@ -12,7 +12,12 @@ from dm_agent.benchmarks.manifest_diff import (
     main as manifest_diff_main,
     render_markdown as render_manifest_diff_markdown,
 )
-from dm_agent.benchmarks.models import BenchmarkRunConfig, CodingBenchResult, CommandResult
+from dm_agent.benchmarks.models import (
+    BenchmarkRunConfig,
+    BenchmarkTask,
+    CodingBenchResult,
+    CommandResult,
+)
 from dm_agent.benchmarks.runner import (
     benchmark_task_fingerprint,
     build_benchmark_manifest,
@@ -20,6 +25,7 @@ from dm_agent.benchmarks.runner import (
     load_trace_analysis_for_report,
     prepare_workspace,
     run_hidden_tests,
+    run_hidden_tests_per_node,
     summarize_benchmark_results,
     write_markdown_report,
 )
@@ -821,3 +827,150 @@ def test_benchmark_economics_warns_on_manifest_signature_mismatch():
     assert set(guard["suite_signatures"]) == {"suite-a", "suite-b"}
     assert guard["missing_suite_signature"] == ["legacy:scripted:old"]
     assert "different benchmark suite signatures" in render_markdown(economics)
+
+
+def test_benchmark_summary_recovery_rate_and_tags():
+    tasks = get_coding_tasks(["slugify_cleanup"])
+    ok_with_failures = _bench_result_with_metadata(
+        "slugify_cleanup",
+        success=True,
+        final_answer="ok",
+        tokens=100,
+        metadata={"tool_error_count": 2},
+    )
+    failed_with_failures = _bench_result_with_metadata(
+        "slugify_cleanup",
+        success=False,
+        final_answer="",
+        tokens=100,
+        metadata={"tool_error_count": 1},
+    )
+    clean_success = _bench_result("slugify_cleanup", success=True, final_answer="ok", tokens=100)
+
+    summary = summarize_benchmark_results(
+        [ok_with_failures, failed_with_failures, clean_success], tasks=tasks
+    )
+
+    variant = summary["variants"]["full"]
+    assert variant["runs_with_failures"] == 2
+    assert variant["recovered_runs"] == 1
+    assert variant["recovery_success_rate"] == pytest.approx(0.5)
+    tags = tasks[0].tags
+    if tags:
+        tag_entry = summary["by_tag"][tags[0]]
+        assert tag_entry["runs"] == 3
+        assert tag_entry["successes"] == 2
+
+
+def test_benchmark_summary_recovery_rate_none_without_failures():
+    clean = _bench_result("slugify_cleanup", success=True, final_answer="ok", tokens=10)
+    summary = summarize_benchmark_results([clean])
+    assert summary["variants"]["full"]["recovery_success_rate"] is None
+    assert "by_tag" not in summary
+
+
+def test_benchmark_summary_repeat_stability_math():
+    def repeat_result(task_id, repeat_index, success):
+        return _bench_result_with_metadata(
+            task_id,
+            success=success,
+            final_answer="ok" if success else "",
+            tokens=10,
+            metadata={"repeat_index": repeat_index},
+        )
+
+    results = [
+        repeat_result("task_a", 0, True),
+        repeat_result("task_a", 1, False),
+        repeat_result("task_b", 0, True),
+        repeat_result("task_b", 1, True),
+    ]
+
+    summary = summarize_benchmark_results(results)
+    stability = summary["variants"]["full"]["repeat_stability"]
+
+    assert stability["repeats"] == 2
+    assert stability["per_task"]["task_a"]["pass_at_k"] is True
+    assert stability["per_task"]["task_a"]["pass_pow_k"] is False
+    assert stability["per_task"]["task_b"]["pass_pow_k"] is True
+    assert stability["pass_at_k_rate"] == pytest.approx(1.0)
+    assert stability["pass_pow_k_rate"] == pytest.approx(0.5)
+    assert stability["task_pass_rate_stddev"] == pytest.approx(0.25)
+
+
+def test_benchmark_summary_no_stability_for_single_run():
+    single = _bench_result_with_metadata(
+        "task_a", success=True, final_answer="ok", tokens=10, metadata={"repeat_index": 0}
+    )
+    summary = summarize_benchmark_results([single])
+    assert "repeat_stability" not in summary["variants"]["full"]
+
+
+def test_run_hidden_tests_per_node_counts_individual_tests(tmp_path):
+    task = BenchmarkTask(
+        task_id="pernode_demo",
+        name="Per-node demo",
+        prompt="demo",
+        setup_files={},
+        hidden_files={
+            "hidden_test_demo.py": (
+                "def test_pass_one():\n    assert 1 == 1\n\n"
+                "def test_pass_two():\n    assert 2 == 2\n\n"
+                "def test_fail():\n    assert 1 == 2\n"
+            )
+        },
+    )
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    prepare_workspace(task, workspace, include_hidden=True)
+
+    result = run_hidden_tests_per_node(task, workspace, timeout=60)
+
+    assert result is not None
+    assert result["total"] == 3
+    assert result["passed"] == 2
+    assert result["pass_fraction"] == pytest.approx(2 / 3)
+    failed_nodes = [node for node in result["nodes"] if not node["passed"]]
+    assert len(failed_nodes) == 1
+    assert "test_fail" in failed_nodes[0]["node_id"]
+
+
+def test_run_hidden_tests_per_node_returns_none_on_collection_error(tmp_path):
+    task = BenchmarkTask(
+        task_id="pernode_broken",
+        name="Broken collection",
+        prompt="demo",
+        setup_files={},
+        hidden_files={"hidden_test_broken.py": "import missing_module_xyz\n"},
+    )
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    prepare_workspace(task, workspace, include_hidden=True)
+
+    assert run_hidden_tests_per_node(task, workspace, timeout=60) is None
+
+
+def test_manifest_only_cli_writes_bare_manifest(tmp_path, capsys):
+    manifest_path = tmp_path / "manifest.json"
+    exit_code = bench_main(["--suite", "coding", "--manifest-only", str(manifest_path)])
+
+    assert exit_code == 0
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["suite"] == "coding"
+    assert manifest["suite_signature"]
+    assert manifest["task_fingerprints"]
+
+
+def test_manifest_diff_accepts_bare_manifest_files(tmp_path, capsys):
+    left = tmp_path / "left.json"
+    right = tmp_path / "right.json"
+    assert bench_main(["--suite", "coding", "--manifest-only", str(left)]) == 0
+    assert bench_main(["--suite", "coding", "--manifest-only", str(right)]) == 0
+    capsys.readouterr()
+
+    assert manifest_diff_main([str(left), str(right)]) == 0
+
+    drifted = json.loads(right.read_text(encoding="utf-8"))
+    drifted["suite_signature"] = "drifted"
+    right.write_text(json.dumps(drifted), encoding="utf-8")
+    assert manifest_diff_main([str(left), str(right)]) == 1

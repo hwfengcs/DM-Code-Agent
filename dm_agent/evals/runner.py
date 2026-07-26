@@ -75,7 +75,7 @@ def run_suite(
             results.append(run_task(task, variant, cost_per_1k_tokens=cost_per_1k_tokens))
 
     return {
-        "summary": summarize_results(results),
+        "summary": summarize_results(results, tasks=selected_tasks),
         "results": [result.to_dict() for result in results],
         "tasks": [task.to_public_dict() for task in selected_tasks],
         "variants": [variant.__dict__ for variant in selected_variants],
@@ -107,6 +107,7 @@ def run_task(
             enable_planning=variant.enable_planning,
             enable_compression=variant.enable_compression,
             skill_manager=skill_manager,
+            **dict(task.agent_overrides),
         )
 
         with chdir(workspace):
@@ -150,7 +151,41 @@ def run_task(
     )
 
 
-def summarize_results(results: Sequence[EvalResult]) -> Dict[str, Any]:
+RECOVERY_SIGNAL_KEYS = (
+    "parse_repair_count",
+    "parse_error_count",
+    "tool_error_count",
+    "unknown_tool_count",
+    "argument_error_count",
+    "replan_count",
+    "critic_reject_count",
+    "edit_guard_block_count",
+)
+
+
+def _had_failure_signal(metadata: Dict[str, Any]) -> bool:
+    return any(int(metadata.get(key, 0) or 0) > 0 for key in RECOVERY_SIGNAL_KEYS)
+
+
+def _tag_breakdown(
+    results: Sequence[EvalResult], tags_by_task: Dict[str, List[str]]
+) -> Dict[str, Dict[str, Any]]:
+    by_tag: Dict[str, Dict[str, Any]] = {}
+    for result in results:
+        for tag in tags_by_task.get(result.task_id, []):
+            entry = by_tag.setdefault(tag, {"runs": 0, "successes": 0})
+            entry["runs"] += 1
+            entry["successes"] += int(result.success)
+    for entry in by_tag.values():
+        entry["success_rate"] = entry["successes"] / entry["runs"] if entry["runs"] else 0.0
+    return dict(sorted(by_tag.items()))
+
+
+def summarize_results(
+    results: Sequence[EvalResult],
+    *,
+    tasks: Optional[Sequence[EvalTask]] = None,
+) -> Dict[str, Any]:
     by_variant: Dict[str, List[EvalResult]] = {}
     for result in results:
         by_variant.setdefault(result.variant, []).append(result)
@@ -158,6 +193,8 @@ def summarize_results(results: Sequence[EvalResult]) -> Dict[str, Any]:
     variants = {}
     for name, group in by_variant.items():
         successes = [result for result in group if result.success]
+        runs_with_failures = [result for result in group if _had_failure_signal(result.metadata)]
+        recovered_runs = [result for result in runs_with_failures if result.success]
         variants[name] = {
             "tasks": len(group),
             "successes": len(successes),
@@ -174,18 +211,27 @@ def summarize_results(results: Sequence[EvalResult]) -> Dict[str, Any]:
                 + int(result.metadata.get("replan_count", 0))
                 for result in group
             ),
+            "runs_with_failures": len(runs_with_failures),
+            "recovered_runs": len(recovered_runs),
+            "recovery_success_rate": (
+                len(recovered_runs) / len(runs_with_failures) if runs_with_failures else None
+            ),
             "activated_skill_runs": sum(
                 1 for result in group if result.metadata.get("activated_skills")
             ),
         }
 
-    return {
+    summary: Dict[str, Any] = {
         "total_runs": len(results),
         "overall_success_rate": (
             sum(1 for result in results if result.success) / len(results) if results else 0.0
         ),
         "variants": variants,
     }
+    if tasks is not None:
+        tags_by_task = {task.task_id: list(task.tags) for task in tasks}
+        summary["by_tag"] = _tag_breakdown(results, tags_by_task)
+    return summary
 
 
 def write_json_report(report: Dict[str, Any], path: Path) -> None:
@@ -204,16 +250,43 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
         "",
         "## Ablation Summary",
         "",
-        "| Variant | Success | Avg steps | Avg tools | Avg tokens | Recovery events | Skill runs |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Variant | Success | Avg steps | Avg tools | Avg tokens | Recovery events | "
+        "Recovery rate | Skill runs |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
     for name, data in summary["variants"].items():
+        recovery_rate = data.get("recovery_success_rate")
+        recovery_display = (
+            f"{recovery_rate:.1%} ({data.get('recovered_runs', 0)}/"
+            f"{data.get('runs_with_failures', 0)})"
+            if recovery_rate is not None
+            else "n/a"
+        )
         lines.append(
             "| {name} | {success_rate:.1%} ({successes}/{tasks}) | {avg_steps:.2f} | "
             "{avg_tool_calls:.2f} | {avg_estimated_tokens:.0f} | {recovery_events} | "
-            "{activated_skill_runs} |".format(name=name, **data)
+            "{recovery} | {activated_skill_runs} |".format(
+                name=name, recovery=recovery_display, **data
+            )
         )
+
+    by_tag = summary.get("by_tag") or {}
+    if by_tag:
+        lines.extend(
+            [
+                "",
+                "## Capability by tag",
+                "",
+                "| Tag | Success | Runs |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        for tag, data in by_tag.items():
+            lines.append(
+                f"| {tag} | {data['success_rate']:.1%} ({data['successes']}/{data['runs']}) "
+                f"| {data['runs']} |"
+            )
 
     lines.extend(["", "## Failed Runs", ""])
     failures = [result for result in report["results"] if not result["success"]]

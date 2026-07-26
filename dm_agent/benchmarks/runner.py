@@ -127,7 +127,7 @@ def run_benchmark_suite(
         "token_economics": {
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
         },
-        "summary": summarize_benchmark_results(results),
+        "summary": summarize_benchmark_results(results, tasks=selected_tasks),
         "manifest": build_benchmark_manifest(
             suite=suite,
             tasks=selected_tasks,
@@ -203,6 +203,60 @@ def run_hidden_tests(task: BenchmarkTask, workspace: Path, *, timeout: int = 30)
     return run_command(task.hidden_test_command, workspace, timeout=timeout)
 
 
+def run_hidden_tests_per_node(
+    task: BenchmarkTask, workspace: Path, *, timeout: int = 30
+) -> Optional[Dict[str, Any]]:
+    """Advisory per-test partial credit for hidden tests.
+
+    Mirrors the SWE-bench verifier's node-level pattern (collect-only then run
+    each node) without importing the swebench package. Returns None when
+    collection fails so callers fall back to the binary suite result; the
+    strict pass/fail score is never affected.
+    """
+    test_paths = sorted(
+        path for path in task.hidden_files if path.endswith(".py") and "test" in Path(path).name
+    )
+    if not test_paths:
+        return None
+    collect = run_command(
+        ["{python}", "-m", "pytest", "--collect-only", "-q", *test_paths],
+        workspace,
+        timeout=timeout,
+    )
+    if collect.returncode != 0:
+        return None
+    node_ids = [
+        line.strip()
+        for line in collect.stdout.splitlines()
+        if "::" in line and not line.strip().startswith("=")
+    ]
+    if not node_ids:
+        return None
+    nodes: List[Dict[str, Any]] = []
+    passed = 0
+    for node_id in node_ids:
+        result = run_command(
+            ["{python}", "-m", "pytest", node_id, "-q", "--no-header", "--tb=short"],
+            workspace,
+            timeout=timeout,
+        )
+        node_passed = result.returncode == 0
+        passed += int(node_passed)
+        nodes.append(
+            {
+                "node_id": node_id,
+                "passed": node_passed,
+                "returncode": result.returncode,
+            }
+        )
+    return {
+        "total": len(node_ids),
+        "passed": passed,
+        "pass_fraction": passed / len(node_ids),
+        "nodes": nodes,
+    }
+
+
 def run_command(command: Sequence[str], cwd: Path, *, timeout: int = 30) -> CommandResult:
     started_at = time.perf_counter()
     resolved = _resolve_command(command)
@@ -233,7 +287,59 @@ def run_command(command: Sequence[str], cwd: Path, *, timeout: int = 30) -> Comm
         )
 
 
-def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[str, Any]:
+BENCH_RECOVERY_SIGNAL_KEYS = (
+    "parse_repair_count",
+    "parse_error_count",
+    "unknown_tool_count",
+    "argument_error_count",
+    "tool_error_count",
+    "critic_reject_count",
+    "replan_count",
+    "edit_guard_block_count",
+)
+
+
+def _bench_had_failure_signal(metadata: Dict[str, Any]) -> bool:
+    return any(int(metadata.get(key, 0) or 0) > 0 for key in BENCH_RECOVERY_SIGNAL_KEYS)
+
+
+def _repeat_stability(group: Sequence[CodingBenchResult]) -> Optional[Dict[str, Any]]:
+    """Aggregate per-task pass stability across --repeat runs (None if single-run)."""
+    repeat_indexes = {result.metadata.get("repeat_index") for result in group}
+    repeat_indexes.discard(None)
+    if len(repeat_indexes) < 2:
+        return None
+    by_task: Dict[str, List[bool]] = {}
+    for result in group:
+        by_task.setdefault(result.task_id, []).append(bool(result.success))
+    per_task: Dict[str, Any] = {}
+    for task_id, passes in sorted(by_task.items()):
+        per_task[task_id] = {
+            "runs": len(passes),
+            "passes": sum(passes),
+            "pass_at_k": any(passes),
+            "pass_pow_k": all(passes),
+            "per_repeat_pass": list(passes),
+        }
+    task_rates = [entry["passes"] / entry["runs"] for entry in per_task.values()]
+    return {
+        "repeats": len(repeat_indexes),
+        "per_task": per_task,
+        "pass_at_k_rate": (
+            sum(1 for entry in per_task.values() if entry["pass_at_k"]) / len(per_task)
+        ),
+        "pass_pow_k_rate": (
+            sum(1 for entry in per_task.values() if entry["pass_pow_k"]) / len(per_task)
+        ),
+        "task_pass_rate_stddev": (statistics.pstdev(task_rates) if len(task_rates) > 1 else 0.0),
+    }
+
+
+def summarize_benchmark_results(
+    results: Sequence[CodingBenchResult],
+    *,
+    tasks: Optional[Sequence[BenchmarkTask]] = None,
+) -> Dict[str, Any]:
     by_variant: Dict[str, List[CodingBenchResult]] = {}
     for result in results:
         by_variant.setdefault(result.variant, []).append(result)
@@ -243,6 +349,10 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
         successes = [result for result in group if result.success]
         hidden_passes = [result for result in group if result.hidden_test.returncode == 0]
         completed = [result for result in group if result.metadata.get("status") == "success"]
+        runs_with_failures = [
+            result for result in group if _bench_had_failure_signal(result.metadata)
+        ]
+        recovered_runs = [result for result in runs_with_failures if result.success]
         variants[name] = {
             "tasks": len(group),
             "successes": len(successes),
@@ -264,12 +374,27 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
             "avg_duration_seconds": _mean(result.duration_seconds for result in group),
             "hidden_test_passes": len(hidden_passes),
             "avg_trials": _mean(result.metadata.get("trial_count", 1) for result in group),
+            "runs_with_failures": len(runs_with_failures),
+            "recovered_runs": len(recovered_runs),
+            "recovery_success_rate": (
+                len(recovered_runs) / len(runs_with_failures) if runs_with_failures else None
+            ),
         }
+        stability = _repeat_stability(group)
+        if stability is not None:
+            variants[name]["repeat_stability"] = stability
+        node_fractions = [
+            result.metadata["hidden_test_nodes"]["pass_fraction"]
+            for result in group
+            if isinstance(result.metadata.get("hidden_test_nodes"), dict)
+        ]
+        if node_fractions:
+            variants[name]["avg_hidden_test_node_pass_fraction"] = _mean(node_fractions)
 
     hidden_passes = [result for result in results if result.hidden_test.returncode == 0]
     completed = [result for result in results if result.metadata.get("status") == "success"]
     successes = sum(1 for result in results if result.success)
-    return {
+    summary = {
         "total_runs": len(results),
         "overall_pass_rate": (successes / len(results) if results else 0.0),
         "overall_pass_rate_ci_95": _wilson_interval(successes, len(results)),
@@ -284,6 +409,18 @@ def summarize_benchmark_results(results: Sequence[CodingBenchResult]) -> Dict[st
         "cost_per_success_usd": _cost_per_success(results),
         "variants": variants,
     }
+    if tasks is not None:
+        tags_by_task = {task.task_id: list(task.tags) for task in tasks}
+        by_tag: Dict[str, Dict[str, Any]] = {}
+        for result in results:
+            for tag in tags_by_task.get(result.task_id, []):
+                entry = by_tag.setdefault(tag, {"runs": 0, "successes": 0})
+                entry["runs"] += 1
+                entry["successes"] += int(result.success)
+        for entry in by_tag.values():
+            entry["success_rate"] = entry["successes"] / entry["runs"] if entry["runs"] else 0.0
+        summary["by_tag"] = dict(sorted(by_tag.items()))
+    return summary
 
 
 def build_benchmark_manifest(
@@ -371,6 +508,67 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
                 pass_ci=_format_ci(data.get("pass_rate_ci_95")),
                 **data,
             )
+        )
+
+    recovery_rows = []
+    for name, data in summary["variants"].items():
+        rate = data.get("recovery_success_rate")
+        if data.get("runs_with_failures"):
+            recovery_rows.append(
+                f"| {name} | {rate:.1%} | {data.get('recovered_runs', 0)} | "
+                f"{data.get('runs_with_failures', 0)} |"
+            )
+    if recovery_rows:
+        lines.extend(
+            [
+                "",
+                "## Recovery",
+                "",
+                "| Variant | Recovery success rate | Recovered | Runs with failures |",
+                "| --- | ---: | ---: | ---: |",
+                *recovery_rows,
+            ]
+        )
+
+    by_tag = summary.get("by_tag") or {}
+    if by_tag:
+        lines.extend(
+            [
+                "",
+                "## Capability by tag",
+                "",
+                "| Tag | Pass | Runs |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        for tag, data in by_tag.items():
+            lines.append(
+                f"| {tag} | {data['success_rate']:.1%} ({data['successes']}/{data['runs']}) "
+                f"| {data['runs']} |"
+            )
+
+    stability_rows = []
+    for name, data in summary["variants"].items():
+        stability = data.get("repeat_stability")
+        if stability:
+            stability_rows.append(
+                f"| {name} | {stability['repeats']} | {stability['pass_at_k_rate']:.1%} | "
+                f"{stability['pass_pow_k_rate']:.1%} | "
+                f"{stability['task_pass_rate_stddev']:.3f} |"
+            )
+    if stability_rows:
+        lines.extend(
+            [
+                "",
+                "## Stability (repeat variance)",
+                "",
+                "Repeat-variance across identical reruns (same config; API nondeterminism"
+                " included). Not a controlled-seed measurement.",
+                "",
+                "| Variant | Repeats | pass@k | pass^k | Task pass-rate stddev |",
+                "| --- | ---: | ---: | ---: | ---: |",
+                *stability_rows,
+            ]
         )
 
     lines.extend(["", "## Failed Runs", ""])
@@ -516,6 +714,11 @@ def _run_benchmark_task_in_workspace(
     patch_fingerprint = _patch_fingerprint(before_snapshot, after_snapshot, changed_files)
     _write_files(workspace, task.hidden_files)
     hidden_result = run_hidden_tests(task, workspace, timeout=config.test_timeout)
+    per_node_result = (
+        run_hidden_tests_per_node(task, workspace, timeout=config.test_timeout)
+        if config.per_test_credit
+        else None
+    )
 
     metadata = raw_result.get("metadata", {})
     metadata.update(
@@ -545,6 +748,8 @@ def _run_benchmark_task_in_workspace(
             "self_consistency_strategy": config.self_consistency_strategy,
         }
     )
+    if per_node_result is not None:
+        metadata["hidden_test_nodes"] = per_node_result
     if trace_path:
         trace_analysis, trace_analysis_error = load_trace_analysis_for_report(trace_path)
         if trace_analysis:

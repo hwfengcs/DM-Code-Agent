@@ -227,6 +227,14 @@ def _analyze(
         f"before_finish={str(verification['before_finish']).lower()}, "
         f"gap={str(verification['gap']).lower()}"
     )
+    hallucination = analysis.get("hallucination_signals", {})
+    print(
+        "Hallucination signals: "
+        f"edit_without_read={hallucination.get('edit_without_read_count', 0)}, "
+        f"guard_blocks={hallucination.get('edit_guard_blocks', 0)}, "
+        f"truncations={hallucination.get('truncation_hits', 0)}, "
+        f"missing_paths={hallucination.get('missing_path_reference_count', 0)}"
+    )
     print(f"Health: {health['grade']} ({health['score']:.2f})")
     if health["issues"]:
         print("Issues:")
@@ -257,6 +265,21 @@ def _analyze_dir(
     print(f"Traces: {summary['analyzed_traces']}/{summary['total_files']} analyzed")
     print(f"Errors: {summary['error_count']}")
     print(f"Verification gaps: {summary['verification_gap_count']}")
+    recovery_rate = summary.get("recovery_success_rate")
+    if recovery_rate is not None:
+        print(
+            f"Recovery: {summary.get('recovered_runs', 0)}/"
+            f"{summary.get('runs_with_failures', 0)} ({recovery_rate:.1%})"
+        )
+    hallucination = summary.get("hallucination_signals", {})
+    if hallucination:
+        print(
+            "Hallucination signals: "
+            f"edit_without_read={hallucination.get('edit_without_read_count', 0)}, "
+            f"guard_blocks={hallucination.get('edit_guard_blocks', 0)}, "
+            f"truncations={hallucination.get('truncation_hits', 0)}, "
+            f"missing_paths={hallucination.get('missing_path_reference_count', 0)}"
+        )
     print("Trace health:")
     for grade, count in summary["trace_health_counts"].items():
         print(f"- {grade}: {count}")
@@ -289,6 +312,26 @@ def render_trace_directory_markdown(report: Dict[str, Any]) -> str:
     ]
     for grade, count in (summary.get("trace_health_counts") or {}).items():
         lines.append(f"- `{grade}`: `{count}`")
+
+    recovery_rate = summary.get("recovery_success_rate")
+    hallucination = summary.get("hallucination_signals") or {}
+    lines.extend(["", "## Recovery & Hallucination Signals", ""])
+    if recovery_rate is not None:
+        lines.append(
+            f"- Recovery success rate: `{recovery_rate:.1%}` "
+            f"(`{summary.get('recovered_runs', 0)}/{summary.get('runs_with_failures', 0)}`)"
+        )
+    else:
+        lines.append("- Recovery success rate: `n/a` (no runs with failures)")
+    lines.extend(
+        [
+            f"- Edits without a prior read: `{hallucination.get('edit_without_read_count', 0)}`",
+            f"- Edit-guard blocks: `{hallucination.get('edit_guard_blocks', 0)}`",
+            f"- Truncated observations: `{hallucination.get('truncation_hits', 0)}`",
+            "- Missing-path references: "
+            f"`{hallucination.get('missing_path_reference_count', 0)}`",
+        ]
+    )
 
     lines.extend(["", "## Final Failure Stages", ""])
     for stage, count in (summary.get("final_failure_stage_counts") or {}).items():
@@ -468,6 +511,55 @@ def diff_events(
     }
 
 
+def _hallucination_signals(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Deterministic hallucination proxies from one trace (advisory only).
+
+    These deliberately stay OUT of the trace-health score until calibrated
+    against outcomes; they are surfaced for audit and aggregation.
+    """
+    read_paths: set = set()
+    edit_without_read = 0
+    missing_path_references = 0
+    tool_call_count = 0
+    truncation_hits = 0
+    edit_guard_blocks = 0
+    for event in events:
+        name = event.get("event")
+        if name == "observation_truncated":
+            truncation_hits += 1
+            continue
+        if name == "edit_guard":
+            edit_guard_blocks += 1
+            continue
+        if name != "tool_call":
+            continue
+        tool_call_count += 1
+        payload = event.get("payload", {})
+        action = str(payload.get("action", ""))
+        action_input = payload.get("action_input")
+        path = ""
+        if isinstance(action_input, dict):
+            path_value = action_input.get("path")
+            if isinstance(path_value, str):
+                path = path_value
+        observation = str(payload.get("observation", "")).strip()
+        if observation.startswith(("文件 ", "路径 ")) and observation.endswith(
+            ("不存在。", "不是文件。")
+        ):
+            missing_path_references += 1
+        if action in {"read_file", "search_in_file"} and path:
+            read_paths.add(path)
+        elif action == "edit_file" and path and path not in read_paths:
+            edit_without_read += 1
+    return {
+        "edit_without_read_count": edit_without_read,
+        "edit_guard_blocks": edit_guard_blocks,
+        "truncation_hits": truncation_hits,
+        "truncation_hit_rate": (truncation_hits / tool_call_count) if tool_call_count else 0.0,
+        "missing_path_reference_count": missing_path_references,
+    }
+
+
 def analyze_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Return a deterministic advisory analysis for one trace."""
 
@@ -519,6 +611,7 @@ def analyze_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
             "recovered": recovered,
         },
         "verification": verification,
+        "hallucination_signals": _hallucination_signals(events),
         "metadata_counters": {
             key: metadata.get(key, 0)
             for key in (
@@ -942,6 +1035,14 @@ def _trace_directory_summary(
     errors: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
     analysis_payloads = [item["analysis"] for item in analyses]
+    runs_with_failures = [
+        analysis
+        for analysis in analysis_payloads
+        if analysis.get("recovery", {}).get("failure_event_count", 0)
+    ]
+    recovered_runs = [
+        analysis for analysis in runs_with_failures if analysis.get("recovery", {}).get("recovered")
+    ]
     return {
         "total_files": len(paths),
         "analyzed_traces": len(analyses),
@@ -949,6 +1050,29 @@ def _trace_directory_summary(
         "verification_gap_count": sum(
             1 for analysis in analysis_payloads if analysis.get("verification", {}).get("gap")
         ),
+        "runs_with_failures": len(runs_with_failures),
+        "recovered_runs": len(recovered_runs),
+        "recovery_success_rate": (
+            len(recovered_runs) / len(runs_with_failures) if runs_with_failures else None
+        ),
+        "hallucination_signals": {
+            "edit_without_read_count": sum(
+                int(a.get("hallucination_signals", {}).get("edit_without_read_count", 0))
+                for a in analysis_payloads
+            ),
+            "edit_guard_blocks": sum(
+                int(a.get("hallucination_signals", {}).get("edit_guard_blocks", 0))
+                for a in analysis_payloads
+            ),
+            "truncation_hits": sum(
+                int(a.get("hallucination_signals", {}).get("truncation_hits", 0))
+                for a in analysis_payloads
+            ),
+            "missing_path_reference_count": sum(
+                int(a.get("hallucination_signals", {}).get("missing_path_reference_count", 0))
+                for a in analysis_payloads
+            ),
+        },
         "trace_health_counts": _count_values(
             analysis.get("trace_health", {}).get("grade", "unknown")
             for analysis in analysis_payloads

@@ -37,6 +37,18 @@ jobs:
       - name: Run deterministic eval smoke test
         run: python -m dm_agent.evals.cli --variant full --task direct_finish
 
+      - name: Run full deterministic eval suite with quality gate
+        run: |
+          python -m dm_agent.evals.cli --output eval_reports/ci-report.json
+          python -m dm_agent.evals.gate eval_reports/ci-report.json --min-success-rate 1.0
+
+      - name: Guard benchmark manifests against silent task drift
+        run: |
+          python -m dm_agent.benchmarks.cli --suite coding --manifest-only eval_reports/ci-manifest-coding.json
+          python -m dm_agent.benchmarks.cli --suite maintenance --manifest-only eval_reports/ci-manifest-maintenance.json
+          python -m dm_agent.benchmarks.manifest_diff bench_reports/manifest-baseline-coding.json eval_reports/ci-manifest-coding.json
+          python -m dm_agent.benchmarks.manifest_diff bench_reports/manifest-baseline-maintenance.json eval_reports/ci-manifest-maintenance.json
+
       - name: List coding benchmark tasks
         run: python -m dm_agent.benchmarks.cli --list
 

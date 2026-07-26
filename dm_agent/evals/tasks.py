@@ -250,6 +250,74 @@ BUILTIN_TASKS: List[EvalTask] = [
         ),
         tags=["recovery", "arguments"],
     ),
+    EvalTask(
+        task_id="truncated_read_pagination",
+        name="Page through a truncated read",
+        prompt="Read big.txt, then re-read the needed range precisely.",
+        planner_response=planner_response("read_file", "read_file", "finish"),
+        agent_responses=[
+            agent_response("Read the whole file.", "read_file", {"path": "big.txt"}),
+            agent_response(
+                "The output was truncated; page precisely.",
+                "read_file",
+                {"path": "big.txt", "line_start": 1, "line_end": 5},
+            ),
+            agent_response(
+                "The needed lines are visible.",
+                "finish",
+                "Paged through big.txt with line ranges after truncation.",
+            ),
+        ],
+        setup_files={
+            "big.txt": "".join(f"line {index:03d} {'x' * 24}\n" for index in range(1, 101))
+        },
+        expected=EvalExpected(
+            required_actions=["read_file"],
+            final_answer_contains=["truncation"],
+            metadata_min={"truncation_count": 1},
+        ),
+        agent_overrides={"max_observation_chars": 400},
+        tags=["long-context", "truncation"],
+    ),
+    EvalTask(
+        task_id="edit_guard_reread",
+        name="Re-read before editing",
+        prompt="Update app.py line 1; the guard requires reading before editing.",
+        planner_response=planner_response("edit_file", "read_file", "edit_file", "task_complete"),
+        agent_responses=[
+            agent_response(
+                "Edit directly from memory.",
+                "edit_file",
+                {
+                    "path": "app.py",
+                    "operation": "replace",
+                    "line_start": 1,
+                    "line_end": 1,
+                    "content": "updated line",
+                },
+            ),
+            agent_response("Blocked; read the file first.", "read_file", {"path": "app.py"}),
+            agent_response(
+                "Now edit with fresh line numbers.",
+                "edit_file",
+                {
+                    "path": "app.py",
+                    "operation": "replace",
+                    "line_start": 1,
+                    "line_end": 1,
+                    "content": "updated line",
+                },
+            ),
+            agent_response("Finish.", "task_complete", {"message": "app.py updated"}),
+        ],
+        setup_files={"app.py": "original line\n"},
+        expected=EvalExpected(
+            required_actions=["edit_file", "read_file", "task_complete"],
+            workspace_files={"app.py": "updated line"},
+            metadata_min={"edit_guard_block_count": 1},
+        ),
+        tags=["long-context", "edit-guard"],
+    ),
 ]
 
 

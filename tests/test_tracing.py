@@ -299,6 +299,108 @@ def test_trace_analyzer_attributes_parse_failure_and_recovery():
     assert "replanned_after_failure" in analysis["signals"]
 
 
+def test_trace_analyzer_extracts_hallucination_signals():
+    events = [
+        {
+            "run_id": "r1",
+            "event": "run_start",
+            "payload": {"schema_version": "1.1", "task": "edit files"},
+        },
+        {
+            "run_id": "r1",
+            "event": "tool_call",
+            "payload": {
+                "step_number": 1,
+                "action": "edit_file",
+                "action_input": {"path": "unread.py", "operation": "replace", "line_start": 1},
+                "observation": "已替换 unread.py 的第 1-1 行。",
+                "failed": False,
+            },
+        },
+        {
+            "run_id": "r1",
+            "event": "observation_truncated",
+            "payload": {"step_number": 2, "action": "read_file", "original_chars": 90000},
+        },
+        {
+            "run_id": "r1",
+            "event": "tool_call",
+            "payload": {
+                "step_number": 2,
+                "action": "read_file",
+                "action_input": {"path": "big.py"},
+                "observation": "content...",
+                "failed": False,
+            },
+        },
+        {
+            "run_id": "r1",
+            "event": "tool_call",
+            "payload": {
+                "step_number": 3,
+                "action": "read_file",
+                "action_input": {"path": "ghost.py"},
+                "observation": "文件 ghost.py 不存在。",
+                "failed": True,
+            },
+        },
+        {
+            "run_id": "r1",
+            "event": "edit_guard",
+            "payload": {"step_number": 4, "path": "big.py", "reason": "stale_read"},
+        },
+        {
+            "run_id": "r1",
+            "event": "tool_call",
+            "payload": {
+                "step_number": 5,
+                "action": "edit_file",
+                "action_input": {"path": "big.py", "operation": "replace", "line_start": 1},
+                "observation": "已替换 big.py 的第 1-1 行。",
+                "failed": False,
+            },
+        },
+        {
+            "run_id": "r1",
+            "event": "run_end",
+            "payload": {"status": "success", "final_answer": "done", "metadata": {}},
+        },
+    ]
+
+    analysis = analyze_events(events)
+    signals = analysis["hallucination_signals"]
+
+    # unread.py was edited without a read; big.py was read (step 2) before its edit.
+    assert signals["edit_without_read_count"] == 1
+    assert signals["edit_guard_blocks"] == 1
+    assert signals["truncation_hits"] == 1
+    assert signals["truncation_hit_rate"] > 0
+    assert signals["missing_path_reference_count"] == 1
+
+
+def test_trace_analyzer_hallucination_signals_default_to_zero_for_legacy_traces():
+    events = [
+        {
+            "run_id": "r1",
+            "event": "run_start",
+            "payload": {"schema_version": "1.0", "task": "legacy"},
+        },
+        {
+            "run_id": "r1",
+            "event": "run_end",
+            "payload": {"status": "success", "final_answer": "done", "metadata": {}},
+        },
+    ]
+
+    signals = analyze_events(events)["hallucination_signals"]
+
+    assert signals["edit_without_read_count"] == 0
+    assert signals["edit_guard_blocks"] == 0
+    assert signals["truncation_hits"] == 0
+    assert signals["truncation_hit_rate"] == 0.0
+    assert signals["missing_path_reference_count"] == 0
+
+
 def test_trace_analyze_dir_aggregates_health_and_verification_gaps(tmp_path, capsys):
     gap_trace = tmp_path / "gap.jsonl"
     verified_trace = tmp_path / "verified.jsonl"

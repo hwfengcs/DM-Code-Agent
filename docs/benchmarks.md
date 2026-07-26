@@ -153,9 +153,26 @@ The report includes:
   equivalent workspace changes before falling back to final-answer text
 - manifest provenance: task ids, per-task fingerprints, variant names, and suite signature
 - compact trace analysis when `--trace-dir` is enabled
+- recovery success rate per variant: `recovered_runs / runs_with_failures`, where a run
+  "had failures" when any parse/tool/unknown/argument/critic/edit-guard counter is non-zero
+- `by_tag` capability breakdown: per-tag runs, successes, and success rate
+- repeat-variance stability when `--repeat` is greater than 1: per-task `pass@k`, `pass^k`,
+  per-repeat pass lists, and a task pass-rate standard deviation (same config reruns; API
+  nondeterminism included — not a controlled-seed measurement)
+- advisory per-test partial credit with `--per-test-credit`: hidden tests are additionally run
+  node-by-node and reported as `hidden_test_nodes` metadata plus a variant-level
+  `avg_hidden_test_node_pass_fraction`; the strict binary score is unchanged
 
 Pass-rate confidence intervals use Wilson 95% intervals. They are computed from the runs already in
 the report and do not increase the default repeat count.
+
+### Manifest guard
+
+`dm-agent-bench --suite <suite> --manifest-only <path>` writes the suite manifest (task
+fingerprints + suite signature) without running anything. CI regenerates these manifests and
+diffs them against the checked-in baselines under `bench_reports/manifest-baseline-*.json` with
+`dm-agent-manifest-diff` (non-zero exit on drift). When you intentionally change a benchmark
+task, regenerate the baseline in the same PR and attach the diff output.
 
 ## Changed-File Constraints
 

@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Default-on observation truncation: tool outputs beyond
+  `--max-observation-chars` (default 8000) keep head+tail with an explicit
+  `[truncated: ...]` marker and concrete `read_file` paging hints; audited via
+  the `observation_truncated` trace event and `truncation_count` metadata.
+- Token-budget compression trigger: `--context-token-budget` (default 24000
+  estimated tokens, chars/4 heuristic) forces early local compression when the
+  pending history grows too large; audited via `context_budget` trace events.
+- Default-on read-before-edit guard: `edit_file` is blocked until the target
+  file was read this run (and re-read after any write). Opt out with
+  `--disable-edit-guard`; audited via `edit_guard` trace events.
+- `--enable-memory-hygiene` (default off): success observations supersede
+  matching failure memories (importance/score down-weighting plus a staleness
+  note when rendered) and recall queries are anchored to the task text.
+- `--enable-llm-compression` (default off): folding old context additionally
+  stores one LLM-written summary memory, with silent fallback to the
+  rule-based path on any client failure.
+- Trace schema 1.1 (additive): new events `observation_truncated`,
+  `context_budget`, `edit_guard`, `memory_invalidation`, and an
+  `estimated_prompt_tokens` field on `llm_call`.
+- Unified retryable LLM error handling: `--llm-max-retries` (default 2)
+  retries transient timeouts/429/5xx with exponential backoff for all four
+  providers (DeepSeek keeps its internal loop; benchmark usage wrapper now
+  routes through the retry layer too).
+- Atomic file writes for `create_file`/`edit_file` (temp file + `os.replace`,
+  Windows-safe fallback) and per-run pre-write backups under the system temp
+  directory, reported at run end and via `file_backup` trace events.
+- Configurable MCP request timeout (`"timeout"` per server in
+  `mcp_config.json`) and a single automatic reconnect when a server process
+  dies mid-run.
+- Run-level checkpoint/resume: `--checkpoint` snapshots conversation, steps,
+  metadata, plan, and local memories after every step; `--resume` continues
+  from the snapshot (task argument optional). Max-steps runs write a terminal
+  snapshot resumable with a larger `--max-steps`.
+- Progress-carrying replan: regenerated plans keep completed steps with
+  continued numbering, plan progress is matched against the next pending step
+  only, and the default (non-adaptive) replan path gains a budget of 5
+  (`--max-replans` overrides).
+- `--reflexion-memory-file` to persist Reflexion lessons across runs.
+- `--enable-circuit-breaker` (default off): temporarily disables a tool after
+  N consecutive same-kind failures with cooldown and probe recovery, audited
+  via `circuit_breaker` trace events.
+- Recovery success rate (`recovered_runs / runs_with_failures`) and per-tag
+  capability breakdowns in eval and benchmark summaries and reports;
+  trace directory analysis aggregates the same rate.
+- Hallucination proxy signals in `dm-agent-trace analyze`/`analyze-dir`:
+  edits without a prior read, edit-guard blocks, truncated observations, and
+  missing-path references (advisory; not part of the trace-health score).
+- Repeat-variance stability metrics for `dm-agent-bench --repeat`: per-task
+  pass@k, pass^k, and task pass-rate stddev.
+- `dm-agent-bench --per-test-credit`: advisory node-by-node hidden-test
+  partial credit (strict scoring unchanged) and `--manifest-only` for keyless
+  manifest generation.
+- CI quality gates: the full keyless eval suite must stay at 100%
+  (`dm_agent/evals/gate.py`) and benchmark manifests are diffed against
+  checked-in baselines so task drift fails the build.
+- New keyless eval tasks `truncated_read_pagination` and `edit_guard_reread`
+  driven by the new `EvalTask.agent_overrides` mechanism.
+
+### Fixed
+- SWE-bench Lite failure-mode analyzer now recognizes the agent's actual
+  `max_steps_exceeded` terminal status (plus the `agent_status_max_steps*`
+  failure-reason fallback), so step-budget failures are no longer
+  miscategorized as `regression`. Frozen resolved/patch-applied numbers are
+  unaffected; see the errata in `docs/research-log/01-swebench-baseline.md`.
+
 ### Removed
 - Legacy repository-index context support, including its CLI entry point,
   old context exports, agent opt-in flags, benchmark flags, and the optional

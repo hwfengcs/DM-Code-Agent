@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List
 
+from ..memory.context_budget import estimate_tokens_from_chars
+
 
 @dataclass
 class ScriptedUsage:
@@ -14,7 +16,7 @@ class ScriptedUsage:
 
     @property
     def estimated_tokens(self) -> int:
-        return max(1, (self.prompt_chars + self.completion_chars + 3) // 4)
+        return max(1, estimate_tokens_from_chars(self.prompt_chars + self.completion_chars))
 
 
 class ScriptedLLMClient:

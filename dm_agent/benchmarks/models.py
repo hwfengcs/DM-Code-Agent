@@ -74,6 +74,8 @@ class BenchmarkRunConfig:
     enable_critic: bool = False
     self_consistency_runs: int = 1
     self_consistency_strategy: str = "majority_vote"
+    # Advisory: run hidden tests node-by-node for partial credit (score unchanged).
+    per_test_credit: bool = False
 
 
 @dataclass(frozen=True)

@@ -31,6 +31,8 @@ class EvalTask:
     replan_response: Optional[str] = None
     max_steps: int = 8
     tags: List[str] = field(default_factory=list)
+    # 传给 ReactAgent 构造函数的关键字覆盖（如小截断阈值），用于行为类 eval。
+    agent_overrides: Dict[str, Any] = field(default_factory=dict)
 
     def to_public_dict(self) -> Dict[str, Any]:
         return {

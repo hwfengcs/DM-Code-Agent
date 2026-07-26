@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-TRACE_SCHEMA_VERSION = "1.0"
+from ..memory.context_budget import estimate_tokens_from_chars
+
+# 1.1: additive events (observation_truncated, context_budget, edit_guard, ...)
+# and the llm_call estimated_prompt_tokens field. Older traces stay parseable.
+TRACE_SCHEMA_VERSION = "1.1"
 SENSITIVE_ENV_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 
 
@@ -112,12 +116,14 @@ class TraceWriter:
         temperature: float,
         raw_response: Optional[str] = None,
     ) -> None:
+        prompt_chars = sum(len(message.get("content", "")) for message in messages)
         payload: Dict[str, Any] = {
             "step_number": step_number,
             "temperature": temperature,
             "message_count": len(messages),
             "roles": [message.get("role", "") for message in messages],
-            "prompt_chars": sum(len(message.get("content", "")) for message in messages),
+            "prompt_chars": prompt_chars,
+            "estimated_prompt_tokens": estimate_tokens_from_chars(prompt_chars),
         }
         if self.capture_llm_io:
             payload["messages"] = messages

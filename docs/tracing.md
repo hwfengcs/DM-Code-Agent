@@ -89,9 +89,23 @@ The current schema records these event types:
 - `skills`: activated skill names.
 - `plan`: initial planner steps.
 - `plan_error`: planning failure.
-- `llm_call`: message count, roles, temperature, prompt chars, and response chars.
+- `llm_call`: message count, roles, temperature, prompt chars, estimated prompt tokens, and response chars.
 - `parse_error`: invalid model response information.
 - `tool_call`: action, action input, observation, and failure flag.
+- `observation_truncated`: a tool observation exceeded the cap; original/kept chars and line count.
+- `context_budget`: the estimated-token budget forced an early compression
+  (`phase=forced_compress`) or the compressed view is still over budget
+  (`phase=post_compress_still_over`).
+- `edit_guard`: an `edit_file` call was blocked (`reason=never_read` or `stale_read`) until the
+  target range is re-read.
+- `memory_invalidation`: memory hygiene superseded failure memories after a later success
+  (only with `--enable-memory-hygiene`).
+- `file_backup`: the original file was copied to the per-run backup directory before a
+  write-class tool ran.
+- `checkpoint_saved`: run state was snapshotted to the `--checkpoint` file after a step.
+- `run_resumed`: a run continued from a `--resume` checkpoint (records the resume step).
+- `circuit_breaker`: a repeatedly failing tool was disabled (`phase=opened`) or a call to it
+  was intercepted during cooldown (`phase=blocked`); only with `--enable-circuit-breaker`.
 - `step`: ReAct step with thought, action, input, and observation.
 - `replan`: regenerated plan after a failure.
 - `run_end`: final answer, status, duration, and agent metadata.

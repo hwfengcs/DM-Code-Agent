@@ -41,6 +41,12 @@ these entries.
 | [20](20-economics-manifest-guard.md) | Economics manifest guard | post-v2 | implementation landed |
 | [21](21-trace-analysis-markdown.md) | Trace-analysis Markdown reports | post-v2 | implementation landed |
 | [22](22-repeated-failure-policy-experiment.md) | Repeated-failure policy experiment | post-v2 | implementation landed |
+| [23](23-observation-truncation-and-token-budget.md) | Observation truncation, token budget, read-before-edit guard | post-v2 | implementation landed |
+| [24](24-memory-hygiene-and-recall.md) | Memory hygiene and anchored recall | post-v2 | implementation landed; live ablation pending |
+| [25](25-unified-llm-retry-and-atomic-io.md) | Unified LLM retry, atomic file I/O, MCP resilience | post-v2 | implementation landed |
+| [26](26-run-checkpoint-and-progress-carrying-replan.md) | Run checkpoint/resume and progress-carrying replan | post-v2 | implementation landed |
+| [27](27-tool-circuit-breaker-experiment.md) | Tool circuit breaker experiment | post-v2 | implementation landed; live ablation pending |
+| [28](28-evals-recovery-capability-and-gates.md) | Evals: recovery rate, capability breakdown, CI gates | post-v2 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

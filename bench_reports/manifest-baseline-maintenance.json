@@ -1,0 +1,29 @@
+{
+  "suite": "maintenance",
+  "task_count": 7,
+  "task_ids": [
+    "cli_config_docs_contract",
+    "config_precedence",
+    "cross_file_user_contract",
+    "packaging_ci_contract",
+    "patch_summary_name_status",
+    "retry_regression_tests",
+    "safe_workspace_join"
+  ],
+  "task_fingerprints": {
+    "cli_config_docs_contract": "823a40d03b67947e",
+    "config_precedence": "4dfe0afeab978e30",
+    "cross_file_user_contract": "0643ba4f350d59d6",
+    "packaging_ci_contract": "49d9fb24f3cc4ddb",
+    "patch_summary_name_status": "58f902d5a48181b4",
+    "retry_regression_tests": "7712d2b94da801b0",
+    "safe_workspace_join": "38c9521ab244d249"
+  },
+  "variant_names": [
+    "full",
+    "no_compression",
+    "no_planning",
+    "no_skills"
+  ],
+  "suite_signature": "66045371a005173f"
+}

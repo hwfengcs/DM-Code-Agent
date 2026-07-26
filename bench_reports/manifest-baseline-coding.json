@@ -1,0 +1,27 @@
+{
+  "suite": "coding",
+  "task_count": 6,
+  "task_ids": [
+    "inventory_reservations",
+    "normalize_users",
+    "order_total_edges",
+    "slugify_cleanup",
+    "stats_summary",
+    "ttl_cache_lru"
+  ],
+  "task_fingerprints": {
+    "inventory_reservations": "43c061578fbdb4e9",
+    "normalize_users": "fb2a9ef1fbe1e69c",
+    "order_total_edges": "7c49203d5a852abf",
+    "slugify_cleanup": "e046880a7e0c8931",
+    "stats_summary": "60a0bf5a030da529",
+    "ttl_cache_lru": "dbf22b2c61856221"
+  },
+  "variant_names": [
+    "full",
+    "no_compression",
+    "no_planning",
+    "no_skills"
+  ],
+  "suite_signature": "f26b8aa672d632f8"
+}

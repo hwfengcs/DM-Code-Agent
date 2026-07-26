@@ -55,6 +55,9 @@
 | Critic + Self-Consistency | ✅ P4 impl | 完成前加 peer-review 门卫 + N 路独立试跑选优（majority vote / critic score / test pass），并记录候选分歧与置信度 | [04](docs/research-log/04-critic-and-consistency.md) |
 | Adaptive Replanning + Token economics | ✅ P5 impl | 默认关闭；错误信号映射到 replan 策略，离线统计 token / cost-per-success；真实跨模型跑分冻结 | [05](docs/research-log/05-adaptive-and-economics.md) |
 | Final write-up + release checklist | ✅ P6 docs | 发布叙事、社区分发清单和面试 bullet；不包含未运行的真实评测声明 | [06](docs/research-log/06-final-writeup.md) |
+| 长上下文护栏（截断/token 预算/edit guard） | ✅ post-v2 | 默认开：观察截断+分页提示、预算触发压缩、read-before-edit 拦截；记忆卫生与 LLM 摘要默认关 | [23](docs/research-log/23-observation-truncation-and-token-budget.md) [24](docs/research-log/24-memory-hygiene-and-recall.md) |
+| 状态容错（统一重试/原子写/checkpoint/熔断） | ✅ post-v2 | 四家 provider 统一瞬时故障重试、原子写+备份、run 级 checkpoint/resume、进度保留 replan；熔断默认关 | [25](docs/research-log/25-unified-llm-retry-and-atomic-io.md) [26](docs/research-log/26-run-checkpoint-and-progress-carrying-replan.md) [27](docs/research-log/27-tool-circuit-breaker-experiment.md) |
+| Evals 闭环（恢复率/能力画像/CI 门禁） | ✅ post-v2 | 恢复成功率、per-tag 聚合、幻觉代理指标、repeat 方差、per-test 部分得分；CI 全量 keyless eval 100% 门禁 + manifest 守卫 | [28](docs/research-log/28-evals-recovery-capability-and-gates.md) |
 
 ## Research Log
 
@@ -89,7 +92,9 @@ DM-Code-Agent 是一个面向真实代码维护任务的轻量 Code Agent。它�
 | 能力 | 说明 |
 | --- | --- |
 | ReAct Agent | 模型输出 `thought/action/action_input`，Agent 执行工具并把 observation 写回上下文 |
-| Task Planner | 执行前生成 3-8 步计划，失败后可触发 replan |
+| Context Guards | 默认开：超长观察截断并附分页提示、估算 token 预算触发提前压缩、edit_file 先读后改守卫 |
+| Fault Tolerance | 统一 LLM 瞬时故障重试、原子文件写入+修改前备份、MCP 超时可配+单次重连、`--checkpoint/--resume` 断点续跑 |
+| Task Planner | 执行前生成 3-8 步计划，失败后可触发 replan；重规划保留已完成进度并有预算护栏 |
 | Adaptive Replanning | 默认关闭；把 tool/parse/test/critic/max-steps 错误映射到恢复策略，并记录重复失败信号 |
 | Reflexion | 默认关闭；失败 trial 可生成 lesson 并注入下一轮 prompt |
 | Context Memory | Mem0 风格本地 add/search 记忆压缩，按 scope 保存原子记忆并保留最近轮次 |

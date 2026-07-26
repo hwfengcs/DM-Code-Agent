@@ -12,6 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import ReactAgent
+from dm_agent.memory.context_budget import estimate_tokens_from_chars
 from dm_agent.skills import SkillManager
 from dm_agent.tools import default_tools
 
@@ -74,7 +75,10 @@ class UsageTrackingClient:
         self.usage = UsageTotals()
 
     def complete(self, messages: List[Dict[str, str]], **extra: Any) -> Dict[str, Any]:
-        return self.client.complete(messages, **extra)
+        # Route through the inner client's retry layer when available so that
+        # transient provider failures are retried for benchmark runs too.
+        complete = getattr(self.client, "complete_with_retry", self.client.complete)
+        return complete(messages, **extra)
 
     def extract_text(self, data: Dict[str, Any]) -> str:
         return self.client.extract_text(data)
@@ -93,7 +97,9 @@ class UsageTrackingClient:
             self.usage.completion_tokens += _int_value(usage.get("completion_tokens"))
             self.usage.total_tokens += _int_value(usage.get("total_tokens"))
 
-        approx_tokens = (self.usage.prompt_chars + self.usage.completion_chars + 3) // 4
+        approx_tokens = estimate_tokens_from_chars(
+            self.usage.prompt_chars + self.usage.completion_chars
+        )
         self.usage.estimated_tokens = self.usage.total_tokens or approx_tokens
         return text
 
@@ -267,7 +273,7 @@ def run_real_suite(
         "model": config.model or defaults.get("model"),
         "base_url": config.base_url or defaults.get("base_url"),
         "repeat": config.repeat,
-        "summary": summarize_results(results),
+        "summary": summarize_results(results, tasks=selected_tasks),
         "results": [result.to_dict() for result in results],
         "tasks": [task.to_public_dict() for task in selected_tasks],
         "variants": [variant.__dict__ for variant in selected_variants],

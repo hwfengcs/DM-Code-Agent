@@ -165,8 +165,14 @@ def main(argv: Any = None) -> int:
 
 
 def _manifest(report: Dict[str, Any]) -> Dict[str, Any]:
-    manifest = report.get("manifest") or {}
-    return manifest if isinstance(manifest, dict) else {}
+    manifest = report.get("manifest")
+    if isinstance(manifest, dict):
+        return manifest
+    # Bare manifest files (from `dm-agent-bench --manifest-only`) carry the
+    # fields at top level instead of under a "manifest" key.
+    if "task_fingerprints" in report or "suite_signature" in report:
+        return report
+    return {}
 
 
 def _task_fingerprints(manifest: Dict[str, Any]) -> Dict[str, str]:
