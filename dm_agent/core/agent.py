@@ -12,11 +12,7 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 from dm_agent.clients.base_client import BaseLLMClient
-from dm_agent.memory.context_budget import (
-    FileLedger,
-    estimate_messages_tokens,
-    truncate_observation,
-)
+from dm_agent.memory.context_budget import estimate_messages_tokens, truncate_observation
 from dm_agent.memory.context_compressor import ContextCompressor
 from dm_agent.prompts import build_code_agent_prompt
 from dm_agent.tools.base import Tool
@@ -31,6 +27,7 @@ from .events import (
     HookFailure,
     LLMRequestClient,
 )
+from .guards import WRITE_ACTIONS, ReadBeforeEditGuard
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
 
@@ -214,7 +211,17 @@ class ReactAgent:
         self.max_observation_chars = max(0, int(max_observation_chars))
         # read-before-edit 守卫：edit_file 前必须读过目标文件，且写后需重读。
         self.enable_edit_guard = enable_edit_guard
-        self._file_ledger = FileLedger()
+        self._edit_guard = ReadBeforeEditGuard(enabled=enable_edit_guard, trace_writer=trace_writer)
+        self.event_bus.on(
+            "before_tool_call",
+            self._edit_guard.before_tool_call,
+            name="builtin.read_before_edit_guard",
+        )
+        self.event_bus.on(
+            "after_tool_result",
+            self._edit_guard.after_tool_result,
+            name="builtin.read_before_edit_ledger",
+        )
         # 工具熔断器（默认关）：同一 action+error 连续失败达到阈值后临时禁用。
         self.enable_circuit_breaker = enable_circuit_breaker
         self._circuit_breaker = (
@@ -435,7 +442,7 @@ class ReactAgent:
         started_at = time.perf_counter()
         steps: list[Step] = []
         limit = max_steps or self.max_steps
-        self._file_ledger.reset()
+        self._edit_guard.reset()
         run_token = getattr(self.trace_writer, "run_id", "") or uuid.uuid4().hex[:12]
         retry_baseline = getattr(self.client, "total_respond_retries", 0)
         last_logged_memory_items = 0
@@ -931,27 +938,11 @@ class ReactAgent:
                         before_event, on_error=self._record_hook_error
                     )
                     action_input = before_event.arguments
-                    guard_reason = self._check_edit_guard(action, action_input)
                     if block is not None:
                         guard_blocked = True
                         observation = str(block["reason"])
-                    elif guard_reason:
-                        guard_blocked = True
-                        metadata["edit_guard_block_count"] += 1
-                        observation = self._edit_guard_message(
-                            str(action_input.get("path", "")), guard_reason
-                        )
-                        if self.trace_writer:
-                            self.trace_writer.record(
-                                "edit_guard",
-                                {
-                                    "step_number": step_num,
-                                    "path": str(action_input.get("path", "")),
-                                    "reason": guard_reason,
-                                },
-                            )
                     else:
-                        if action in self._WRITE_NOTE_ACTIONS:
+                        if action in WRITE_ACTIONS:
                             self._backup_before_write(action_input, metadata, step_num, run_token)
                         tool_succeeded = False
                         try:
@@ -983,8 +974,6 @@ class ReactAgent:
                             metadata=metadata,
                             step_num=step_num,
                         )
-                        if tool_succeeded:
-                            self._note_file_access(action, action_input, observation, step_num)
                         if self._circuit_breaker is not None and action != "task_complete":
                             state = self._circuit_breaker.record(
                                 action,
@@ -1357,59 +1346,6 @@ class ReactAgent:
         except json.JSONDecodeError:
             return False
         return isinstance(parsed, dict)
-
-    _READ_NOTE_ACTIONS = frozenset({"read_file", "search_in_file"})
-    _WRITE_NOTE_ACTIONS = frozenset({"edit_file", "create_file"})
-
-    def _check_edit_guard(self, action: str, action_input: Any) -> str:
-        """返回拦截原因（never_read/stale_read），允许执行时返回空串。"""
-        if not self.enable_edit_guard or action != "edit_file":
-            return ""
-        if not isinstance(action_input, dict):
-            return ""
-        path = action_input.get("path")
-        if not isinstance(path, str) or not path:
-            return ""
-        return self._file_ledger.check_edit(path) or ""
-
-    @staticmethod
-    def _edit_guard_message(path: str, reason: str) -> str:
-        # 文案刻意避开失败关键词（error/失败/不存在等），拦截不应触发 replan。
-        if reason == "stale_read":
-            return (
-                f"Edit blocked: {path} changed after your last read in this run. "
-                "Re-read the target range with read_file (line_start/line_end) to get "
-                "current line numbers, then edit."
-            )
-        return (
-            f"Edit blocked: {path} has not been read in this run yet. "
-            "Read the target range with read_file (line_start/line_end) first, then edit."
-        )
-
-    @staticmethod
-    def _observation_reports_missing_path(observation: str) -> bool:
-        text = str(observation).strip()
-        return (
-            len(text) <= 300
-            and text.startswith(("文件 ", "路径 "))
-            and text.endswith(("不存在。", "不是文件。"))
-        )
-
-    def _note_file_access(
-        self, action: str, action_input: Any, observation: str, step: int
-    ) -> None:
-        """登记成功的文件读写，为 read-before-edit 守卫提供依据。"""
-        if not isinstance(action_input, dict):
-            return
-        path = action_input.get("path")
-        if not isinstance(path, str) or not path:
-            return
-        if self._observation_reports_missing_path(observation):
-            return
-        if action in self._READ_NOTE_ACTIONS:
-            self._file_ledger.note_read(path, step)
-        elif action in self._WRITE_NOTE_ACTIONS:
-            self._file_ledger.note_write(path, step)
 
     def _restore_from_checkpoint(
         self,
