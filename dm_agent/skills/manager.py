@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .base import BaseSkill, ConfigSkill
 from .selector import SkillSelector
 
 if TYPE_CHECKING:
-    from ..clients.base_client import BaseLLMClient
-    from ..tools.base import Tool
+    from dm_agent.clients.base_client import BaseLLMClient
+    from dm_agent.tools.base import Tool
 
 
 class SkillManager:
@@ -26,10 +25,10 @@ class SkillManager:
         max_active_skills: int = 3,
         min_keyword_score: float = 0.05,
         enable_llm_fallback: bool = False,
-        llm_client: Optional["BaseLLMClient"] = None,
+        llm_client: BaseLLMClient | None = None,
     ) -> None:
-        self.skills: Dict[str, BaseSkill] = {}
-        self.active_skills: List[str] = []
+        self.skills: dict[str, BaseSkill] = {}
+        self.active_skills: list[str] = []
         self._selector = SkillSelector(
             max_active_skills=max_active_skills,
             min_keyword_score=min_keyword_score,
@@ -54,10 +53,7 @@ class SkillManager:
 
     def load_custom_skills(self, directory: str | Path | None = None) -> int:
         """从目录扫描 JSON 文件加载自定义技能，返回加载数量。"""
-        if directory is None:
-            directory = Path(__file__).parent / "custom"
-        else:
-            directory = Path(directory)
+        directory = Path(__file__).parent / "custom" if directory is None else Path(directory)
 
         if not directory.is_dir():
             return 0
@@ -83,11 +79,11 @@ class SkillManager:
     # 选择与激活
     # ------------------------------------------------------------------
 
-    def select_skills_for_task(self, task: str) -> List[str]:
+    def select_skills_for_task(self, task: str) -> list[str]:
         """根据任务自动选择技能，返回选中的技能名称列表。"""
         return self._selector.select(task, self.skills)
 
-    def activate_skills(self, names: List[str]) -> None:
+    def activate_skills(self, names: list[str]) -> None:
         """激活指定技能。"""
         self.deactivate_all()
         for name in names:
@@ -110,7 +106,7 @@ class SkillManager:
 
     def get_active_prompt_additions(self) -> str:
         """返回所有激活技能的 prompt 合并文本。"""
-        parts: List[str] = []
+        parts: list[str] = []
         for name in self.active_skills:
             skill = self.skills.get(name)
             if skill:
@@ -120,9 +116,9 @@ class SkillManager:
                     parts.append(f"\n\n## 专家技能：{meta.display_name}\n{addition}")
         return "".join(parts)
 
-    def get_active_tools(self) -> List["Tool"]:
+    def get_active_tools(self) -> list[Tool]:
         """返回所有激活技能的工具合并列表。"""
-        tools: List["Tool"] = []
+        tools: list[Tool] = []
         for name in self.active_skills:
             skill = self.skills.get(name)
             if skill:
@@ -133,9 +129,9 @@ class SkillManager:
     # 信息查询
     # ------------------------------------------------------------------
 
-    def get_all_skill_info(self) -> List[Dict[str, Any]]:
+    def get_all_skill_info(self) -> list[dict[str, Any]]:
         """返回所有技能摘要信息。"""
-        info_list: List[Dict[str, Any]] = []
+        info_list: list[dict[str, Any]] = []
         for name, skill in self.skills.items():
             meta = skill.get_metadata()
             tools = skill.get_tools()

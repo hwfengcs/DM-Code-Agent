@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from typing import List
-
-from ..base import BaseSkill, SkillMetadata
-from ...tools.base import Tool
+from dm_agent.skills.base import BaseSkill, SkillMetadata
+from dm_agent.tools.base import Tool
 
 
 class FrontendDevSkill(BaseSkill):
@@ -58,6 +56,6 @@ class FrontendDevSkill(BaseSkill):
             "7. 编写可复用、可测试的组件\n"
         )
 
-    def get_tools(self) -> List[Tool]:
+    def get_tools(self) -> list[Tool]:
         # 前端技能不提供额外工具，现有 run_shell 已可执行 npm/yarn 命令
         return []

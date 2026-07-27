@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -13,20 +13,20 @@ class BenchmarkTask:
     task_id: str
     name: str
     prompt: str
-    setup_files: Dict[str, str]
-    hidden_files: Dict[str, str]
-    visible_test_command: List[str] = field(
+    setup_files: dict[str, str]
+    hidden_files: dict[str, str]
+    visible_test_command: list[str] = field(
         default_factory=lambda: ["{python}", "-m", "pytest", "-q"]
     )
-    hidden_test_command: List[str] = field(
+    hidden_test_command: list[str] = field(
         default_factory=lambda: ["{python}", "-m", "pytest", "-q"]
     )
     max_steps: int = 14
-    tags: List[str] = field(default_factory=list)
-    allowed_changed_files: List[str] = field(default_factory=list)
-    required_changed_files: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    allowed_changed_files: list[str] = field(default_factory=list)
+    required_changed_files: list[str] = field(default_factory=list)
 
-    def to_public_dict(self) -> Dict[str, Any]:
+    def to_public_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "name": self.name,
@@ -53,17 +53,17 @@ class BenchmarkVariant:
 @dataclass(frozen=True)
 class BenchmarkRunConfig:
     provider: str = "deepseek"
-    model: Optional[str] = None
-    base_url: Optional[str] = None
-    api_key_env: Optional[str] = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key_env: str | None = None
     timeout: int = 120
     temperature: float = 0.0
     repeat: int = 1
-    max_steps: Optional[int] = None
+    max_steps: int | None = None
     test_timeout: int = 30
     keep_workspaces: bool = False
-    workspace_root: Optional[str] = None
-    trace_dir: Optional[str] = None
+    workspace_root: str | None = None
+    trace_dir: str | None = None
     quiet: bool = True
     enable_reflexion: bool = False
     max_trials: int = 1
@@ -80,13 +80,13 @@ class BenchmarkRunConfig:
 
 @dataclass(frozen=True)
 class CommandResult:
-    command: List[str]
+    command: list[str]
     returncode: int
     stdout: str
     stderr: str
     duration_seconds: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "command": self.command,
             "returncode": self.returncode,
@@ -104,7 +104,7 @@ class CodingBenchResult:
     success: bool
     failure_reason: str
     final_answer: str
-    actions: List[str]
+    actions: list[str]
     steps_count: int
     tool_calls: int
     duration_seconds: float
@@ -113,12 +113,12 @@ class CodingBenchResult:
     estimated_tokens: int
     estimated_cost_usd: float
     request_count: int
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
     hidden_test: CommandResult
-    changed_files: List[str] = field(default_factory=list)
+    changed_files: list[str] = field(default_factory=list)
     workspace_path: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "task_name": self.task_name,

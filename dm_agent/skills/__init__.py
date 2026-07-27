@@ -7,7 +7,7 @@ from .selector import SkillSelector
 __all__ = [
     "BaseSkill",
     "ConfigSkill",
-    "SkillMetadata",
     "SkillManager",
+    "SkillMetadata",
     "SkillSelector",
 ]

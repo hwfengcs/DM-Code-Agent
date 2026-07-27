@@ -22,11 +22,12 @@ import os
 import statistics
 import sys
 import tempfile
+from collections.abc import Callable, Sequence
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import replace
 from io import StringIO
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import CriticAgent, EpisodicMemory, ReactAgent, Reflector
@@ -56,7 +57,7 @@ def chdir(path: Path):
         os.chdir(previous)
 
 
-def _resolve_api_key(provider: str, override_env: Optional[str]) -> Optional[str]:
+def _resolve_api_key(provider: str, override_env: str | None) -> str | None:
     if override_env:
         return os.environ.get(override_env)
     env_var = PROVIDER_API_KEY_ENV.get(provider.lower())
@@ -71,7 +72,7 @@ def _build_agent(
     enable_planning: bool = True,
     enable_skills: bool = True,
     enable_compression: bool = True,
-    trace_writer: Optional[TraceWriter] = None,
+    trace_writer: TraceWriter | None = None,
     system_prompt_addition: str = "",
 ) -> tuple[ReactAgent, UsageTrackingClient]:
     provider = config.provider.lower()
@@ -91,7 +92,7 @@ def _build_agent(
     )
     client = UsageTrackingClient(raw_client)
 
-    skill_manager: Optional[SkillManager] = None
+    skill_manager: SkillManager | None = None
     if enable_skills:
         skill_manager = SkillManager()
         skill_manager.load_all()
@@ -174,7 +175,7 @@ def _build_task_prompt(instance: SWEBenchInstance) -> str:
 def _classify_failure_reason(
     instance: SWEBenchInstance,
     verification: SWEBenchVerification,
-    metadata: Dict[str, Any],
+    metadata: dict[str, Any],
 ) -> str:
     """Return a short string describing why this instance was not resolved."""
     if verification.resolved:
@@ -199,14 +200,14 @@ def _run_single_trial(
     config: SWEBenchRunConfig,
     *,
     workspace_root: Path,
-    trace_dir: Optional[Path],
+    trace_dir: Path | None,
     enable_planning: bool = True,
     enable_skills: bool = True,
     enable_compression: bool = True,
-    reflexion_memory: Optional[EpisodicMemory] = None,
+    reflexion_memory: EpisodicMemory | None = None,
     trial_number: int = 1,
 ) -> SWEBenchResult:
-    trace_writer: Optional[TraceWriter] = None
+    trace_writer: TraceWriter | None = None
     if trace_dir is not None:
         trace_dir.mkdir(parents=True, exist_ok=True)
         trace_name = (
@@ -285,7 +286,7 @@ def _run_single_trial(
                 "self_consistency_strategy": config.self_consistency_strategy,
             }
         )
-        actions: List[str] = [step.get("action", "") for step in steps]
+        actions: list[str] = [step.get("action", "") for step in steps]
         prediction = workspace.compute_prediction_diff()
 
         verification = verify_prediction(
@@ -348,7 +349,7 @@ def _run_single_instance(
     config: SWEBenchRunConfig,
     *,
     workspace_root: Path,
-    trace_dir: Optional[Path],
+    trace_dir: Path | None,
     enable_planning: bool = True,
     enable_skills: bool = True,
     enable_compression: bool = True,
@@ -368,10 +369,10 @@ def _run_single_instance(
         )
 
     memory = EpisodicMemory()
-    trial_results: List[SWEBenchResult] = []
-    reflector: Optional[Reflector] = None
-    reflector_client: Optional[UsageTrackingClient] = None
-    lessons: List[str] = []
+    trial_results: list[SWEBenchResult] = []
+    reflector: Reflector | None = None
+    reflector_client: UsageTrackingClient | None = None
+    lessons: list[str] = []
 
     for trial in range(1, config.max_trials + 1):
         result = _run_single_trial(
@@ -397,7 +398,7 @@ def _run_single_instance(
         if reflector is None:
             try:
                 reflector, reflector_client = _build_reflector(config)
-            except Exception:  # noqa: BLE001 - fallback lesson still lets retry proceed
+            except Exception:
                 reflector = None
                 reflector_client = None
         feedback = _build_hidden_test_feedback(result)
@@ -410,7 +411,7 @@ def _run_single_instance(
                     steps=[],
                     failure_feedback=feedback,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 lesson = _fallback_swebench_lesson(result, error=str(exc))
         else:
             lesson = _fallback_swebench_lesson(result)
@@ -428,7 +429,7 @@ def _merge_reflexion_trials(
     trial_results: Sequence[SWEBenchResult],
     *,
     lessons: Sequence[str],
-    reflector_client: Optional[UsageTrackingClient],
+    reflector_client: UsageTrackingClient | None,
 ) -> SWEBenchResult:
     """Return the final trial result with cumulative Reflexion telemetry."""
     metadata = dict(final_result.metadata)
@@ -503,13 +504,13 @@ def _fallback_swebench_lesson(result: SWEBenchResult, *, error: str = "") -> str
 def run_swebench_lite(
     instances: Sequence[SWEBenchInstance],
     *,
-    config: Optional[SWEBenchRunConfig] = None,
+    config: SWEBenchRunConfig | None = None,
     enable_planning: bool = True,
     enable_skills: bool = True,
     enable_compression: bool = True,
-    resume_results: Optional[Sequence[SWEBenchResult]] = None,
-    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-) -> Dict[str, Any]:
+    resume_results: Sequence[SWEBenchResult] | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     """Run the agent on a sequence of SWE-bench Lite instances.
 
     Args:
@@ -539,7 +540,7 @@ def run_swebench_lite(
     trace_dir = Path(config.trace_dir) if config.trace_dir else None
 
     resume_by_id = {r.instance_id: r for r in resume_results or []}
-    results: List[SWEBenchResult] = []
+    results: list[SWEBenchResult] = []
     reused_count = 0
     for instance in instances:
         if instance.instance_id in resume_by_id:
@@ -589,7 +590,7 @@ def build_report(
     enable_skills: bool,
     enable_compression: bool,
     reused_count: int = 0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build the serializable report payload for completed results."""
     provider = config.provider.lower()
     defaults = PROVIDER_DEFAULTS.get(provider, {})
@@ -628,7 +629,7 @@ def build_report(
     }
 
 
-def summarize_results(results: Sequence[SWEBenchResult]) -> Dict[str, Any]:
+def summarize_results(results: Sequence[SWEBenchResult]) -> dict[str, Any]:
     """Aggregate per-instance results into the report headline."""
     if not results:
         return {
@@ -672,10 +673,10 @@ def _success_at_trial(result: SWEBenchResult, trial: int) -> bool:
     return result.success and result.trial == trial
 
 
-def render_markdown_report(report: Dict[str, Any]) -> str:
+def render_markdown_report(report: dict[str, Any]) -> str:
     """Render the runner output as a human-friendly Markdown report."""
     summary = report.get("summary", {})
-    lines: List[str] = [
+    lines: list[str] = [
         "# SWE-bench Lite Report",
         "",
         f"- Provider: `{report.get('provider')}`",

@@ -1,12 +1,11 @@
 """系统提示词定义"""
 
-from pathlib import Path
-from typing import List
-from ..tools.base import Tool
+from dm_agent.tools.base import Tool
+
 from .code_agent_prompt import SYSTEM_PROMPT
 
 
-def build_code_agent_prompt(tools: List[Tool]) -> str:
+def build_code_agent_prompt(tools: list[Tool]) -> str:
     """从 markdown 文件构建 Code Agent 的系统提示词
 
     Args:

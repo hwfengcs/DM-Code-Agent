@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -24,15 +25,15 @@ class EconomicsEntry:
     total_runs: int
     successes: int
     pass_rate: float
-    pass_rate_ci_95: Dict[str, float]
+    pass_rate_ci_95: dict[str, float]
     total_estimated_tokens: int
-    cost_per_1k_tokens: Optional[float]
-    estimated_cost_usd: Optional[float]
-    cost_per_success_usd: Optional[float]
+    cost_per_1k_tokens: float | None
+    estimated_cost_usd: float | None
+    cost_per_success_usd: float | None
     avg_tokens_per_run: float
-    tokens_per_success: Optional[float]
+    tokens_per_success: float | None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "label": self.label,
             "suite": self.suite,
@@ -52,10 +53,10 @@ class EconomicsEntry:
 
 
 def summarize_report(
-    report: Dict[str, Any],
+    report: dict[str, Any],
     *,
     label: str = "",
-    cost_per_1k_tokens: Optional[float] = None,
+    cost_per_1k_tokens: float | None = None,
 ) -> EconomicsEntry:
     """Summarize one benchmark report into a cost/performance row."""
 
@@ -91,11 +92,11 @@ def summarize_report(
 
 
 def build_economics_report(
-    reports: Sequence[Dict[str, Any]],
+    reports: Sequence[dict[str, Any]],
     *,
-    labels: Optional[Sequence[str]] = None,
-    cost_per_1k_tokens: Optional[float] = None,
-) -> Dict[str, Any]:
+    labels: Sequence[str] | None = None,
+    cost_per_1k_tokens: float | None = None,
+) -> dict[str, Any]:
     """Build a deterministic economics report from existing benchmark JSON payloads."""
 
     labels = labels or []
@@ -132,7 +133,7 @@ def build_economics_report(
     }
 
 
-def render_markdown(report: Dict[str, Any]) -> str:
+def render_markdown(report: dict[str, Any]) -> str:
     """Render :func:`build_economics_report` output as Markdown."""
 
     lines = [
@@ -186,7 +187,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def load_json_reports(paths: Iterable[Path]) -> List[Dict[str, Any]]:
+def load_json_reports(paths: Iterable[Path]) -> list[dict[str, Any]]:
     reports = []
     for path in paths:
         with path.open("r", encoding="utf-8") as handle:
@@ -194,7 +195,7 @@ def load_json_reports(paths: Iterable[Path]) -> List[Dict[str, Any]]:
     return reports
 
 
-def write_economics_report(report: Dict[str, Any], *, json_path: Path, markdown_path: Path) -> None:
+def write_economics_report(report: dict[str, Any], *, json_path: Path, markdown_path: Path) -> None:
     json_path.parent.mkdir(parents=True, exist_ok=True)
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -227,21 +228,21 @@ def main(argv: Any = None) -> int:
     return 0
 
 
-def _success_count(report: Dict[str, Any], summary: Dict[str, Any], total_runs: int) -> int:
+def _success_count(report: dict[str, Any], summary: dict[str, Any], total_runs: int) -> int:
     if "resolved" in summary:
         return int(summary.get("resolved") or 0)
     if "overall_pass_rate" in summary:
-        return int(round(float(summary.get("overall_pass_rate") or 0.0) * total_runs))
+        return round(float(summary.get("overall_pass_rate") or 0.0) * total_runs)
     return sum(1 for result in report.get("results", []) if result.get("success"))
 
 
-def _total_tokens(results: Sequence[Dict[str, Any]], summary: Dict[str, Any]) -> int:
+def _total_tokens(results: Sequence[dict[str, Any]], summary: dict[str, Any]) -> int:
     if "total_estimated_tokens" in summary:
         return int(summary.get("total_estimated_tokens") or 0)
     return sum(int(result.get("estimated_tokens") or 0) for result in results)
 
 
-def _resolve_cost_per_1k(report: Dict[str, Any], override: Optional[float]) -> Optional[float]:
+def _resolve_cost_per_1k(report: dict[str, Any], override: float | None) -> float | None:
     if override is not None:
         return override
     economics = report.get("token_economics") or {}
@@ -253,10 +254,10 @@ def _resolve_cost_per_1k(report: Dict[str, Any], override: Optional[float]) -> O
 
 
 def _pass_rate_ci(
-    summary: Dict[str, Any],
+    summary: dict[str, Any],
     successes: int,
     total_runs: int,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     interval = summary.get("overall_pass_rate_ci_95")
     if isinstance(interval, dict) and {"low", "high"} <= set(interval):
         return {
@@ -267,10 +268,10 @@ def _pass_rate_ci(
 
 
 def _total_cost(
-    results: Sequence[Dict[str, Any]],
+    results: Sequence[dict[str, Any]],
     total_tokens: int,
-    cost_per_1k_tokens: Optional[float],
-) -> Optional[float]:
+    cost_per_1k_tokens: float | None,
+) -> float | None:
     explicit = sum(float(result.get("estimated_cost_usd") or 0.0) for result in results)
     if explicit > 0:
         return explicit
@@ -279,15 +280,15 @@ def _total_cost(
     return (total_tokens / 1000.0) * cost_per_1k_tokens
 
 
-def _default_label(report: Dict[str, Any]) -> str:
+def _default_label(report: dict[str, Any]) -> str:
     provider = str(report.get("provider") or "unknown")
     model = str(report.get("model") or "unknown")
     suite = str(report.get("suite") or report.get("mode") or "benchmark")
     return f"{suite}:{provider}:{model}"
 
 
-def _manifest_guard(reports: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
-    signatures: Dict[str, List[str]] = {}
+def _manifest_guard(reports: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    signatures: dict[str, list[str]] = {}
     missing = []
     for index, report in enumerate(reports):
         label = _default_label(report) or f"report-{index + 1}"
@@ -312,7 +313,7 @@ def _safe_rate(successes: int, total: int) -> float:
     return (successes / total) if total else 0.0
 
 
-def _wilson_interval(successes: int, total: int, *, z: float = 1.96) -> Dict[str, float]:
+def _wilson_interval(successes: int, total: int, *, z: float = 1.96) -> dict[str, float]:
     if total <= 0:
         return {"low": 0.0, "high": 0.0}
     phat = successes / total

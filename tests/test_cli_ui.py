@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 
 from dm_agent import Tool
-
 from main import (
     Config,
     create_agent,

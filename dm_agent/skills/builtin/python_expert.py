@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
-from ..base import BaseSkill, SkillMetadata
-from ...tools.base import Tool
+from dm_agent.skills.base import BaseSkill, SkillMetadata
+from dm_agent.tools.base import Tool
 
-_PYTHON_BEST_PRACTICES: Dict[str, str] = {
+_PYTHON_BEST_PRACTICES: dict[str, str] = {
     "代码风格": (
         "- 遵循 PEP 8 代码风格指南\n"
         "- 使用 4 个空格缩进\n"
@@ -54,7 +54,7 @@ _PYTHON_BEST_PRACTICES: Dict[str, str] = {
 }
 
 
-def _python_best_practices_runner(arguments: Dict[str, Any]) -> str:
+def _python_best_practices_runner(arguments: dict[str, Any]) -> str:
     """按主题查询 Python 最佳实践建议"""
     topic = arguments.get("topic", "").strip()
     if not topic:
@@ -126,7 +126,7 @@ class PythonExpertSkill(BaseSkill):
             "6. 使用 python_best_practices 工具查询特定领域的最佳实践建议\n"
         )
 
-    def get_tools(self) -> List[Tool]:
+    def get_tools(self) -> list[Tool]:
         return [
             Tool(
                 name="python_best_practices",

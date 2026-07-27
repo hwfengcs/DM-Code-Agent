@@ -8,10 +8,11 @@ trial receives those lessons as additional context.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
-from ..clients.base_client import BaseLLMClient
+from dm_agent.clients.base_client import BaseLLMClient
 
 
 @dataclass(frozen=True)
@@ -20,9 +21,9 @@ class Lesson:
 
     text: str
     source: str = "agent_failure"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "text": self.text,
             "source": self.source,
@@ -30,7 +31,7 @@ class Lesson:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Lesson":
+    def from_dict(cls, data: dict[str, Any]) -> Lesson:
         return cls(
             text=str(data.get("text", "")),
             source=str(data.get("source", "agent_failure")),
@@ -41,11 +42,11 @@ class Lesson:
 class EpisodicMemory:
     """Bounded memory of lessons from previous failed trials."""
 
-    def __init__(self, lessons: Optional[Iterable[Lesson | str]] = None, *, max_lessons: int = 5):
+    def __init__(self, lessons: Iterable[Lesson | str] | None = None, *, max_lessons: int = 5):
         if max_lessons < 1:
             raise ValueError("max_lessons must be at least 1")
         self.max_lessons = max_lessons
-        self.lessons: List[Lesson] = []
+        self.lessons: list[Lesson] = []
         for item in lessons or []:
             if isinstance(item, Lesson):
                 self.add(item.text, source=item.source, metadata=item.metadata)
@@ -60,7 +61,7 @@ class EpisodicMemory:
         lesson: str,
         *,
         source: str = "agent_failure",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         text = " ".join(lesson.strip().split())
         if not text:
@@ -72,14 +73,14 @@ class EpisodicMemory:
     def clear(self) -> None:
         self.lessons = []
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "max_lessons": self.max_lessons,
             "lessons": [lesson.to_dict() for lesson in self.lessons],
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "EpisodicMemory":
+    def from_dict(cls, data: dict[str, Any]) -> EpisodicMemory:
         return cls(
             [Lesson.from_dict(item) for item in data.get("lessons", [])],
             max_lessons=int(data.get("max_lessons", 5)),
@@ -120,9 +121,9 @@ class Reflector:
         *,
         task: str,
         final_answer: str,
-        metadata: Dict[str, Any],
-        steps: Iterable[Dict[str, Any]],
-        failure_feedback: Optional[str] = None,
+        metadata: dict[str, Any],
+        steps: Iterable[dict[str, Any]],
+        failure_feedback: str | None = None,
     ) -> str:
         """Generate a concise lesson for the next trial."""
         messages = [
@@ -154,9 +155,9 @@ class Reflector:
         *,
         task: str,
         final_answer: str,
-        metadata: Dict[str, Any],
-        steps: Iterable[Dict[str, Any]],
-        failure_feedback: Optional[str],
+        metadata: dict[str, Any],
+        steps: Iterable[dict[str, Any]],
+        failure_feedback: str | None,
     ) -> str:
         step_summary = _summarize_steps(steps, limit=self.max_step_chars)
         payload = {
@@ -179,8 +180,8 @@ class Reflector:
         return text[: self.max_lesson_chars]
 
 
-def _summarize_steps(steps: Iterable[Dict[str, Any]], *, limit: int) -> List[Dict[str, str]]:
-    summary: List[Dict[str, str]] = []
+def _summarize_steps(steps: Iterable[dict[str, Any]], *, limit: int) -> list[dict[str, str]]:
+    summary: list[dict[str, str]] = []
     used_chars = 0
     for step in steps:
         item = {
@@ -195,7 +196,7 @@ def _summarize_steps(steps: Iterable[Dict[str, Any]], *, limit: int) -> List[Dic
     return summary
 
 
-def _safe_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     allowed = {
         "status",
         "failure_reason",

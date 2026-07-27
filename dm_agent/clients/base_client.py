@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
 
 # Provider-agnostic transient-failure status codes (429/5xx plus common
 # request-conflict/timeout codes). Semantic 4xx errors are never retried.
@@ -90,9 +90,9 @@ class BaseLLMClient(ABC):
     @abstractmethod
     def complete(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """发送聊天式补全请求到 LLM API。
 
         Args:
@@ -105,7 +105,7 @@ class BaseLLMClient(ABC):
         pass
 
     @abstractmethod
-    def extract_text(self, data: Dict[str, Any]) -> str:
+    def extract_text(self, data: dict[str, Any]) -> str:
         """从 API 响应中提取文本内容。
 
         Args:
@@ -118,9 +118,9 @@ class BaseLLMClient(ABC):
 
     def complete_with_retry(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """调用 ``complete``，对瞬时故障做有限的指数退避重试。"""
         attempts = self.respond_retries + 1
         for attempt in range(attempts):
@@ -135,7 +135,7 @@ class BaseLLMClient(ABC):
                     time.sleep(self.respond_retry_backoff * (2**attempt))
         raise LLMError("LLM request failed after exhausting retry budget.")
 
-    def respond(self, messages: List[Dict[str, str]], **extra: Any) -> str:
+    def respond(self, messages: list[dict[str, str]], **extra: Any) -> str:
         """返回补全响应的文本部分。
 
         Args:

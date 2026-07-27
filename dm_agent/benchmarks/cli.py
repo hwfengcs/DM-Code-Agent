@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 from .models import BenchmarkRunConfig
 from .runner import (
@@ -216,14 +216,14 @@ def _list_swebench_lite(args: argparse.Namespace) -> int:
     return 0
 
 
-def _swebench_results_from_report(report: dict[str, Any]) -> List[Any]:
+def _swebench_results_from_report(report: dict[str, Any]) -> list[Any]:
     from .swebench_lite.models import SWEBenchResult
 
     return [SWEBenchResult.from_dict(result) for result in report.get("results", [])]
 
 
-def _load_swebench_resume_results(path: Path) -> List[Any]:
-    with open(path, "r", encoding="utf-8") as handle:
+def _load_swebench_resume_results(path: Path) -> list[Any]:
+    with open(path, encoding="utf-8") as handle:
         report = json.load(handle)
     if report.get("mode") != SWEBENCH_LITE_SUITE:
         raise ValueError(f"{path} is not a SWE-bench Lite report.")
@@ -241,8 +241,8 @@ def _atomic_write_text(path: Path, text: str) -> None:
 def _write_swebench_outputs(
     report: dict[str, Any],
     *,
-    output: Optional[Path],
-    markdown: Optional[Path],
+    output: Path | None,
+    markdown: Path | None,
 ) -> None:
     if output:
         _atomic_write_text(output, json.dumps(report, indent=2, ensure_ascii=False))
@@ -260,10 +260,10 @@ def _write_swebench_outputs(
 def _run_swebench_lite(args: argparse.Namespace) -> int:
     try:
         from .swebench_lite.loader import fixed_subset_50, load_instances
+        from .swebench_lite.models import SWEBenchRunConfig
         from .swebench_lite.runner import (
             run_swebench_lite,
         )
-        from .swebench_lite.models import SWEBenchRunConfig
     except ImportError as exc:
         print(
             f"Failed to import the swebench_lite suite: {exc}\n"
@@ -332,8 +332,8 @@ def _run_swebench_lite(args: argparse.Namespace) -> int:
         self_consistency_strategy=args.self_consistency_strategy,
     )
 
-    resume_results: List[Any] = []
-    resume_path: Optional[Path] = args.resume_from_output
+    resume_results: list[Any] = []
+    resume_path: Path | None = args.resume_from_output
     if args.resume and resume_path is None:
         if not args.output:
             print("--resume requires --output or --resume-from-output.", file=sys.stderr)
@@ -426,7 +426,7 @@ def main(argv: Any = None) -> int:
         return 0
 
     variant_names = args.variant
-    variants: Optional[List[Any]] = None
+    variants: list[Any] | None = None
     if args.all_variants:
         variants = BENCH_VARIANTS
         variant_names = None

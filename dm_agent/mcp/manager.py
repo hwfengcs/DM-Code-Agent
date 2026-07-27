@@ -1,9 +1,11 @@
 """MCP 管理器 - 统一管理多个 MCP 服务器"""
 
-from typing import Dict, List, Optional, Any
+from typing import Any
+
+from dm_agent.tools.base import Tool
+
 from .client import MCPClient
 from .config import MCPConfig, MCPServerConfig
-from ..tools.base import Tool
 
 
 class MCPManager:
@@ -18,7 +20,7 @@ class MCPManager:
         _tools_cache (List[Tool]): 缓存的工具列表，提高工具访问效率
     """
 
-    def __init__(self, config: Optional[MCPConfig] = None):
+    def __init__(self, config: MCPConfig | None = None):
         """
         初始化 MCP 管理器
 
@@ -27,10 +29,10 @@ class MCPManager:
 
         """
         self.config = config or MCPConfig()
-        self.clients: Dict[str, MCPClient] = {}
-        self._tools_cache: List[Tool] = []
+        self.clients: dict[str, MCPClient] = {}
+        self._tools_cache: list[Tool] = []
         # 每个服务器的自动重连次数（用于审计与测试）
-        self.reconnect_counts: Dict[str, int] = {}
+        self.reconnect_counts: dict[str, int] = {}
 
     def start_all(self) -> int:
         """
@@ -50,7 +52,7 @@ class MCPManager:
         enabled_servers = self.config.get_enabled_servers()
         success_count = 0
 
-        for name, server_config in enabled_servers.items():
+        for name in enabled_servers:
             if self.start_server(name):
                 success_count += 1
 
@@ -167,7 +169,7 @@ class MCPManager:
                 self._tools_cache.append(wrapped_tool)
 
     def _create_tool_wrapper(
-        self, server_name: str, tool_name: str, description: str, input_schema: Dict[str, Any]
+        self, server_name: str, tool_name: str, description: str, input_schema: dict[str, Any]
     ) -> Tool:
         """
         创建 MCP 工具的包装器
@@ -209,7 +211,7 @@ class MCPManager:
                 full_description += f". Arguments: {{{', '.join(params_desc)}}}"
 
         # 创建工具执行函数
-        def runner(arguments: Dict[str, Any]) -> str:
+        def runner(arguments: dict[str, Any]) -> str:
             """
             工具执行函数
 
@@ -240,7 +242,7 @@ class MCPManager:
             name=f"mcp_{server_name}_{tool_name}", description=full_description, runner=runner
         )
 
-    def _try_reconnect(self, server_name: str) -> Optional[MCPClient]:
+    def _try_reconnect(self, server_name: str) -> MCPClient | None:
         """对已配置且启用的服务器做单次重连；成功返回新客户端，失败返回 None。"""
         server_config = self.config.servers.get(server_name)
         if not server_config or not server_config.enabled:
@@ -252,7 +254,7 @@ class MCPManager:
             return self.clients.get(server_name)
         return None
 
-    def get_tools(self) -> List[Tool]:
+    def get_tools(self) -> list[Tool]:
         """
         获取所有 MCP 工具
 
@@ -269,7 +271,7 @@ class MCPManager:
         """
         return self._tools_cache.copy()
 
-    def get_running_servers(self) -> List[str]:
+    def get_running_servers(self) -> list[str]:
         """
         获取正在运行的服务器名称列表
 
@@ -286,7 +288,7 @@ class MCPManager:
         """
         return [name for name, client in self.clients.items() if client.is_running()]
 
-    def get_server_status(self) -> Dict[str, bool]:
+    def get_server_status(self) -> dict[str, bool]:
         """
         获取所有服务器的运行状态
 
@@ -302,7 +304,7 @@ class MCPManager:
             True
         """
         status = {}
-        for name in self.config.servers.keys():
+        for name in self.config.servers:
             client = self.clients.get(name)
             status[name] = client.is_running() if client else False
         return status

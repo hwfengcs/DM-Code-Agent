@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Optional
+from typing import Any
 
 # Keep at least this many head characters when the cap allows it, so that
 # failure-signature prefixes (observation[:160]) and file headers stay intact.
@@ -44,7 +45,7 @@ def estimate_tokens(text: str) -> int:
     return estimate_tokens_from_chars(len(str(text or "")))
 
 
-def estimate_messages_tokens(messages: Iterable[Dict[str, Any]]) -> int:
+def estimate_messages_tokens(messages: Iterable[dict[str, Any]]) -> int:
     """Estimate the token footprint of a message list (content only)."""
     return sum(estimate_tokens(str(message.get("content", ""))) for message in messages)
 
@@ -148,8 +149,8 @@ class FileLedger:
     """
 
     def __init__(self) -> None:
-        self._last_read: Dict[str, int] = {}
-        self._last_write: Dict[str, int] = {}
+        self._last_read: dict[str, int] = {}
+        self._last_write: dict[str, int] = {}
 
     def reset(self) -> None:
         self._last_read.clear()
@@ -163,7 +164,7 @@ class FileLedger:
         if path:
             self._last_write[_normalize_path(path)] = step
 
-    def check_edit(self, path: str) -> Optional[str]:
+    def check_edit(self, path: str) -> str | None:
         """Return a rejection reason for editing ``path``, or None if allowed."""
         key = _normalize_path(path)
         read_step = self._last_read.get(key)
@@ -174,5 +175,5 @@ class FileLedger:
             return "stale_read"
         return None
 
-    def last_write_step(self, path: str) -> Optional[int]:
+    def last_write_step(self, path: str) -> int | None:
         return self._last_write.get(_normalize_path(path))

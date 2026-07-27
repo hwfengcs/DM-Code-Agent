@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .base_client import BaseLLMClient
 from .claude_client import ClaudeClient
 from .deepseek_client import DeepSeekClient
@@ -15,8 +13,8 @@ def create_llm_client(
     provider: str,
     api_key: str,
     *,
-    model: Optional[str] = None,
-    base_url: Optional[str] = None,
+    model: str | None = None,
+    base_url: str | None = None,
     timeout: int = 600,
     **kwargs,
 ) -> BaseLLMClient:

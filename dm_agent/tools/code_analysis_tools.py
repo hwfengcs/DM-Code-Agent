@@ -5,12 +5,12 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .base import _require_str
 
 
-def parse_ast(arguments: Dict[str, Any]) -> str:
+def parse_ast(arguments: dict[str, Any]) -> str:
     """
     解析 Python 文件的 AST，提取函数、类、导入等结构信息
 
@@ -31,7 +31,7 @@ def parse_ast(arguments: Dict[str, Any]) -> str:
         return f"文件 {path} 不是 Python 文件。"
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             source_code = f.read()
 
         tree = ast.parse(source_code, filename=str(path))
@@ -53,7 +53,7 @@ def parse_ast(arguments: Dict[str, Any]) -> str:
         return f"解析失败：{e}"
 
 
-def _extract_imports(tree: ast.AST) -> List[Dict[str, Any]]:
+def _extract_imports(tree: ast.AST) -> list[dict[str, Any]]:
     """提取导入语句"""
     imports = []
     for node in ast.walk(tree):
@@ -81,7 +81,7 @@ def _extract_imports(tree: ast.AST) -> List[Dict[str, Any]]:
     return imports
 
 
-def _extract_classes(tree: ast.AST) -> List[Dict[str, Any]]:
+def _extract_classes(tree: ast.AST) -> list[dict[str, Any]]:
     """提取类定义"""
     classes = []
     for node in ast.walk(tree):
@@ -114,7 +114,7 @@ def _extract_classes(tree: ast.AST) -> List[Dict[str, Any]]:
     return classes
 
 
-def _extract_functions(tree: ast.AST) -> List[Dict[str, Any]]:
+def _extract_functions(tree: ast.AST) -> list[dict[str, Any]]:
     """提取顶层函数定义"""
     functions = []
     for node in tree.body:  # 只提取顶层函数
@@ -146,7 +146,7 @@ def _extract_functions(tree: ast.AST) -> List[Dict[str, Any]]:
     return functions
 
 
-def _extract_global_variables(tree: ast.AST) -> List[Dict[str, Any]]:
+def _extract_global_variables(tree: ast.AST) -> list[dict[str, Any]]:
     """提取全局变量"""
     variables = []
     for node in tree.body:
@@ -180,7 +180,7 @@ def _get_name(node: ast.AST) -> str:
         return ast.unparse(node) if hasattr(ast, "unparse") else "<unknown>"
 
 
-def get_function_signature(arguments: Dict[str, Any]) -> str:
+def get_function_signature(arguments: dict[str, Any]) -> str:
     """
     提取指定函数的完整签名
 
@@ -200,35 +200,37 @@ def get_function_signature(arguments: Dict[str, Any]) -> str:
         return f"路径 {path} 不是文件。"
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             source_code = f.read()
 
         tree = ast.parse(source_code, filename=str(path))
 
         # 查找函数
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if node.name == function_name:
-                    # 构建签名
-                    args_str = []
-                    for arg in node.args.args:
-                        arg_str = arg.arg
-                        if arg.annotation:
-                            arg_str += f": {_get_name(arg.annotation)}"
-                        args_str.append(arg_str)
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == function_name
+            ):
+                # 构建签名
+                args_str = []
+                for arg in node.args.args:
+                    arg_str = arg.arg
+                    if arg.annotation:
+                        arg_str += f": {_get_name(arg.annotation)}"
+                    args_str.append(arg_str)
 
-                    signature = f"def {node.name}({', '.join(args_str)})"
-                    if node.returns:
-                        signature += f" -> {_get_name(node.returns)}"
+                signature = f"def {node.name}({', '.join(args_str)})"
+                if node.returns:
+                    signature += f" -> {_get_name(node.returns)}"
 
-                    result = {
-                        "signature": signature,
-                        "line": node.lineno,
-                        "docstring": ast.get_docstring(node),
-                        "is_async": isinstance(node, ast.AsyncFunctionDef),
-                    }
+                result = {
+                    "signature": signature,
+                    "line": node.lineno,
+                    "docstring": ast.get_docstring(node),
+                    "is_async": isinstance(node, ast.AsyncFunctionDef),
+                }
 
-                    return json.dumps(result, indent=2, ensure_ascii=False)
+                return json.dumps(result, indent=2, ensure_ascii=False)
 
         return f"未找到函数 '{function_name}'。"
 
@@ -236,7 +238,7 @@ def get_function_signature(arguments: Dict[str, Any]) -> str:
         return f"提取函数签名失败：{e}"
 
 
-def find_dependencies(arguments: Dict[str, Any]) -> str:
+def find_dependencies(arguments: dict[str, Any]) -> str:
     """
     分析文件的依赖关系
 
@@ -255,7 +257,7 @@ def find_dependencies(arguments: Dict[str, Any]) -> str:
         return f"路径 {path} 不是文件。"
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             source_code = f.read()
 
         tree = ast.parse(source_code, filename=str(path))
@@ -306,7 +308,7 @@ def find_dependencies(arguments: Dict[str, Any]) -> str:
         return f"分析依赖关系失败：{e}"
 
 
-def get_code_metrics(arguments: Dict[str, Any]) -> str:
+def get_code_metrics(arguments: dict[str, Any]) -> str:
     """
     获取代码度量信息（行数、复杂度等）
 
@@ -325,7 +327,7 @@ def get_code_metrics(arguments: Dict[str, Any]) -> str:
         return f"路径 {path} 不是文件。"
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             lines = f.readlines()
 
         # 统计行数
@@ -354,7 +356,7 @@ def get_code_metrics(arguments: Dict[str, Any]) -> str:
 
         if path.suffix == ".py":
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     source = f.read()
                 tree = ast.parse(source)
 
@@ -368,7 +370,7 @@ def get_code_metrics(arguments: Dict[str, Any]) -> str:
 
                 metrics["num_functions"] = num_functions
                 metrics["num_classes"] = num_classes
-            except:
+            except Exception:
                 pass
 
         return json.dumps(metrics, indent=2, ensure_ascii=False)

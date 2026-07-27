@@ -12,8 +12,8 @@ from .tasks import (
 )
 
 __all__ = [
-    "BENCH_VARIANTS",
     "BENCHMARK_SUITES",
+    "BENCH_VARIANTS",
     "BUILTIN_CODING_TASKS",
     "BUILTIN_MAINTENANCE_TASKS",
     "DEFAULT_BENCH_VARIANTS",

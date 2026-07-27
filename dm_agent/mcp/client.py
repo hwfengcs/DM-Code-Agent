@@ -4,9 +4,9 @@ import json
 import os
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional
-from threading import Thread, Lock
-from queue import Queue, Empty
+from queue import Empty, Queue
+from threading import Lock, Thread
+from typing import Any
 
 
 class MCPClient:
@@ -33,8 +33,8 @@ class MCPClient:
         self,
         name: str,
         command: str,
-        args: List[str],
-        env: Optional[Dict[str, str]] = None,
+        args: list[str],
+        env: dict[str, str] | None = None,
         request_timeout: float = 5.0,
     ):
         """
@@ -57,8 +57,8 @@ class MCPClient:
         self.args = args
         self.env = env
         self.request_timeout = max(0.1, float(request_timeout))
-        self.process: Optional[subprocess.Popen] = None
-        self.tools: List[Dict[str, Any]] = []
+        self.process: subprocess.Popen | None = None
+        self.tools: list[dict[str, Any]] = []
         self._lock = Lock()
         self._message_id = 0
         self._stdout_queue: Queue = Queue()
@@ -81,7 +81,7 @@ class MCPClient:
         """
         try:
             # 构建完整命令
-            full_command = [self.command] + self.args
+            full_command = [self.command, *self.args]
 
             # 准备环境变量（合并当前环境和自定义环境）
             process_env = os.environ.copy()
@@ -174,8 +174,8 @@ class MCPClient:
                 break
 
     def _send_message(
-        self, method: str, params: Optional[Dict[str, Any]] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
         """
         发送 JSON-RPC 消息到 MCP 服务器
 
@@ -233,7 +233,7 @@ class MCPClient:
                     except json.JSONDecodeError:
                         continue
 
-                print(f"⚠️ MCP 响应超时")
+                print("⚠️ MCP 响应超时")
                 return None
 
             except Exception as e:
@@ -275,7 +275,7 @@ class MCPClient:
 
         return False
 
-    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Optional[str]:
+    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> str | None:
         """
         调用 MCP 工具
 
@@ -308,7 +308,7 @@ class MCPClient:
 
         return None
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         """
         获取此 MCP 服务器提供的工具列表
 

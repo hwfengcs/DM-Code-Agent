@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import ast
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any
 
 from .base import _require_str
 
@@ -25,7 +26,7 @@ DEFAULT_INDEX_EXCLUDES = {
 }
 
 
-def build_code_index(arguments: Dict[str, Any]) -> str:
+def build_code_index(arguments: dict[str, Any]) -> str:
     """Build a lightweight Python symbol index for a repository tree."""
     root = Path(arguments.get("root", ".")).resolve()
     max_files = int(arguments.get("max_files", 200))
@@ -70,7 +71,7 @@ def build_code_index(arguments: Dict[str, Any]) -> str:
     return json.dumps(result, indent=2, ensure_ascii=False)
 
 
-def search_symbol(arguments: Dict[str, Any]) -> str:
+def search_symbol(arguments: dict[str, Any]) -> str:
     """Search Python symbols by exact name or substring in a repository tree."""
     name = _require_str(arguments, "name")
     root = Path(arguments.get("root", ".")).resolve()
@@ -116,7 +117,7 @@ def search_symbol(arguments: Dict[str, Any]) -> str:
     return json.dumps(result, indent=2, ensure_ascii=False)
 
 
-def dependency_graph(arguments: Dict[str, Any]) -> str:
+def dependency_graph(arguments: dict[str, Any]) -> str:
     """Build a local Python import dependency graph for a repository tree."""
     root = Path(arguments.get("root", ".")).resolve()
     max_files = int(arguments.get("max_files", 200))
@@ -131,7 +132,7 @@ def dependency_graph(arguments: Dict[str, Any]) -> str:
     module_to_path = {_module_name(root, path): path.relative_to(root).as_posix() for path in paths}
     nodes = [{"id": module, "path": path} for module, path in sorted(module_to_path.items())]
     edges = []
-    external: Set[str] = set()
+    external: set[str] = set()
 
     for path in paths:
         module = _module_name(root, path)
@@ -178,8 +179,8 @@ def _module_name(root: Path, path: Path) -> str:
     return ".".join(parts)
 
 
-def _index_symbols(tree: ast.AST, path: str, module: str) -> List[Dict[str, Any]]:
-    symbols: List[Dict[str, Any]] = []
+def _index_symbols(tree: ast.AST, path: str, module: str) -> list[dict[str, Any]]:
+    symbols: list[dict[str, Any]] = []
     for node in tree.body:
         if isinstance(node, ast.ClassDef):
             class_symbol = _symbol_payload(node, "class", path, module, node.name)
@@ -202,7 +203,7 @@ def _symbol_payload(
     path: str,
     module: str,
     qualified_name: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     name = qualified_name.split(".")[-1]
     payload = {
         "name": name,
@@ -218,7 +219,7 @@ def _symbol_payload(
     return payload
 
 
-def _index_imports(tree: ast.AST, module: str) -> List[Dict[str, Any]]:
+def _index_imports(tree: ast.AST, module: str) -> list[dict[str, Any]]:
     imports = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -227,7 +228,7 @@ def _index_imports(tree: ast.AST, module: str) -> List[Dict[str, Any]]:
         elif isinstance(node, ast.ImportFrom):
             names = [alias.name for alias in node.names]
             resolved_modules = _resolve_import_from_names(module, node.level, node.module, names)
-            for alias, resolved in zip(node.names, resolved_modules):
+            for alias, resolved in zip(node.names, resolved_modules, strict=False):
                 imports.append(
                     {
                         "module": resolved,
@@ -238,8 +239,8 @@ def _index_imports(tree: ast.AST, module: str) -> List[Dict[str, Any]]:
     return imports
 
 
-def _imported_modules(tree: ast.AST, module: str) -> Set[str]:
-    modules: Set[str] = set()
+def _imported_modules(tree: ast.AST, module: str) -> set[str]:
+    modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -250,7 +251,7 @@ def _imported_modules(tree: ast.AST, module: str) -> Set[str]:
     return {item for item in modules if item}
 
 
-def _resolve_import_from(current_module: str, level: int, module: Optional[str]) -> str:
+def _resolve_import_from(current_module: str, level: int, module: str | None) -> str:
     if level <= 0:
         return module or ""
 
@@ -264,16 +265,16 @@ def _resolve_import_from(current_module: str, level: int, module: Optional[str])
 def _resolve_import_from_names(
     current_module: str,
     level: int,
-    module: Optional[str],
-    names: List[str],
-) -> List[str]:
+    module: str | None,
+    names: list[str],
+) -> list[str]:
     base = _resolve_import_from(current_module, level, module)
     if level > 0 and not module:
         return [f"{base}.{name}" if base else name for name in names if name != "*"]
     return [base for _ in names]
 
 
-def _match_local_module(imported: str, module_to_path: Dict[str, str]) -> Optional[str]:
+def _match_local_module(imported: str, module_to_path: dict[str, str]) -> str | None:
     if imported in module_to_path:
         return imported
     parts = imported.split(".")

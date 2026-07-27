@@ -89,4 +89,25 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E9", "F63", "F7", "F82"]
+select = ["E", "F", "I", "UP", "B", "SIM", "TID", "RUF"]
+ignore = [
+  # E501（行超长）与 black 存在两处结构性冲突，故由 black 的 line-length=100 单独负责行宽：
+  #   1. 关闭前全部 40 处 E501 都落在字符串字面量内部（纯代码行 0 处），
+  #      即 black 已拆完所有可拆的行，剩下的都是它判定不可拆的长字符串；
+  #      这些字符串是 system prompt、工具描述、benchmark 任务描述等直接进 LLM 上下文的文本，
+  #      手工折行会改变 prompt 字面内容（属于改行为），且会触发 benchmark manifest 漂移告警。
+  #   2. 本项目按规范使用中文注释与文档，black 按「字符数」计宽而 ruff E501 按「显示宽度」计宽
+  #      （中文字符记 2 宽），含中文的行会永久处于「black 判定合规、ruff 判定超长」的死锁。
+  "E501",
+  # RUF001/002/003（歧义 Unicode 字符）用于防范同形字符伪装（如西里尔字母冒充拉丁字母），
+  # 但会把中文全角标点「，」「：」「！」全部误报。本项目 CLAUDE.md 强制中文注释与文档，
+  # 关闭前 551 处报告 100% 来自合法的中文全角标点，无一例真实的同形字符风险。
+  "RUF001",
+  "RUF002",
+  "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# BaseSkill.on_activate / on_deactivate 是 template method 模式下的「可选生命周期钩子」，
+# 空实现即为有意的默认行为。B027 建议加 @abstractmethod，那会强制所有子类实现，属于改行为。
+"dm_agent/skills/base.py" = ["B027"]

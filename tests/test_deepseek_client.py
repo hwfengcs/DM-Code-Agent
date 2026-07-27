@@ -1,5 +1,5 @@
-import requests
 import pytest
+import requests
 
 from dm_agent.clients.deepseek_client import DeepSeekClient, DeepSeekError
 from dm_agent.clients.llm_factory import create_llm_client

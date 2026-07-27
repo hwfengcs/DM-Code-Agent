@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -13,18 +14,18 @@ import textwrap
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, ClassVar
 
 from dotenv import load_dotenv
 
 from dm_agent import (
+    PROVIDER_DEFAULTS,
     CriticAgent,
     LLMError,
     ReactAgent,
     Tool,
     create_llm_client,
     default_tools,
-    PROVIDER_DEFAULTS,
 )
 from dm_agent.core.checkpoint import RunCheckpoint, load_checkpoint
 from dm_agent.core.reflexion import EpisodicMemory
@@ -49,7 +50,8 @@ except ImportError:
 
 # 尝试导入 colorama 用于彩色输出
 try:
-    from colorama import Fore, Style, init as colorama_init
+    from colorama import Fore, Style
+    from colorama import init as colorama_init
 
     colorama_init(autoreset=True)
     COLORS_AVAILABLE = True
@@ -110,14 +112,14 @@ class UI:
     """Terminal UI layer with Rich rendering and a colorama fallback."""
 
     WIDTH = 88
-    RICH_STYLES = {
+    RICH_STYLES: ClassVar[dict[str, str]] = {
         "ok": "bold white on green",
         "error": "bold white on red",
         "warn": "bold black on yellow",
         "info": "bold white on blue",
         "run": "bold white on magenta",
     }
-    RICH_LABELS = {
+    RICH_LABELS: ClassVar[dict[str, str]] = {
         "ok": "DONE",
         "error": "ERROR",
         "warn": "WARN",
@@ -241,7 +243,7 @@ class UI:
                     print("  " + line)
 
     @staticmethod
-    def wrap(text: str, *, width: int | None = None) -> List[str]:
+    def wrap(text: str, *, width: int | None = None) -> list[str]:
         return textwrap.wrap(
             str(text),
             width=width or UI.width() - 4,
@@ -253,7 +255,7 @@ class UI:
     def _rich_wrapped_text(text: str, *, width: int) -> Text:
         wrapped = Text()
         target_width = max(36, width)
-        lines: List[str] = []
+        lines: list[str] = []
         for raw_line in str(text).splitlines() or [""]:
             if raw_line.strip():
                 lines.extend(UI.wrap(raw_line, width=target_width) or [""])
@@ -293,7 +295,7 @@ class UI:
         print(line)
 
     @staticmethod
-    def key_values(title: str, rows: List[tuple[str, Any]]) -> None:
+    def key_values(title: str, rows: list[tuple[str, Any]]) -> None:
         if UI.rich_enabled():
             table = Table.grid(padding=(0, 3))
             table.add_column(style="bright_black", no_wrap=True)
@@ -320,7 +322,7 @@ class UI:
             )
 
     @staticmethod
-    def menu(items: List[tuple[str, str]]) -> None:
+    def menu(items: list[tuple[str, str]]) -> None:
         if UI.rich_enabled():
             table = Table.grid(expand=True, padding=(0, 2))
             table.add_column(justify="right", no_wrap=True, width=5)
@@ -359,7 +361,7 @@ class UI:
     def ask(
         prompt: str,
         *,
-        choices: List[str] | None = None,
+        choices: list[str] | None = None,
         default: str | None = None,
         show_choices: bool = True,
     ) -> str:
@@ -410,17 +412,15 @@ def configure_console_encoding() -> None:
     """Avoid crashes when Windows terminals cannot encode Unicode status symbols."""
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            try:
+            with contextlib.suppress(Exception):
                 stream.reconfigure(errors="replace")
-            except Exception:
-                pass
 
 
-def load_config_from_file() -> Dict[str, Any]:
+def load_config_from_file() -> dict[str, Any]:
     """从配置文件加载设置"""
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(CONFIG_FILE, encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             UI.status("warn", "配置文件加载失败，使用默认设置", str(e))
@@ -476,7 +476,7 @@ def get_api_key_for_provider(provider: str) -> str | None:
     return os.getenv(env_var) if env_var else None
 
 
-def resolve_advanced_features(config: Config) -> Dict[str, bool]:
+def resolve_advanced_features(config: Config) -> dict[str, bool]:
     """Return effective advanced feature switches for one agent run."""
     adaptive_replanning = config.enable_adaptive_replanning or config.enable_evolution
     repeated_failure_policy = (
@@ -771,7 +771,7 @@ def print_menu() -> None:
     )
 
 
-def show_tools(tools: List[Tool]) -> None:
+def show_tools(tools: list[Tool]) -> None:
     """显示可用工具列表"""
     if UI.rich_enabled():
         table = Table(
@@ -1068,7 +1068,7 @@ def configure_settings(config: Config) -> None:
     print()
 
 
-def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
+def display_result(result: dict[str, Any], show_steps: bool = False) -> None:
     """格式化显示任务结果"""
     if show_steps and result.get("steps"):
         if UI.rich_enabled():
@@ -1127,7 +1127,7 @@ def display_result(result: Dict[str, Any], show_steps: bool = False) -> None:
         UI.panel("本轮总结", completion_summary, color=Fore.CYAN)
 
 
-def collect_git_status() -> List[str]:
+def collect_git_status() -> list[str]:
     """Return short git status lines for the current workspace, if available."""
     try:
         completed = subprocess.run(
@@ -1148,10 +1148,10 @@ def write_run_report(
     *,
     config: Config,
     task: str,
-    result: Dict[str, Any],
+    result: dict[str, Any],
     trace_path: Path | None = None,
-    git_status_before: List[str] | None = None,
-    git_status_after: List[str] | None = None,
+    git_status_before: list[str] | None = None,
+    git_status_after: list[str] | None = None,
 ) -> None:
     """Write a human-readable Markdown report for one agent run."""
     metadata = result.get("metadata", {})
@@ -1259,7 +1259,7 @@ def format_step_input(value: Any, *, limit: int = 90) -> str:
 
 
 def display_completion_screen(
-    result: Dict[str, Any],
+    result: dict[str, Any],
     *,
     task: str | None = None,
     context_status: str | None = None,
@@ -1282,7 +1282,7 @@ def display_completion_screen(
     if final_answer and final_answer != summary:
         UI.panel("最终答案", final_answer, color=Fore.CYAN)
 
-    rows: List[tuple[str, Any]] = [
+    rows: list[tuple[str, Any]] = [
         ("状态", format_run_status(metadata.get("status"))),
         ("步骤", len(steps)),
         ("耗时", format_duration(metadata.get("duration_seconds"))),
@@ -1308,7 +1308,7 @@ def display_completion_screen(
         UI.status("info", "查看过程", "Enter 继续 | v 分页查看步骤 | s 保存 Markdown 报告")
 
 
-def display_step_page(result: Dict[str, Any], *, page: int, page_size: int) -> None:
+def display_step_page(result: dict[str, Any], *, page: int, page_size: int) -> None:
     steps = result.get("steps", [])
     total = len(steps)
     page_count = max(1, (total + page_size - 1) // page_size)
@@ -1374,7 +1374,7 @@ def display_step_page(result: Dict[str, Any], *, page: int, page_size: int) -> N
     UI.status("info", "导航", "n 下一页 | p 上一页 | q 返回总结")
 
 
-def browse_run_steps(result: Dict[str, Any], *, page_size: int = 12) -> None:
+def browse_run_steps(result: dict[str, Any], *, page_size: int = 12) -> None:
     steps = result.get("steps", [])
     if not steps:
         UI.clear()
@@ -1400,15 +1400,15 @@ def browse_run_steps(result: Dict[str, Any], *, page_size: int = 12) -> None:
 
 
 def review_completed_run(
-    result: Dict[str, Any],
+    result: dict[str, Any],
     *,
     config: Config,
     task: str,
     trace_path: Path | None = None,
     report_path: Path | None = None,
     context_status: str | None = None,
-    git_status_before: List[str] | None = None,
-    git_status_after: List[str] | None = None,
+    git_status_before: list[str] | None = None,
+    git_status_after: list[str] | None = None,
     interactive: bool = True,
 ) -> Path | None:
     current_report_path = report_path
@@ -1503,7 +1503,7 @@ def create_step_callback(show_steps: bool):
 def create_agent(
     config: Config,
     client: Any,
-    tools: List[Tool],
+    tools: list[Tool],
     *,
     step_callback: Any = None,
     skill_manager: SkillManager | None = None,
@@ -1578,7 +1578,7 @@ def format_agent_context_status(agent: ReactAgent) -> str:
 
 
 def multi_turn_conversation(
-    config: Config, tools: List[Tool], skill_manager: SkillManager | None = None
+    config: Config, tools: list[Tool], skill_manager: SkillManager | None = None
 ) -> None:
     """多轮对话模式"""
     UI.section(
@@ -1664,7 +1664,7 @@ def multi_turn_conversation(
 
 
 def execute_task(
-    config: Config, tools: List[Tool], skill_manager: SkillManager | None = None
+    config: Config, tools: list[Tool], skill_manager: SkillManager | None = None
 ) -> None:
     """执行任务"""
     UI.section("执行新任务")

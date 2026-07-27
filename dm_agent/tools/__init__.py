@@ -1,8 +1,16 @@
 """工具模块 - 提供智能体可用的各类工具"""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .base import Tool
+from .code_analysis_tools import (
+    find_dependencies,
+    get_code_metrics,
+    get_function_signature,
+    parse_ast,
+)
+from .code_index_tools import build_code_index, dependency_graph, search_symbol
+from .execution_tools import run_linter, run_python, run_shell, run_tests
 from .file_tools import (
     create_file,
     edit_file,
@@ -10,17 +18,9 @@ from .file_tools import (
     read_file,
     search_in_file,
 )
-from .execution_tools import run_linter, run_python, run_shell, run_tests
-from .code_analysis_tools import (
-    parse_ast,
-    get_function_signature,
-    find_dependencies,
-    get_code_metrics,
-)
-from .code_index_tools import build_code_index, dependency_graph, search_symbol
 
 
-def task_complete(arguments: Dict[str, Any]) -> str:
+def task_complete(arguments: dict[str, Any]) -> str:
     """
     标记任务完成的工具。调用此工具将自动结束任务。
 
@@ -57,7 +57,7 @@ def task_complete(arguments: Dict[str, Any]) -> str:
     return "任务已完成。"
 
 
-def default_tools(include_mcp: bool = True, mcp_tools: Optional[List[Tool]] = None) -> List[Tool]:
+def default_tools(include_mcp: bool = True, mcp_tools: list[Tool] | None = None) -> list[Tool]:
     """返回默认工具集
 
     Args:

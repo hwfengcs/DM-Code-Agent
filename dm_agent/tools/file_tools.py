@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from .base import _require_str
 
@@ -36,7 +36,7 @@ def _atomic_write_text(path: Path, content: str) -> str:
         return " (non-atomic fallback)"
 
 
-def create_file(arguments: Dict[str, Any]) -> str:
+def create_file(arguments: dict[str, Any]) -> str:
     """创建或覆盖文本文件"""
     path_value = _require_str(arguments, "path")
     content = arguments.get("content", "")
@@ -49,7 +49,7 @@ def create_file(arguments: Dict[str, Any]) -> str:
     return f"已将 {len(content)} 个字符写入 {path}。{note}".rstrip()
 
 
-def read_file(arguments: Dict[str, Any]) -> str:
+def read_file(arguments: dict[str, Any]) -> str:
     """读取文本文件"""
     path_value = _require_str(arguments, "path")
     line_start = arguments.get("line_start")
@@ -93,7 +93,7 @@ def read_file(arguments: Dict[str, Any]) -> str:
     return "\n".join(selected_lines)
 
 
-def list_directory(arguments: Dict[str, Any]) -> str:
+def list_directory(arguments: dict[str, Any]) -> str:
     """列出目录内容"""
     path_value = arguments.get("path", ".")
     recursive = arguments.get("recursive", False)
@@ -147,7 +147,7 @@ def list_directory(arguments: Dict[str, Any]) -> str:
     return "\n".join(entries) if entries else "<空>"
 
 
-def edit_file(arguments: Dict[str, Any]) -> str:
+def edit_file(arguments: dict[str, Any]) -> str:
     """在指定位置编辑文件内容（插入、替换或删除代码）"""
     path_value = _require_str(arguments, "path")
     operation = _require_str(arguments, "operation")
@@ -214,7 +214,7 @@ def edit_file(arguments: Dict[str, Any]) -> str:
             return f"已删除 {path} 的第 {line_start}-{line_end} 行。"
 
 
-def search_in_file(arguments: Dict[str, Any]) -> str:
+def search_in_file(arguments: dict[str, Any]) -> str:
     """在文件中搜索文本或正则表达式模式"""
     import re
 

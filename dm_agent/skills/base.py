@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from ..tools.base import Tool
+from dm_agent.tools.base import Tool
 
 
 @dataclass
@@ -19,8 +18,8 @@ class SkillMetadata:
     name: str  # 技能唯一标识符
     display_name: str  # 显示名称
     description: str  # 技能描述
-    keywords: List[str] = field(default_factory=list)  # 匹配关键词
-    patterns: List[str] = field(default_factory=list)  # 正则匹配模式
+    keywords: list[str] = field(default_factory=list)  # 匹配关键词
+    patterns: list[str] = field(default_factory=list)  # 正则匹配模式
     priority: int = 10  # 优先级（数值越小越高）
     version: str = "1.0.0"
 
@@ -41,7 +40,7 @@ class BaseSkill(ABC):
         """返回追加到 system prompt 的文本"""
 
     @abstractmethod
-    def get_tools(self) -> List[Tool]:
+    def get_tools(self) -> list[Tool]:
         """返回该技能提供的专用工具列表"""
 
     def on_activate(self) -> None:
@@ -54,7 +53,7 @@ class BaseSkill(ABC):
 class ConfigSkill(BaseSkill):
     """从 JSON 配置字典初始化的简单技能实现"""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         self._metadata = SkillMetadata(
             name=config["name"],
             display_name=config.get("display_name", config["name"]),
@@ -72,13 +71,13 @@ class ConfigSkill(BaseSkill):
     def get_prompt_addition(self) -> str:
         return self._prompt_addition
 
-    def get_tools(self) -> List[Tool]:
+    def get_tools(self) -> list[Tool]:
         # JSON 配置技能不提供自定义工具
         return []
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "ConfigSkill":
+    def from_file(cls, path: str | Path) -> ConfigSkill:
         """从 JSON 文件加载技能配置"""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             config = json.load(f)
         return cls(config)

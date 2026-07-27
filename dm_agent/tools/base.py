@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict
+from typing import Any
 
 
 @dataclass
@@ -12,16 +13,16 @@ class Tool:
 
     name: str  # 工具名称
     description: str  # 工具描述
-    runner: Callable[[Dict[str, Any]], str]  # 工具执行函数
+    runner: Callable[[dict[str, Any]], str]  # 工具执行函数
 
-    def execute(self, arguments: Dict[str, Any]) -> str:
+    def execute(self, arguments: dict[str, Any]) -> str:
         """
         执行工具
         """
         return self.runner(arguments)
 
 
-def _require_str(arguments: Dict[str, Any], key: str) -> str:
+def _require_str(arguments: dict[str, Any], key: str) -> str:
     """
     从参数字典中提取必需的字符串参数
 

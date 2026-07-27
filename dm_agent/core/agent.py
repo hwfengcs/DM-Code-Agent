@@ -6,19 +6,21 @@ import json
 import re
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, ClassVar
 
-from ..clients.base_client import BaseLLMClient
-from ..tools.base import Tool
-from ..prompts import build_code_agent_prompt
-from ..memory.context_compressor import ContextCompressor
-from ..memory.context_budget import (
+from dm_agent.clients.base_client import BaseLLMClient
+from dm_agent.memory.context_budget import (
     FileLedger,
     estimate_messages_tokens,
     truncate_observation,
 )
+from dm_agent.memory.context_compressor import ContextCompressor
+from dm_agent.prompts import build_code_agent_prompt
+from dm_agent.tools.base import Tool
+
 from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
 from .circuit_breaker import STATE_OPEN, ToolCircuitBreaker
 from .critic import CriticAgent, CriticReview
@@ -57,7 +59,7 @@ class ReactAgent:
         compressor (Optional[ContextCompressor]): 上下文压缩器实例
     """
 
-    TERMINAL_ACTION_ALIASES = {
+    TERMINAL_ACTION_ALIASES: ClassVar[dict[str, str]] = {
         "finish": "finish",
         "final": "finish",
         "final_answer": "finish",
@@ -74,7 +76,7 @@ class ReactAgent:
     MEMORY_STATUS_ITEM_DELTA = 5
     # 非 adaptive 默认路径的 replan 成本护栏（max_replans>=0 时以其为准）。
     DEFAULT_REPLAN_BUDGET = 5
-    TERSE_COMPLETION_ANSWERS = {
+    TERSE_COMPLETION_ANSWERS: ClassVar[set[str]] = {
         "done",
         "ok",
         "complete",
@@ -93,23 +95,23 @@ class ReactAgent:
     def __init__(
         self,
         client: BaseLLMClient,
-        tools: List[Tool],
+        tools: list[Tool],
         *,
         max_steps: int = 200,
         temperature: float = 0.0,
-        system_prompt: Optional[str] = None,
-        step_callback: Optional[Callable[[int, Step], None]] = None,  # 步骤回调函数
+        system_prompt: str | None = None,
+        step_callback: Callable[[int, Step], None] | None = None,  # 步骤回调函数
         enable_planning: bool = True,  # 是否启用规划
         enable_compression: bool = True,  # 是否启用上下文压缩
-        skill_manager: Optional[Any] = None,  # 技能管理器
-        trace_writer: Optional[Any] = None,
+        skill_manager: Any | None = None,  # 技能管理器
+        trace_writer: Any | None = None,
         enable_reflexion: bool = False,
         max_trials: int = 3,
-        reflector: Optional[Reflector] = None,
-        reflexion_memory: Optional[EpisodicMemory] = None,
-        critic: Optional[CriticAgent] = None,
+        reflector: Reflector | None = None,
+        reflexion_memory: EpisodicMemory | None = None,
+        critic: CriticAgent | None = None,
         enable_adaptive_replanning: bool = False,
-        replan_policy: Optional[AdaptiveReplanPolicy] = None,
+        replan_policy: AdaptiveReplanPolicy | None = None,
         max_replans: int = -1,
         enable_repeated_failure_policy_experiment: bool = False,
         max_observation_chars: int = 8000,
@@ -160,7 +162,7 @@ class ReactAgent:
         self.system_prompt = system_prompt or build_code_agent_prompt(tools)
         self.step_callback = step_callback
         # 多轮对话历史记录
-        self.conversation_history: List[Dict[str, str]] = []
+        self.conversation_history: list[dict[str, str]] = []
 
         # 规划器
         self.enable_planning = enable_planning
@@ -224,10 +226,10 @@ class ReactAgent:
         self,
         task: str,
         *,
-        max_steps: Optional[int] = None,
-        checkpoint_path: Optional[Path] = None,
-        resume_state: Optional[RunCheckpoint] = None,
-    ) -> Dict[str, Any]:
+        max_steps: int | None = None,
+        checkpoint_path: Path | None = None,
+        resume_state: RunCheckpoint | None = None,
+    ) -> dict[str, Any]:
         """Execute a task, optionally retrying failed trials with Reflexion."""
         if not self.enable_reflexion:
             return self._run_once(
@@ -244,15 +246,15 @@ class ReactAgent:
         self,
         task: str,
         *,
-        max_steps: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        max_steps: int | None = None,
+    ) -> dict[str, Any]:
         if not isinstance(task, str) or not task.strip():
             raise ValueError("任务必须是非空字符串。")
 
         trial_limit = self.max_trials
         initial_history = [dict(message) for message in self.conversation_history]
-        trial_summaries: List[Dict[str, Any]] = []
-        last_result: Optional[Dict[str, Any]] = None
+        trial_summaries: list[dict[str, Any]] = []
+        last_result: dict[str, Any] | None = None
 
         for trial in range(1, trial_limit + 1):
             self.conversation_history = [dict(message) for message in initial_history]
@@ -317,10 +319,10 @@ class ReactAgent:
     def _reflect_after_failed_trial(
         self,
         task: str,
-        result: Dict[str, Any],
+        result: dict[str, Any],
         trial: int,
         *,
-        failure_feedback: Optional[str] = None,
+        failure_feedback: str | None = None,
     ) -> str:
         metadata = result.get("metadata", {})
         if self.reflector is None:
@@ -333,12 +335,12 @@ class ReactAgent:
                 steps=result.get("steps", []),
                 failure_feedback=failure_feedback,
             )
-        except Exception as exc:  # noqa: BLE001 - reflection should not hide the prior result
+        except Exception as exc:
             metadata["reflexion_error"] = f"trial {trial}: {exc}"
             return self._fallback_lesson(metadata)
 
     @staticmethod
-    def _fallback_lesson(metadata: Dict[str, Any]) -> str:
+    def _fallback_lesson(metadata: dict[str, Any]) -> str:
         reason = metadata.get("failure_reason") or metadata.get("status") or "unknown failure"
         return (
             f"Previous trial failed with {reason}. Inspect the concrete failure signal first, "
@@ -346,7 +348,7 @@ class ReactAgent:
         )
 
     @staticmethod
-    def _trial_summary(result: Dict[str, Any], trial: int) -> Dict[str, Any]:
+    def _trial_summary(result: dict[str, Any], trial: int) -> dict[str, Any]:
         metadata = result.get("metadata", {})
         return {
             "trial": trial,
@@ -360,13 +362,13 @@ class ReactAgent:
         self,
         task: str,
         *,
-        max_steps: Optional[int] = None,
+        max_steps: int | None = None,
         trial_number: int = 1,
         max_trials: int = 1,
         reflexion_prompt: str = "",
-        checkpoint_path: Optional[Path] = None,
-        resume_state: Optional[RunCheckpoint] = None,
-    ) -> Dict[str, Any]:
+        checkpoint_path: Path | None = None,
+        resume_state: RunCheckpoint | None = None,
+    ) -> dict[str, Any]:
         """
         执行指定任务
 
@@ -398,14 +400,14 @@ class ReactAgent:
             self.tools = dict(self._base_tools)
 
         started_at = time.perf_counter()
-        steps: List[Step] = []
+        steps: list[Step] = []
         limit = max_steps or self.max_steps
         self._file_ledger.reset()
         run_token = getattr(self.trace_writer, "run_id", "") or uuid.uuid4().hex[:12]
         retry_baseline = getattr(self.client, "total_respond_retries", 0)
         last_logged_memory_items = 0
         last_logged_saved_messages = 0
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "status": "running",
             "planning_enabled": self.enable_planning,
             "compression_enabled": self.enable_compression,
@@ -497,7 +499,7 @@ class ReactAgent:
                 },
             )
 
-        def finish_result(final_answer: str) -> Dict[str, Any]:
+        def finish_result(final_answer: str) -> dict[str, Any]:
             metadata["llm_retry_count"] = (
                 getattr(self.client, "total_respond_retries", 0) - retry_baseline
             )
@@ -523,7 +525,7 @@ class ReactAgent:
             self.system_prompt += "\n\n" + reflexion_prompt
 
         # 第一步：生成计划（如果启用）；resume 时改为恢复既有状态
-        plan: List[PlanStep] = []
+        plan: list[PlanStep] = []
         resume_from = 0
         if resume_state is not None:
             plan, resume_from = self._restore_from_checkpoint(resume_state, steps, metadata)
@@ -567,98 +569,99 @@ class ReactAgent:
             # 第二步：整理旧上下文为本地记忆（如果需要）
             system_content = self.system_prompt
             messages_to_send = [
-                {"role": "system", "content": system_content}
-            ] + self.conversation_history
+                {"role": "system", "content": system_content},
+                *self.conversation_history,
+            ]
 
-            if self.enable_compression and self.compressor:
-                if self.compressor.should_compress(self.conversation_history):
-                    trigger = self.compressor.last_trigger
-                    trigger_tokens = self.compressor.last_estimated_tokens
-                    compressed_history = self.compressor.compress(self.conversation_history)
-                    messages_to_send = [
-                        {"role": "system", "content": system_content}
-                    ] + compressed_history
+            if (
+                self.enable_compression
+                and self.compressor
+                and self.compressor.should_compress(self.conversation_history)
+            ):
+                trigger = self.compressor.last_trigger
+                trigger_tokens = self.compressor.last_estimated_tokens
+                compressed_history = self.compressor.compress(self.conversation_history)
+                messages_to_send = [
+                    {"role": "system", "content": system_content},
+                    *compressed_history,
+                ]
 
-                    if trigger == "token_budget":
-                        metadata["budget_compression_count"] += 1
-                        if self.trace_writer:
-                            self.trace_writer.record(
-                                "context_budget",
-                                {
-                                    "step_number": step_num,
-                                    "phase": "forced_compress",
-                                    "estimated_tokens": trigger_tokens,
-                                    "budget": self.compressor.token_budget,
-                                },
-                            )
-                    if (
-                        self.trace_writer
-                        and 0
-                        < self.compressor.token_budget
-                        < estimate_messages_tokens(compressed_history)
-                    ):
+                if trigger == "token_budget":
+                    metadata["budget_compression_count"] += 1
+                    if self.trace_writer:
                         self.trace_writer.record(
                             "context_budget",
                             {
                                 "step_number": step_num,
-                                "phase": "post_compress_still_over",
-                                "estimated_tokens": estimate_messages_tokens(compressed_history),
+                                "phase": "forced_compress",
+                                "estimated_tokens": trigger_tokens,
                                 "budget": self.compressor.token_budget,
                             },
                         )
-
-                    # 显示压缩统计
-                    stats = self.compressor.get_compression_stats(
-                        self.conversation_history, compressed_history
+                if (
+                    self.trace_writer
+                    and 0
+                    < self.compressor.token_budget
+                    < estimate_messages_tokens(compressed_history)
+                ):
+                    self.trace_writer.record(
+                        "context_budget",
+                        {
+                            "step_number": step_num,
+                            "phase": "post_compress_still_over",
+                            "estimated_tokens": estimate_messages_tokens(compressed_history),
+                            "budget": self.compressor.token_budget,
+                        },
                     )
-                    metadata["compressed_messages"] += stats["saved_messages"]
-                    memory_count = self.compressor.memory_count
-                    memory_block_injected = any(
-                        str(message.get("content", "")).startswith("<agent_memory>")
-                        for message in compressed_history
+
+                # 显示压缩统计
+                stats = self.compressor.get_compression_stats(
+                    self.conversation_history, compressed_history
+                )
+                metadata["compressed_messages"] += stats["saved_messages"]
+                memory_count = self.compressor.memory_count
+                memory_block_injected = any(
+                    str(message.get("content", "")).startswith("<agent_memory>")
+                    for message in compressed_history
+                )
+                metadata["memory_items"] = memory_count
+                metadata["memory_injection_count"] += int(memory_block_injected)
+                metadata["memory_compression_count"] += 1
+
+                if self.enable_memory_hygiene:
+                    superseded_total = self.compressor.memory.superseded_count
+                    superseded_delta = superseded_total - int(metadata["memory_invalidation_count"])
+                    metadata["memory_invalidation_count"] = superseded_total
+                    if superseded_delta > 0 and self.trace_writer:
+                        self.trace_writer.record(
+                            "memory_invalidation",
+                            {
+                                "step_number": step_num,
+                                "superseded": superseded_delta,
+                                "total": superseded_total,
+                            },
+                        )
+                if self.enable_llm_compression:
+                    metadata["llm_summary_count"] = self.compressor.llm_summary_count
+                    metadata["llm_summary_error_count"] = self.compressor.llm_summary_error_count
+
+                if self._should_log_memory_status(
+                    compression_count=int(metadata["memory_compression_count"]),
+                    saved_messages=int(stats["saved_messages"]),
+                    memory_items=memory_count,
+                    last_logged_saved_messages=last_logged_saved_messages,
+                    last_logged_memory_items=last_logged_memory_items,
+                ):
+                    metadata["memory_log_count"] += 1
+                    last_logged_memory_items = memory_count
+                    last_logged_saved_messages = int(stats["saved_messages"])
+                    print("\n[memory] 已整理旧上下文并召回相关记忆")
+                    print(
+                        f"   保留最近 {self.compressor.keep_recent * 2} 条消息，"
+                        f"本地记忆 {memory_count} 条，"
+                        f"本轮{'已' if memory_block_injected else '未'}注入 <agent_memory>，"
+                        f"节省 {stats['saved_messages']} 条消息"
                     )
-                    metadata["memory_items"] = memory_count
-                    metadata["memory_injection_count"] += int(memory_block_injected)
-                    metadata["memory_compression_count"] += 1
-
-                    if self.enable_memory_hygiene:
-                        superseded_total = self.compressor.memory.superseded_count
-                        superseded_delta = superseded_total - int(
-                            metadata["memory_invalidation_count"]
-                        )
-                        metadata["memory_invalidation_count"] = superseded_total
-                        if superseded_delta > 0 and self.trace_writer:
-                            self.trace_writer.record(
-                                "memory_invalidation",
-                                {
-                                    "step_number": step_num,
-                                    "superseded": superseded_delta,
-                                    "total": superseded_total,
-                                },
-                            )
-                    if self.enable_llm_compression:
-                        metadata["llm_summary_count"] = self.compressor.llm_summary_count
-                        metadata["llm_summary_error_count"] = (
-                            self.compressor.llm_summary_error_count
-                        )
-
-                    if self._should_log_memory_status(
-                        compression_count=int(metadata["memory_compression_count"]),
-                        saved_messages=int(stats["saved_messages"]),
-                        memory_items=memory_count,
-                        last_logged_saved_messages=last_logged_saved_messages,
-                        last_logged_memory_items=last_logged_memory_items,
-                    ):
-                        metadata["memory_log_count"] += 1
-                        last_logged_memory_items = memory_count
-                        last_logged_saved_messages = int(stats["saved_messages"])
-                        print("\n[memory] 已整理旧上下文并召回相关记忆")
-                        print(
-                            f"   保留最近 {self.compressor.keep_recent * 2} 条消息，"
-                            f"本地记忆 {memory_count} 条，"
-                            f"本轮{'已' if memory_block_injected else '未'}注入 <agent_memory>，"
-                            f"节省 {stats['saved_messages']} 条消息"
-                        )
 
             # 获取 AI 响应
             try:
@@ -854,7 +857,7 @@ class ReactAgent:
                         metadata=metadata,
                         step_num=step_num,
                     )
-                except Exception as exc:  # noqa: BLE001 - 将工具错误传递给 LLM
+                except Exception as exc:
                     metadata["tool_error_count"] += 1
                     metadata["failure_reason"] = str(exc)
                     observation = self._bound_observation(
@@ -936,7 +939,7 @@ class ReactAgent:
                             metadata=metadata,
                             step_num=step_num,
                         )
-                    except Exception as exc:  # noqa: BLE001 - 将工具错误传递给 LLM
+                    except Exception as exc:
                         metadata["tool_error_count"] += 1
                         metadata["failure_reason"] = str(exc)
                         observation = self._bound_observation(
@@ -1039,7 +1042,7 @@ class ReactAgent:
             )
         return finish_result("Reached step limit without completion.")
 
-    def _apply_skills_for_task(self, task: str) -> List[str]:
+    def _apply_skills_for_task(self, task: str) -> list[str]:
         """根据任务自动选择并激活相关技能。"""
         # 恢复基础状态，避免上一次任务的技能残留
         self.system_prompt = self._base_system_prompt
@@ -1074,7 +1077,9 @@ class ReactAgent:
             print(f"\n[skills] 已激活技能：{', '.join(display_names)}")
         return selected
 
-    def _build_user_prompt(self, task: str, steps: List[Step], plan: List[PlanStep] = None) -> str:
+    def _build_user_prompt(
+        self, task: str, steps: list[Step], plan: list[PlanStep] | None = None
+    ) -> str:
         """
         构建用户提示词
 
@@ -1086,7 +1091,7 @@ class ReactAgent:
         Returns:
             prompt (str): 构建好的用户提示词字符串
         """
-        lines: List[str] = [f"任务：{task.strip()}"]
+        lines: list[str] = [f"任务：{task.strip()}"]
 
         # 如果有计划，添加到提示中
         if plan:
@@ -1116,11 +1121,11 @@ class ReactAgent:
         *,
         task: str,
         completion_text: str,
-        steps: List[Step],
-        metadata: Dict[str, Any],
+        steps: list[Step],
+        metadata: dict[str, Any],
         step_num: int,
         action: str,
-    ) -> tuple[bool, str, Optional[CriticReview]]:
+    ) -> tuple[bool, str, CriticReview | None]:
         if self.critic is None:
             return True, completion_text, None
 
@@ -1132,7 +1137,7 @@ class ReactAgent:
                 steps=[step.__dict__ for step in steps],
                 failure_feedback=metadata.get("failure_reason", ""),
             )
-        except Exception as exc:  # noqa: BLE001 - critic should not hide the candidate result
+        except Exception as exc:
             metadata["critic_error"] = str(exc)
             failure_observation = f"Critic review failed: {exc}"
             if self.trace_writer:
@@ -1184,7 +1189,7 @@ class ReactAgent:
         details.append(f"Candidate completion: {completion_text}")
         return "Critic rejected completion.\n" + "\n".join(details)
 
-    def _critic_review_trace_payload(self, review: CriticReview, *, action: str) -> Dict[str, Any]:
+    def _critic_review_trace_payload(self, review: CriticReview, *, action: str) -> dict[str, Any]:
         payload = {
             "passed": review.passed,
             "score": review.score,
@@ -1198,7 +1203,7 @@ class ReactAgent:
             payload["metadata"] = review.metadata
         return payload
 
-    def _parse_agent_response(self, raw: str) -> Dict[str, Any]:
+    def _parse_agent_response(self, raw: str) -> dict[str, Any]:
         """
         解析智能体响应
 
@@ -1251,7 +1256,7 @@ class ReactAgent:
         return memory_items - last_logged_memory_items >= cls.MEMORY_STATUS_ITEM_DELTA
 
     @staticmethod
-    def _json_candidates(candidate: str) -> List[str]:
+    def _json_candidates(candidate: str) -> list[str]:
         candidates = [candidate]
 
         fence_match = re.search(r"```(?:json)?\s*(.*?)```", candidate, re.DOTALL | re.IGNORECASE)
@@ -1279,7 +1284,7 @@ class ReactAgent:
         return text
 
     @staticmethod
-    def _load_json_object(text: str) -> Optional[Dict[str, Any]]:
+    def _load_json_object(text: str) -> dict[str, Any] | None:
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
@@ -1357,9 +1362,9 @@ class ReactAgent:
     def _restore_from_checkpoint(
         self,
         resume_state: RunCheckpoint,
-        steps: List[Step],
-        metadata: Dict[str, Any],
-    ) -> tuple[List[PlanStep], int]:
+        steps: list[Step],
+        metadata: dict[str, Any],
+    ) -> tuple[list[PlanStep], int]:
         """从 checkpoint 恢复对话/步骤/计划/记忆，返回 (plan, 已消耗步数)。"""
         resume_from = max(0, int(resume_state.step_count))
         self.conversation_history = [dict(message) for message in resume_state.conversation_history]
@@ -1379,7 +1384,7 @@ class ReactAgent:
         metadata.update(restored_metadata)
         metadata["resumed_from_step"] = resume_from
 
-        plan: List[PlanStep] = [
+        plan: list[PlanStep] = [
             PlanStep(
                 step_number=int(item.get("step_number", index + 1)),
                 action=str(item.get("action", "")),
@@ -1398,7 +1403,7 @@ class ReactAgent:
         self._warn_on_config_mismatch(resume_state.agent_config)
         return plan, resume_from
 
-    def _warn_on_config_mismatch(self, saved_config: Dict[str, Any]) -> None:
+    def _warn_on_config_mismatch(self, saved_config: dict[str, Any]) -> None:
         current = {
             "temperature": self.temperature,
             "model": getattr(self.client, "model", ""),
@@ -1419,9 +1424,9 @@ class ReactAgent:
         *,
         task: str,
         step_count: int,
-        steps: List[Step],
-        metadata: Dict[str, Any],
-        plan: List[PlanStep],
+        steps: list[Step],
+        metadata: dict[str, Any],
+        plan: list[PlanStep],
         limit: int,
     ) -> None:
         checkpoint = RunCheckpoint(
@@ -1468,7 +1473,7 @@ class ReactAgent:
             )
 
     def _backup_before_write(
-        self, action_input: Any, metadata: Dict[str, Any], step_num: int, run_token: str
+        self, action_input: Any, metadata: dict[str, Any], step_num: int, run_token: str
     ) -> None:
         """写入类工具执行前备份原文件（尽力而为，失败不影响任务）。"""
         if not isinstance(action_input, dict):
@@ -1497,7 +1502,7 @@ class ReactAgent:
         *,
         action: str,
         action_input: Any,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         step_num: int,
     ) -> str:
         """截断超长观察并记录审计信息；模型、历史与 trace 看到同一份文本。"""
@@ -1545,14 +1550,14 @@ class ReactAgent:
     def _try_replan(
         self,
         task: str,
-        plan: List[PlanStep],
+        plan: list[PlanStep],
         observation: str,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         *,
         action: str = "",
-        step_number: Optional[int] = None,
-        error_kind: Optional[str] = None,
-    ) -> List[PlanStep]:
+        step_number: int | None = None,
+        error_kind: str | None = None,
+    ) -> list[PlanStep]:
         completed_steps = [step for step in plan if step.completed]
         signal = None
         decision = None
@@ -1639,7 +1644,7 @@ class ReactAgent:
                 if self.planner
                 else []
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             metadata["failure_reason"] = f"Replan failed: {exc}"
             return plan
 
@@ -1667,12 +1672,12 @@ class ReactAgent:
     def _record_failure_signature(
         self,
         observation: str,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         *,
         action: str,
-        error_kind: Optional[str],
-        step_number: Optional[int],
-    ) -> tuple[bool, Optional[Dict[str, Any]]]:
+        error_kind: str | None,
+        step_number: int | None,
+    ) -> tuple[bool, dict[str, Any] | None]:
         signature = self._failure_signature(action, error_kind, observation)
         previous = str(metadata.get("last_failure_signature") or "")
         metadata["last_failure_signature"] = signature
@@ -1692,7 +1697,7 @@ class ReactAgent:
     @staticmethod
     def _failure_signature(
         action: str,
-        error_kind: Optional[str],
+        error_kind: str | None,
         observation: str,
     ) -> str:
         compact_observation = " ".join(str(observation or "").split())[:160]
@@ -1707,7 +1712,7 @@ class ReactAgent:
         if self.compressor:
             self.compressor.reset()
 
-    def get_context_stats(self) -> Dict[str, Any]:
+    def get_context_stats(self) -> dict[str, Any]:
         """Return current in-memory conversation and context-memory state."""
         return {
             "conversation_messages": len(self.conversation_history),
@@ -1715,7 +1720,7 @@ class ReactAgent:
             "memory_items": self.compressor.memory_count if self.compressor else 0,
         }
 
-    def get_conversation_history(self) -> List[Dict[str, str]]:
+    def get_conversation_history(self) -> list[dict[str, str]]:
         """获取对话历史
 
         Returns:
@@ -1744,7 +1749,7 @@ class ReactAgent:
         return json.dumps(action_input, ensure_ascii=False)
 
     @classmethod
-    def _build_completion_summary(cls, final_answer: str, steps: List[Step]) -> str:
+    def _build_completion_summary(cls, final_answer: str, steps: list[Step]) -> str:
         answer = str(final_answer or "").strip()
         if cls._looks_like_completion_summary(answer):
             return answer

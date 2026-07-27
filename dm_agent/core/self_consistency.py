@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable, Iterable
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any
 
 from .critic import CriticAgent, CriticReview
 
-TrialRunner = Callable[[int, str], Dict[str, Any]]
-VisibleTest = Callable[[Dict[str, Any]], float | int | bool]
+TrialRunner = Callable[[int, str], dict[str, Any]]
+VisibleTest = Callable[[dict[str, Any]], float | int | bool]
 
 
 @dataclass(frozen=True)
@@ -18,15 +19,15 @@ class SelfConsistencyCandidate:
     """A single candidate result from one independent run."""
 
     run_index: int
-    result: Dict[str, Any]
+    result: dict[str, Any]
     vote_key: str
     score: float
     passed: bool
-    critic_review: Optional[CriticReview] = None
+    critic_review: CriticReview | None = None
     vote_key_source: str = "final_answer"
     note: str = ""
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         metadata = self.result.get("metadata", {}) if isinstance(self.result, dict) else {}
         return {
             "run_index": self.run_index,
@@ -54,10 +55,10 @@ class SelfConsistencyResult:
 
     strategy: str
     selected_index: int
-    candidates: List[SelfConsistencyCandidate] = field(default_factory=list)
-    uncertainty: Dict[str, Any] = field(default_factory=dict)
+    candidates: list[SelfConsistencyCandidate] = field(default_factory=list)
+    uncertainty: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "strategy": self.strategy,
             "selected_index": self.selected_index,
@@ -75,8 +76,8 @@ class SelfConsistencyRunner:
         *,
         num_runs: int = 3,
         strategy: str = "majority_vote",
-        critic: Optional[CriticAgent] = None,
-        visible_test: Optional[VisibleTest] = None,
+        critic: CriticAgent | None = None,
+        visible_test: VisibleTest | None = None,
     ) -> None:
         if num_runs < 1:
             raise ValueError("num_runs must be at least 1")
@@ -93,7 +94,7 @@ class SelfConsistencyRunner:
         self.critic = critic
         self.visible_test = visible_test
 
-    def run(self, task: str, **trial_kwargs: Any) -> Dict[str, Any]:
+    def run(self, task: str, **trial_kwargs: Any) -> dict[str, Any]:
         """Execute several independent runs and return the selected result."""
         candidates = self.run_candidates(task, **trial_kwargs)
         selected = self._select_candidate(candidates)
@@ -107,18 +108,18 @@ class SelfConsistencyRunner:
         ).to_dict()
         return result
 
-    def run_candidates(self, task: str, **trial_kwargs: Any) -> List[SelfConsistencyCandidate]:
+    def run_candidates(self, task: str, **trial_kwargs: Any) -> list[SelfConsistencyCandidate]:
         """Run all candidates and return their scored summaries."""
-        candidates: List[SelfConsistencyCandidate] = []
+        candidates: list[SelfConsistencyCandidate] = []
         for run_index in range(1, self.num_runs + 1):
             result = self._run_trial(run_index, task, **trial_kwargs)
             candidates.append(self._build_candidate(run_index, task, result, **trial_kwargs))
         return candidates
 
-    def _run_trial(self, run_index: int, task: str, **trial_kwargs: Any) -> Dict[str, Any]:
+    def _run_trial(self, run_index: int, task: str, **trial_kwargs: Any) -> dict[str, Any]:
         try:
             result = self.trial_runner(run_index, task, **trial_kwargs)
-        except Exception as exc:  # noqa: BLE001 - one failed trial should not abort selection
+        except Exception as exc:
             return {
                 "final_answer": "",
                 "steps": [],
@@ -145,7 +146,7 @@ class SelfConsistencyRunner:
         self,
         run_index: int,
         task: str,
-        result: Dict[str, Any],
+        result: dict[str, Any],
         **trial_kwargs: Any,
     ) -> SelfConsistencyCandidate:
         if self.strategy == "critic_score":
@@ -206,13 +207,13 @@ class SelfConsistencyRunner:
         )
 
     def _select_candidate(
-        self, candidates: List[SelfConsistencyCandidate]
+        self, candidates: list[SelfConsistencyCandidate]
     ) -> SelfConsistencyCandidate:
         if not candidates:
             raise ValueError("No candidates were produced.")
 
         if self.strategy == "majority_vote":
-            grouped: Dict[str, List[SelfConsistencyCandidate]] = defaultdict(list)
+            grouped: dict[str, list[SelfConsistencyCandidate]] = defaultdict(list)
             for candidate in candidates:
                 grouped[candidate.vote_key].append(candidate)
             ranked_groups = sorted(
@@ -238,9 +239,9 @@ class SelfConsistencyRunner:
 
     def _uncertainty_summary(
         self,
-        candidates: List[SelfConsistencyCandidate],
+        candidates: list[SelfConsistencyCandidate],
         selected: SelfConsistencyCandidate,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         vote_distribution = _vote_distribution(candidates)
         selected_key = _display_vote_key(selected.vote_key)
         selected_support = vote_distribution.get(selected_key, 0)
@@ -280,7 +281,7 @@ class SelfConsistencyRunner:
         }
 
 
-def _normalise_vote_key(result: Dict[str, Any]) -> tuple[str, str]:
+def _normalise_vote_key(result: dict[str, Any]) -> tuple[str, str]:
     metadata = result.get("metadata", {})
     if isinstance(metadata, dict):
         patch_fingerprint = str(metadata.get("patch_fingerprint", "")).strip()
@@ -294,8 +295,8 @@ def _normalise_vote_key(result: Dict[str, Any]) -> tuple[str, str]:
     return "", "empty"
 
 
-def _vote_distribution(candidates: Iterable[SelfConsistencyCandidate]) -> Dict[str, int]:
-    counts: Dict[str, int] = {}
+def _vote_distribution(candidates: Iterable[SelfConsistencyCandidate]) -> dict[str, int]:
+    counts: dict[str, int] = {}
     for candidate in candidates:
         key = _display_vote_key(candidate.vote_key)
         counts[key] = counts.get(key, 0) + 1
@@ -323,7 +324,7 @@ def _confidence_label(score: float) -> str:
     return "low"
 
 
-def _is_success(result: Dict[str, Any]) -> bool:
+def _is_success(result: dict[str, Any]) -> bool:
     metadata = result.get("metadata", {})
     return isinstance(metadata, dict) and metadata.get("status") == "success"
 
@@ -336,10 +337,7 @@ def _coerce_score(value: Any) -> float:
     except (TypeError, ValueError):
         return 0.0
     if score > 1.0:
-        if score <= 10.0:
-            score = score / 10.0
-        else:
-            score = 1.0
+        score = score / 10.0 if score <= 10.0 else 1.0
     return max(0.0, min(score, 1.0))
 
 

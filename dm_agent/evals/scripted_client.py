@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
 
-from ..memory.context_budget import estimate_tokens_from_chars
+from dm_agent.memory.context_budget import estimate_tokens_from_chars
 
 
 @dataclass
@@ -22,13 +21,13 @@ class ScriptedUsage:
 class ScriptedLLMClient:
     """A tiny client with the same `respond` surface used by ReactAgent."""
 
-    def __init__(self, responses: List[str], *, model: str = "scripted-eval") -> None:
+    def __init__(self, responses: list[str], *, model: str = "scripted-eval") -> None:
         self.responses = list(responses)
         self.model = model
         self.usage = ScriptedUsage()
-        self.requests: List[List[Dict[str, str]]] = []
+        self.requests: list[list[dict[str, str]]] = []
 
-    def respond(self, messages: List[Dict[str, str]], **extra) -> str:  # noqa: ARG002
+    def respond(self, messages: list[dict[str, str]], **extra) -> str:
         self.requests.append(messages)
         self.usage.calls += 1
         self.usage.prompt_chars += sum(len(message.get("content", "")) for message in messages)

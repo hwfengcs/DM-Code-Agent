@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import statistics
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterable, Sequence
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import replace
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import CriticAgent, ReactAgent
@@ -32,14 +33,14 @@ from .models import (
 )
 from .tasks import get_benchmark_tasks
 
-BENCH_VARIANTS: List[BenchmarkVariant] = [
+BENCH_VARIANTS: list[BenchmarkVariant] = [
     BenchmarkVariant("full", True, True, True),
     BenchmarkVariant("no_planning", False, True, True),
     BenchmarkVariant("no_skills", True, False, True),
     BenchmarkVariant("no_compression", True, True, False),
 ]
 
-DEFAULT_BENCH_VARIANTS: List[BenchmarkVariant] = [BENCH_VARIANTS[0]]
+DEFAULT_BENCH_VARIANTS: list[BenchmarkVariant] = [BENCH_VARIANTS[0]]
 
 
 @contextmanager
@@ -55,12 +56,12 @@ def chdir(path: Path):
 def run_benchmark_suite(
     *,
     suite: str = "coding",
-    tasks: Optional[Sequence[BenchmarkTask]] = None,
-    variants: Optional[Sequence[BenchmarkVariant]] = None,
-    task_ids: Optional[Iterable[str]] = None,
-    variant_names: Optional[Iterable[str]] = None,
-    config: Optional[BenchmarkRunConfig] = None,
-) -> Dict[str, Any]:
+    tasks: Sequence[BenchmarkTask] | None = None,
+    variants: Sequence[BenchmarkVariant] | None = None,
+    task_ids: Iterable[str] | None = None,
+    variant_names: Iterable[str] | None = None,
+    config: BenchmarkRunConfig | None = None,
+) -> dict[str, Any]:
     config = config or BenchmarkRunConfig()
     selected_tasks = list(tasks or get_benchmark_tasks(suite, task_ids))
     selected_variants = list(variants or DEFAULT_BENCH_VARIANTS)
@@ -83,7 +84,7 @@ def run_benchmark_suite(
     if not selected_variants:
         raise ValueError("no benchmark variants selected")
 
-    results: List[CodingBenchResult] = []
+    results: list[CodingBenchResult] = []
     for repeat_index in range(config.repeat):
         for variant in selected_variants:
             for task in selected_tasks:
@@ -205,7 +206,7 @@ def run_hidden_tests(task: BenchmarkTask, workspace: Path, *, timeout: int = 30)
 
 def run_hidden_tests_per_node(
     task: BenchmarkTask, workspace: Path, *, timeout: int = 30
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Advisory per-test partial credit for hidden tests.
 
     Mirrors the SWE-bench verifier's node-level pattern (collect-only then run
@@ -232,7 +233,7 @@ def run_hidden_tests_per_node(
     ]
     if not node_ids:
         return None
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
     passed = 0
     for node_id in node_ids:
         result = run_command(
@@ -299,20 +300,20 @@ BENCH_RECOVERY_SIGNAL_KEYS = (
 )
 
 
-def _bench_had_failure_signal(metadata: Dict[str, Any]) -> bool:
+def _bench_had_failure_signal(metadata: dict[str, Any]) -> bool:
     return any(int(metadata.get(key, 0) or 0) > 0 for key in BENCH_RECOVERY_SIGNAL_KEYS)
 
 
-def _repeat_stability(group: Sequence[CodingBenchResult]) -> Optional[Dict[str, Any]]:
+def _repeat_stability(group: Sequence[CodingBenchResult]) -> dict[str, Any] | None:
     """Aggregate per-task pass stability across --repeat runs (None if single-run)."""
     repeat_indexes = {result.metadata.get("repeat_index") for result in group}
     repeat_indexes.discard(None)
     if len(repeat_indexes) < 2:
         return None
-    by_task: Dict[str, List[bool]] = {}
+    by_task: dict[str, list[bool]] = {}
     for result in group:
         by_task.setdefault(result.task_id, []).append(bool(result.success))
-    per_task: Dict[str, Any] = {}
+    per_task: dict[str, Any] = {}
     for task_id, passes in sorted(by_task.items()):
         per_task[task_id] = {
             "runs": len(passes),
@@ -338,13 +339,13 @@ def _repeat_stability(group: Sequence[CodingBenchResult]) -> Optional[Dict[str, 
 def summarize_benchmark_results(
     results: Sequence[CodingBenchResult],
     *,
-    tasks: Optional[Sequence[BenchmarkTask]] = None,
-) -> Dict[str, Any]:
-    by_variant: Dict[str, List[CodingBenchResult]] = {}
+    tasks: Sequence[BenchmarkTask] | None = None,
+) -> dict[str, Any]:
+    by_variant: dict[str, list[CodingBenchResult]] = {}
     for result in results:
         by_variant.setdefault(result.variant, []).append(result)
 
-    variants: Dict[str, Any] = {}
+    variants: dict[str, Any] = {}
     for name, group in by_variant.items():
         successes = [result for result in group if result.success]
         hidden_passes = [result for result in group if result.hidden_test.returncode == 0]
@@ -411,7 +412,7 @@ def summarize_benchmark_results(
     }
     if tasks is not None:
         tags_by_task = {task.task_id: list(task.tags) for task in tasks}
-        by_tag: Dict[str, Dict[str, Any]] = {}
+        by_tag: dict[str, dict[str, Any]] = {}
         for result in results:
             for tag in tags_by_task.get(result.task_id, []):
                 entry = by_tag.setdefault(tag, {"runs": 0, "successes": 0})
@@ -428,7 +429,7 @@ def build_benchmark_manifest(
     suite: str,
     tasks: Sequence[BenchmarkTask],
     variants: Sequence[BenchmarkVariant],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     task_fingerprints = {
         task.task_id: benchmark_task_fingerprint(task)
         for task in sorted(tasks, key=lambda item: item.task_id)
@@ -468,12 +469,12 @@ def benchmark_task_fingerprint(task: BenchmarkTask) -> str:
     return _stable_hash(payload)
 
 
-def write_json_report(report: Dict[str, Any], path: Path) -> None:
+def write_json_report(report: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
+def write_markdown_report(report: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     summary = report["summary"]
     lines = [
@@ -607,7 +608,7 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def load_trace_analysis_for_report(trace_path: Path) -> tuple[Dict[str, Any], str]:
+def load_trace_analysis_for_report(trace_path: Path) -> tuple[dict[str, Any], str]:
     """Load compact trace analysis for benchmark report metadata."""
 
     try:
@@ -637,8 +638,8 @@ def _run_benchmark_task_in_workspace(
     prepare_workspace(task, workspace)
     before_snapshot = _snapshot_workspace(workspace)
     client = _build_tracking_client(config)
-    trace_path: Optional[Path] = None
-    trace_writer: Optional[TraceWriter] = None
+    trace_path: Path | None = None
+    trace_writer: TraceWriter | None = None
 
     if config.trace_dir:
         trace_root = Path(config.trace_dir)
@@ -690,7 +691,7 @@ def _run_benchmark_task_in_workspace(
                     raw_result = agent.run(task.prompt)
             else:
                 raw_result = agent.run(task.prompt)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if trace_writer:
                 trace_writer.record(
                     "run_error",
@@ -867,7 +868,7 @@ def _select_self_consistency_candidate(
             ),
         )
     if strategy == "majority_vote":
-        groups: Dict[str, List[CodingBenchResult]] = {}
+        groups: dict[str, list[CodingBenchResult]] = {}
         for candidate in candidates:
             key = _benchmark_vote_key(candidate)
             groups.setdefault(key, []).append(candidate)
@@ -889,7 +890,7 @@ def _benchmark_self_consistency_uncertainty(
     selected: CodingBenchResult,
     *,
     strategy: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     vote_distribution = _benchmark_vote_distribution(candidates)
     selected_key = _display_vote_key(_benchmark_vote_key(selected))
     selected_support = vote_distribution.get(selected_key, 0)
@@ -929,8 +930,8 @@ def _benchmark_self_consistency_uncertainty(
     }
 
 
-def _benchmark_vote_distribution(candidates: Sequence[CodingBenchResult]) -> Dict[str, int]:
-    counts: Dict[str, int] = {}
+def _benchmark_vote_distribution(candidates: Sequence[CodingBenchResult]) -> dict[str, int]:
+    counts: dict[str, int] = {}
     for candidate in candidates:
         key = _display_vote_key(_benchmark_vote_key(candidate))
         counts[key] = counts.get(key, 0) + 1
@@ -981,7 +982,7 @@ def _benchmark_confidence_label(score: float) -> str:
 
 def _score_run(
     task: BenchmarkTask,
-    raw_result: Dict[str, Any],
+    raw_result: dict[str, Any],
     hidden_result: CommandResult,
     changed_files: Sequence[str],
 ) -> tuple[bool, str]:
@@ -1040,15 +1041,15 @@ def _validate_benchmark_config(config: BenchmarkRunConfig) -> None:
         raise ValueError("critic_score self-consistency requires --enable-critic")
 
 
-def _write_files(workspace: Path, files: Dict[str, str]) -> None:
+def _write_files(workspace: Path, files: dict[str, str]) -> None:
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
 
-def _snapshot_workspace(workspace: Path) -> Dict[str, bytes]:
-    snapshot: Dict[str, bytes] = {}
+def _snapshot_workspace(workspace: Path) -> dict[str, bytes]:
+    snapshot: dict[str, bytes] = {}
     for path in workspace.rglob("*"):
         if not path.is_file():
             continue
@@ -1059,7 +1060,7 @@ def _snapshot_workspace(workspace: Path) -> Dict[str, bytes]:
     return snapshot
 
 
-def _diff_workspace(before: Dict[str, bytes], after: Dict[str, bytes]) -> List[str]:
+def _diff_workspace(before: dict[str, bytes], after: dict[str, bytes]) -> list[str]:
     changed = []
     for path in sorted(set(before) | set(after)):
         if before.get(path) != after.get(path):
@@ -1068,8 +1069,8 @@ def _diff_workspace(before: Dict[str, bytes], after: Dict[str, bytes]) -> List[s
 
 
 def _patch_fingerprint(
-    before: Dict[str, bytes],
-    after: Dict[str, bytes],
+    before: dict[str, bytes],
+    after: dict[str, bytes],
     changed_files: Sequence[str],
 ) -> str:
     if not changed_files:
@@ -1092,7 +1093,7 @@ def _should_track_file(relative_path: str) -> bool:
     return not relative_path.endswith((".pyc", ".pyo"))
 
 
-def _resolve_command(command: Sequence[str]) -> List[str]:
+def _resolve_command(command: Sequence[str]) -> list[str]:
     return [sys.executable if part == "{python}" else part for part in command]
 
 
@@ -1127,7 +1128,7 @@ def _cost_per_success(results: Sequence[CodingBenchResult]) -> float:
     return sum(result.estimated_cost_usd for result in results) / successes
 
 
-def _wilson_interval(successes: int, total: int, *, z: float = 1.96) -> Dict[str, float]:
+def _wilson_interval(successes: int, total: int, *, z: float = 1.96) -> dict[str, float]:
     if total <= 0:
         return {"low": 0.0, "high": 0.0}
     phat = successes / total

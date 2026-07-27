@@ -22,8 +22,9 @@ import json
 import os
 import random
 from collections import defaultdict
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
 from .models import SWEBenchInstance
 
@@ -44,14 +45,14 @@ def _snapshot_path(split: str = DEFAULT_SPLIT) -> Path:
     return _cache_dir() / f"princeton_nlp_swe_bench_lite_{split}.jsonl"
 
 
-def _row_to_instance(row: Dict[str, Any]) -> SWEBenchInstance:
+def _row_to_instance(row: dict[str, Any]) -> SWEBenchInstance:
     """Convert a raw HuggingFace row to a SWEBenchInstance.
 
     Different exports format the FAIL_TO_PASS / PASS_TO_PASS fields as either
     JSON strings or Python lists. Normalize here so callers always see lists.
     """
 
-    def _as_list(value: Any) -> List[str]:
+    def _as_list(value: Any) -> list[str]:
         if value is None:
             return []
         if isinstance(value, list):
@@ -82,7 +83,7 @@ def _row_to_instance(row: Dict[str, Any]) -> SWEBenchInstance:
     )
 
 
-def _instance_to_row(instance: SWEBenchInstance) -> Dict[str, Any]:
+def _instance_to_row(instance: SWEBenchInstance) -> dict[str, Any]:
     return {
         "instance_id": instance.instance_id,
         "repo": instance.repo,
@@ -99,14 +100,14 @@ def _instance_to_row(instance: SWEBenchInstance) -> Dict[str, Any]:
     }
 
 
-def load_instances_from_jsonl(path: str | Path) -> List[SWEBenchInstance]:
+def load_instances_from_jsonl(path: str | Path) -> list[SWEBenchInstance]:
     """Load instances from a previously snapshotted JSONL file.
 
     The JSONL format matches the HuggingFace export schema and is what
     :func:`snapshot_to_jsonl` writes. Used by tests and offline runs.
     """
-    instances: List[SWEBenchInstance] = []
-    with open(path, "r", encoding="utf-8") as handle:
+    instances: list[SWEBenchInstance] = []
+    with open(path, encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
             if not line:
@@ -127,7 +128,7 @@ def snapshot_to_jsonl(instances: Iterable[SWEBenchInstance], path: str | Path) -
     return path
 
 
-def _load_via_datasets(split: str) -> List[SWEBenchInstance]:
+def _load_via_datasets(split: str) -> list[SWEBenchInstance]:
     try:
         from datasets import load_dataset  # type: ignore
     except ImportError as exc:  # pragma: no cover - guarded by extra
@@ -143,11 +144,11 @@ def _load_via_datasets(split: str) -> List[SWEBenchInstance]:
 def load_instances(
     *,
     split: str = DEFAULT_SPLIT,
-    instance_ids: Optional[Sequence[str]] = None,
-    limit: Optional[int] = None,
+    instance_ids: Sequence[str] | None = None,
+    limit: int | None = None,
     refresh: bool = False,
-    snapshot_path: Optional[str | Path] = None,
-) -> List[SWEBenchInstance]:
+    snapshot_path: str | Path | None = None,
+) -> list[SWEBenchInstance]:
     """Load SWE-bench Lite instances, preferring a local snapshot when available.
 
     Args:
@@ -166,7 +167,7 @@ def load_instances(
     """
     cache_path = Path(snapshot_path) if snapshot_path else _snapshot_path(split)
 
-    instances: Optional[List[SWEBenchInstance]] = None
+    instances: list[SWEBenchInstance] | None = None
     if cache_path.exists() and not refresh:
         instances = load_instances_from_jsonl(cache_path)
     if instances is None:
@@ -190,11 +191,11 @@ def load_instances(
 
 def fixed_subset_50(
     *,
-    instances: Optional[Sequence[SWEBenchInstance]] = None,
+    instances: Sequence[SWEBenchInstance] | None = None,
     seed: int = SUBSET_50_SEED,
     size: int = SUBSET_50_SIZE,
     max_per_repo: int = 5,
-) -> List[SWEBenchInstance]:
+) -> list[SWEBenchInstance]:
     """Return a deterministic 50-instance subset of SWE-bench Lite.
 
     Sampling strategy:
@@ -215,12 +216,12 @@ def fixed_subset_50(
         Up to ``size`` instances. May be smaller if the source has fewer.
     """
     pool = list(instances) if instances is not None else load_instances()
-    by_repo: Dict[str, List[SWEBenchInstance]] = defaultdict(list)
+    by_repo: dict[str, list[SWEBenchInstance]] = defaultdict(list)
     for inst in pool:
         by_repo[inst.repo].append(inst)
 
     rng = random.Random(seed)
-    repo_buckets: Dict[str, List[SWEBenchInstance]] = {}
+    repo_buckets: dict[str, list[SWEBenchInstance]] = {}
     for repo, items in by_repo.items():
         items_sorted = sorted(items, key=lambda inst: inst.instance_id)
         rng.shuffle(items_sorted)
@@ -229,7 +230,7 @@ def fixed_subset_50(
     repos = sorted(repo_buckets.keys())
     rng.shuffle(repos)
 
-    selected: List[SWEBenchInstance] = []
+    selected: list[SWEBenchInstance] = []
     cursor = {repo: 0 for repo in repos}
     while len(selected) < size:
         progress = False

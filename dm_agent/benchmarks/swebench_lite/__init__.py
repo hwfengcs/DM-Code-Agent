@@ -25,23 +25,23 @@ dataset requires the optional `[swebench]` extra (`pip install
 from __future__ import annotations
 
 from .models import (
+    FailureCategory,
     SWEBenchInstance,
     SWEBenchResult,
-    SWEBenchVerification,
     SWEBenchRunConfig,
-    FailureCategory,
+    SWEBenchVerification,
 )
 
 __all__ = [
+    "FailureCategory",
     "SWEBenchInstance",
     "SWEBenchResult",
-    "SWEBenchVerification",
     "SWEBenchRunConfig",
-    "FailureCategory",
-    "load_instances",
-    "fixed_subset_50",
-    "run_swebench_lite",
+    "SWEBenchVerification",
     "categorize_failure",
+    "fixed_subset_50",
+    "load_instances",
+    "run_swebench_lite",
     "summarize_failure_modes",
 ]
 
@@ -49,7 +49,7 @@ __all__ = [
 def __getattr__(name: str):
     """Lazy import to keep optional `datasets` dependency truly optional."""
     if name in {"load_instances", "fixed_subset_50"}:
-        from .loader import load_instances, fixed_subset_50
+        from .loader import fixed_subset_50, load_instances
 
         return {"load_instances": load_instances, "fixed_subset_50": fixed_subset_50}[name]
     if name == "run_swebench_lite":

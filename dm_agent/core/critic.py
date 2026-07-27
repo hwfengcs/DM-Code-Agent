@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
-from ..clients.base_client import BaseLLMClient
+from dm_agent.clients.base_client import BaseLLMClient
 
 
 @dataclass(frozen=True)
@@ -16,12 +17,12 @@ class CriticReview:
     passed: bool
     score: float
     summary: str
-    reasons: List[str] = field(default_factory=list)
-    suggested_fixes: List[str] = field(default_factory=list)
+    reasons: list[str] = field(default_factory=list)
+    suggested_fixes: list[str] = field(default_factory=list)
     raw: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "passed": self.passed,
             "score": self.score,
@@ -55,9 +56,9 @@ class CriticAgent:
         task: str,
         candidate_answer: Any = None,
         final_answer: Any = None,
-        steps: Iterable[Dict[str, Any]] = (),
-        metadata: Optional[Dict[str, Any]] = None,
-        failure_feedback: Optional[str] = None,
+        steps: Iterable[dict[str, Any]] = (),
+        metadata: dict[str, Any] | None = None,
+        failure_feedback: str | None = None,
     ) -> CriticReview:
         """Return a structured verdict for a candidate completion."""
         if candidate_answer is None:
@@ -91,9 +92,9 @@ class CriticAgent:
         *,
         task: str,
         candidate_answer: Any,
-        steps: Iterable[Dict[str, Any]],
-        metadata: Dict[str, Any],
-        failure_feedback: Optional[str],
+        steps: Iterable[dict[str, Any]],
+        metadata: dict[str, Any],
+        failure_feedback: str | None,
     ) -> str:
         payload = {
             "task": task[:3000],
@@ -164,7 +165,7 @@ class CriticAgent:
         return None
 
 
-def _normalize_list(value: Any) -> List[str]:
+def _normalize_list(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, str):
@@ -181,7 +182,7 @@ def _normalize_list(value: Any) -> List[str]:
     return [text] if text else []
 
 
-def _safe_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     allowed = {
         "status",
         "failure_reason",
@@ -200,8 +201,8 @@ def _safe_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     return {key: metadata.get(key) for key in sorted(allowed) if key in metadata}
 
 
-def _summarize_steps(steps: Iterable[Dict[str, Any]], *, limit: int) -> List[Dict[str, str]]:
-    summary: List[Dict[str, str]] = []
+def _summarize_steps(steps: Iterable[dict[str, Any]], *, limit: int) -> list[dict[str, str]]:
+    summary: list[dict[str, str]] = []
     used_chars = 0
     for step in steps:
         item = {
@@ -232,7 +233,7 @@ def _json_safe(value: Any, *, max_chars: int) -> Any:
         return str(value)[:max_chars]
 
 
-def _json_candidates(candidate: str) -> List[str]:
+def _json_candidates(candidate: str) -> list[str]:
     candidates = [candidate]
 
     fence_match = _extract_fence(candidate)

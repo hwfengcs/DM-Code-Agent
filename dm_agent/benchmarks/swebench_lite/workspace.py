@@ -11,6 +11,7 @@ surface tiny and matches how the rest of the project shells out to git.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -18,7 +19,6 @@ import tempfile
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 from .models import SWEBenchInstance
 
@@ -38,19 +38,19 @@ class WorkspaceError(RuntimeError):
 
 @dataclass
 class GitCommandResult:
-    args: List[str]
+    args: list[str]
     returncode: int
     stdout: str
     stderr: str
 
 
 def _run_git(
-    args: List[str],
+    args: list[str],
     cwd: Path,
     *,
     timeout: int = GIT_TIMEOUT_SECONDS,
     check: bool = True,
-    input_text: Optional[str] = None,
+    input_text: str | None = None,
 ) -> GitCommandResult:
     env = os.environ.copy()
     env.update(GIT_AUTHOR_ENV)
@@ -106,12 +106,12 @@ class SWEBenchWorkspace:
         instance: SWEBenchInstance,
         *,
         root_dir: str | Path,
-        cache_root: Optional[str | Path] = None,
+        cache_root: str | Path | None = None,
     ) -> None:
         self.instance = instance
         self.root_dir = Path(root_dir)
         self.cache_root = Path(cache_root) if cache_root else self._default_cache_root()
-        self._workspace_path: Optional[Path] = None
+        self._workspace_path: Path | None = None
         self._cleanup = False
 
     # ------------------------------------------------------------------ helpers
@@ -142,7 +142,7 @@ class SWEBenchWorkspace:
 
     # ------------------------------------------------------------------ context manager
 
-    def __enter__(self) -> "SWEBenchWorkspace":
+    def __enter__(self) -> SWEBenchWorkspace:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -169,10 +169,8 @@ class SWEBenchWorkspace:
         repo_dir = self.cached_repo_dir
         if repo_dir.exists():
             # Update only if we are missing the commit we need.
-            try:
+            with contextlib.suppress(WorkspaceError):
                 self._fetch_commit_into_cache(repo_dir, self.instance.base_commit)
-            except WorkspaceError:
-                pass
             return repo_dir
         _run_git(
             ["clone", "--bare", self.repo_url, str(repo_dir)],

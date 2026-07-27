@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
-from ..base import BaseSkill, SkillMetadata
-from ...tools.base import Tool
+from dm_agent.skills.base import BaseSkill, SkillMetadata
+from dm_agent.tools.base import Tool
 
 _SQL_COMMON_ISSUES = {
     "SELECT *": "避免使用 SELECT *，显式列出需要的列以提高性能和可维护性",
@@ -17,14 +17,14 @@ _SQL_COMMON_ISSUES = {
 }
 
 
-def _sql_review_runner(arguments: Dict[str, Any]) -> str:
+def _sql_review_runner(arguments: dict[str, Any]) -> str:
     """审查 SQL 语句，检测常见问题并给出优化建议"""
     sql = arguments.get("sql", "").strip()
     if not sql:
         return '请提供要审查的 SQL 语句。参数：{"sql": "你的 SQL 语句"}'
 
     sql_upper = sql.upper()
-    findings: List[str] = []
+    findings: list[str] = []
 
     if "SELECT *" in sql_upper:
         findings.append(f"⚠ {_SQL_COMMON_ISSUES['SELECT *']}")
@@ -98,7 +98,7 @@ class DatabaseExpertSkill(BaseSkill):
             "6. 使用 sql_review 工具审查 SQL 语句的常见问题\n"
         )
 
-    def get_tools(self) -> List[Tool]:
+    def get_tools(self) -> list[Tool]:
         return [
             Tool(
                 name="sql_review",

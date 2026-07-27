@@ -1,24 +1,24 @@
 """MCP 环境诊断工具"""
 
+import json
+import os
 import subprocess
 import sys
-import os
-import json
 
 
-def check_command(command: str, args: list = None) -> tuple[bool, str]:
+def check_command(command: str, args: list | None = None) -> tuple[bool, str]:
     """检查命令是否可用
 
     Returns:
         (是否可用, 版本信息或错误信息)
     """
     try:
-        cmd = [command] + (args or ["--version"])
+        cmd = [command, *(args or ["--version"])]
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            shell=True if sys.platform == "win32" else False,
+            shell=sys.platform == "win32",
             timeout=5,
         )
         if result.returncode == 0:
@@ -42,7 +42,7 @@ def check_mcp_config():
         return False, "配置文件不存在"
 
     try:
-        with open(config_file, "r", encoding="utf-8") as f:
+        with open(config_file, encoding="utf-8") as f:
             config = json.load(f)
 
         servers = config.get("mcpServers", {})

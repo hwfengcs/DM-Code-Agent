@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -41,10 +41,10 @@ class SWEBenchInstance:
     created_at: str = ""
     patch: str = ""
     test_patch: str = ""
-    fail_to_pass: List[str] = field(default_factory=list)
-    pass_to_pass: List[str] = field(default_factory=list)
+    fail_to_pass: list[str] = field(default_factory=list)
+    pass_to_pass: list[str] = field(default_factory=list)
 
-    def to_public_dict(self) -> Dict[str, Any]:
+    def to_public_dict(self) -> dict[str, Any]:
         """Return a redacted view safe to embed in a benchmark report."""
         return {
             "instance_id": self.instance_id,
@@ -72,7 +72,7 @@ class SWEBenchVerification:
     stdout_tail: str = ""
     stderr_tail: str = ""
     duration_seconds: float = 0.0
-    error: Optional[str] = None  # set when verification could not run at all
+    error: str | None = None  # set when verification could not run at all
 
     @property
     def resolved(self) -> bool:
@@ -87,7 +87,7 @@ class SWEBenchVerification:
             and self.pass_to_pass_pass == self.pass_to_pass_total
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "patch_applied": self.patch_applied,
             "fail_to_pass_pass": self.fail_to_pass_pass,
@@ -102,7 +102,7 @@ class SWEBenchVerification:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SWEBenchVerification":
+    def from_dict(cls, data: dict[str, Any]) -> SWEBenchVerification:
         """Rehydrate a verification result from a JSON report."""
         return cls(
             patch_applied=bool(data.get("patch_applied", False)),
@@ -126,7 +126,7 @@ class SWEBenchResult:
     success: bool
     failure_reason: str
     final_answer: str
-    actions: List[str]
+    actions: list[str]
     steps_count: int
     tool_calls: int
     duration_seconds: float
@@ -134,13 +134,13 @@ class SWEBenchResult:
     completion_chars: int
     estimated_tokens: int
     request_count: int
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
     verification: SWEBenchVerification
     prediction: str = ""  # the unified diff the agent produced
     workspace_path: str = ""
     trial: int = 1  # which trial produced this result (Reflexion / multi-trial)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "instance_id": self.instance_id,
             "repo": self.repo,
@@ -163,7 +163,7 @@ class SWEBenchResult:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SWEBenchResult":
+    def from_dict(cls, data: dict[str, Any]) -> SWEBenchResult:
         """Rehydrate a single instance result from a JSON report."""
         return cls(
             instance_id=str(data["instance_id"]),
@@ -192,17 +192,17 @@ class SWEBenchRunConfig:
     """Runtime configuration for a SWE-bench Lite run."""
 
     provider: str = "deepseek"
-    model: Optional[str] = None
-    base_url: Optional[str] = None
-    api_key_env: Optional[str] = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key_env: str | None = None
     max_steps: int = 60
     temperature: float = 0.0
     test_timeout: int = 300
     instance_timeout: int = 1800
     use_docker: bool = False
     keep_workspaces: bool = False
-    workspace_root: Optional[str] = None
-    trace_dir: Optional[str] = None
+    workspace_root: str | None = None
+    trace_dir: str | None = None
     quiet: bool = True
     enable_reflexion: bool = False
     max_trials: int = 1

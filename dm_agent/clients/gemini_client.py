@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 try:
     from google import genai
@@ -42,9 +42,9 @@ class GeminiClient(BaseLLMClient):
 
     def complete(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """向 Gemini API 发送生成请求。"""
 
         try:
@@ -58,9 +58,11 @@ class GeminiClient(BaseLLMClient):
             return {"response": response}
 
         except Exception as e:
-            raise LLMError(f"Gemini API 调用失败: {e}", retryable=classify_retryable_exception(e))
+            raise LLMError(
+                f"Gemini API 调用失败: {e}", retryable=classify_retryable_exception(e)
+            ) from e
 
-    def extract_text(self, data: Dict[str, Any]) -> str:
+    def extract_text(self, data: dict[str, Any]) -> str:
         """从 Gemini 响应中提取文本内容。"""
 
         if not isinstance(data, dict):
@@ -72,11 +74,11 @@ class GeminiClient(BaseLLMClient):
             try:
                 return response.text.strip()
             except Exception as e:
-                raise LLMError(f"无法从 Gemini 响应中提取文本: {e}")
+                raise LLMError(f"无法从 Gemini 响应中提取文本: {e}") from e
 
         raise LLMError("无法从 Gemini 响应中提取文本。")
 
-    def _convert_messages_to_contents(self, messages: List[Dict[str, str]]) -> str:
+    def _convert_messages_to_contents(self, messages: list[dict[str, str]]) -> str:
         """将标准消息格式转换为 Gemini 内容格式。"""
         # 合并所有消息内容
         contents_parts = []

@@ -19,7 +19,8 @@ Use :func:`summarize_failure_modes` to aggregate counts and
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, Dict, Iterable, List, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from .models import FailureCategory, SWEBenchResult
 
@@ -43,9 +44,8 @@ def categorize_failure(result: SWEBenchResult) -> FailureCategory:
         return FailureCategory.PATCH_NOT_PRODUCED
 
     # 2. Did the patch apply?
-    if not verification.patch_applied:
-        if verification.error == "patch_apply_failed":
-            return FailureCategory.PATCH_APPLY_FAILED
+    if not verification.patch_applied and verification.error == "patch_apply_failed":
+        return FailureCategory.PATCH_APPLY_FAILED
         # Fall through: workspace setup or another upstream issue.
 
     # 3. Agent-side terminal states (signaled by metadata.status / failure_reason).
@@ -80,7 +80,7 @@ def categorize_failure(result: SWEBenchResult) -> FailureCategory:
     return FailureCategory.UNKNOWN
 
 
-def summarize_failure_modes(results: Iterable[SWEBenchResult]) -> Dict[str, Any]:
+def summarize_failure_modes(results: Iterable[SWEBenchResult]) -> dict[str, Any]:
     """Return counts and rates for each :class:`FailureCategory`.
 
     The ``per_category`` map preserves :class:`FailureCategory` declaration
@@ -90,7 +90,7 @@ def summarize_failure_modes(results: Iterable[SWEBenchResult]) -> Dict[str, Any]
     failures = [r for r in results if not r.success]
     counts: Counter[FailureCategory] = Counter(categorize_failure(r) for r in failures)
 
-    per_category: List[Dict[str, Any]] = []
+    per_category: list[dict[str, Any]] = []
     for category in FailureCategory:
         count = counts.get(category, 0)
         per_category.append(
@@ -110,12 +110,12 @@ def summarize_failure_modes(results: Iterable[SWEBenchResult]) -> Dict[str, Any]
     }
 
 
-def render_markdown_failure_modes(summary: Dict[str, Any]) -> str:
+def render_markdown_failure_modes(summary: dict[str, Any]) -> str:
     """Render :func:`summarize_failure_modes` output as a Markdown table."""
     total = summary.get("total", 0)
     failures = summary.get("failures", 0)
 
-    lines: List[str] = [
+    lines: list[str] = [
         "## Failure modes",
         "",
         f"- Total runs: `{total}`",

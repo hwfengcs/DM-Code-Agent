@@ -6,9 +6,10 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Iterable, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any
 
 from dm_agent.tools import default_tools
 
@@ -117,7 +118,7 @@ def main(argv: Any = None) -> int:
     return 2
 
 
-def _view(events: List[Dict[str, Any]], *, as_json: bool, raw: bool) -> int:
+def _view(events: list[dict[str, Any]], *, as_json: bool, raw: bool) -> int:
     if raw:
         print(json.dumps(events, indent=2, ensure_ascii=False))
         return 0
@@ -151,7 +152,7 @@ def _view(events: List[Dict[str, Any]], *, as_json: bool, raw: bool) -> int:
 
 
 def _replay(
-    events: List[Dict[str, Any]],
+    events: list[dict[str, Any]],
     *,
     execute_tools: bool,
     allow_shell: bool,
@@ -159,7 +160,7 @@ def _replay(
     as_json: bool,
 ) -> int:
     summary = summarize_events(events)
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "run_id": summary.get("run_id"),
         "task": summary.get("task"),
         "mode": "tool" if execute_tools else "dry",
@@ -197,7 +198,7 @@ def _replay(
 
 
 def _analyze(
-    events: List[Dict[str, Any]],
+    events: list[dict[str, Any]],
     *,
     as_json: bool,
 ) -> int:
@@ -291,7 +292,7 @@ def _analyze_dir(
     return 0 if not report["errors"] else 1
 
 
-def render_trace_directory_markdown(report: Dict[str, Any]) -> str:
+def render_trace_directory_markdown(report: dict[str, Any]) -> str:
     """Render trace-directory analysis without raw prompt, observation, or answer text."""
 
     summary = report.get("summary") or {}
@@ -372,8 +373,8 @@ def render_trace_directory_markdown(report: Dict[str, Any]) -> str:
 
 
 def _diff(
-    base_events: List[Dict[str, Any]],
-    candidate_events: List[Dict[str, Any]],
+    base_events: list[dict[str, Any]],
+    candidate_events: list[dict[str, Any]],
     *,
     as_json: bool,
 ) -> int:
@@ -438,7 +439,7 @@ def _diff(
     return 0
 
 
-def summarize_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+def summarize_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     runtime = _first(events, "runtime")
     run_start = _first(events, "run_start")
     run_end = _last(events, "run_end")
@@ -466,9 +467,9 @@ def summarize_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def diff_events(
-    base_events: List[Dict[str, Any]],
-    candidate_events: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    base_events: list[dict[str, Any]],
+    candidate_events: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Return a deterministic behavioral diff between two trace event lists."""
 
     base = summarize_events(base_events)
@@ -511,7 +512,7 @@ def diff_events(
     }
 
 
-def _hallucination_signals(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _hallucination_signals(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Deterministic hallucination proxies from one trace (advisory only).
 
     These deliberately stay OUT of the trace-health score until calibrated
@@ -560,7 +561,7 @@ def _hallucination_signals(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def analyze_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+def analyze_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Return a deterministic advisory analysis for one trace."""
 
     summary = summarize_events(events)
@@ -629,7 +630,7 @@ def analyze_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def analyze_trace_directory(directory: Path, *, pattern: str = "*.jsonl") -> Dict[str, Any]:
+def analyze_trace_directory(directory: Path, *, pattern: str = "*.jsonl") -> dict[str, Any]:
     """Analyze a directory of trace JSONL files without replaying tools."""
 
     paths = sorted(path for path in directory.glob(pattern) if path.is_file())
@@ -654,13 +655,13 @@ def analyze_trace_directory(directory: Path, *, pattern: str = "*.jsonl") -> Dic
 
 
 def replay_tools(
-    events: Iterable[Dict[str, Any]],
+    events: Iterable[dict[str, Any]],
     workspace: Path,
     *,
     allow_shell: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     tools = {tool.name: tool for tool in default_tools(include_mcp=False)}
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
 
     for event in events:
         if event.get("event") != "tool_call":
@@ -670,7 +671,7 @@ def replay_tools(
         if action in {"finish", "error"}:
             continue
 
-        item: Dict[str, Any] = {
+        item: dict[str, Any] = {
             "step_number": payload.get("step_number"),
             "action": action,
             "status": "ok",
@@ -692,7 +693,7 @@ def replay_tools(
         try:
             with chdir(workspace):
                 actual = tool.execute(payload.get("action_input") or {})
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             actual = f"Tool execution failed: {exc}"
             item["status"] = "error"
 
@@ -705,7 +706,7 @@ def replay_tools(
     return results
 
 
-def _load_trace_for_cli(path: Path) -> List[Dict[str, Any]] | None:
+def _load_trace_for_cli(path: Path) -> list[dict[str, Any]] | None:
     try:
         return load_trace_events(path)
     except FileNotFoundError:
@@ -727,14 +728,14 @@ def chdir(path: Path):
         os.chdir(previous)
 
 
-def _first(events: Sequence[Dict[str, Any]], event_name: str) -> Dict[str, Any] | None:
+def _first(events: Sequence[dict[str, Any]], event_name: str) -> dict[str, Any] | None:
     for event in events:
         if event.get("event") == event_name:
             return event
     return None
 
 
-def _last(events: Sequence[Dict[str, Any]], event_name: str) -> Dict[str, Any] | None:
+def _last(events: Sequence[dict[str, Any]], event_name: str) -> dict[str, Any] | None:
     for event in reversed(events):
         if event.get("event") == event_name:
             return event
@@ -747,7 +748,7 @@ def _shorten(text: str, limit: int) -> str:
     return text[: limit - 3] + "..."
 
 
-def _trace_header(summary: Dict[str, Any]) -> Dict[str, Any]:
+def _trace_header(summary: dict[str, Any]) -> dict[str, Any]:
     return {
         "run_id": summary.get("run_id", ""),
         "task": summary.get("task", ""),
@@ -761,19 +762,19 @@ def _trace_header(summary: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _action_sequence(summary: Dict[str, Any]) -> List[str]:
+def _action_sequence(summary: dict[str, Any]) -> list[str]:
     return [str(step.get("action", "")) for step in summary.get("steps", [])]
 
 
-def _plan_actions(summary: Dict[str, Any]) -> List[str]:
+def _plan_actions(summary: dict[str, Any]) -> list[str]:
     return [str(step.get("action", "")) for step in summary.get("plan_steps", [])]
 
 
 def _metric_delta(
-    base: Dict[str, Any],
-    candidate: Dict[str, Any],
+    base: dict[str, Any],
+    candidate: dict[str, Any],
     key: str,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     base_value = int(base.get(key) or 0)
     candidate_value = int(candidate.get(key) or 0)
     return {
@@ -784,10 +785,10 @@ def _metric_delta(
 
 
 def _float_metric_delta(
-    base: Dict[str, Any],
-    candidate: Dict[str, Any],
+    base: dict[str, Any],
+    candidate: dict[str, Any],
     key: str,
-) -> Dict[str, float | None]:
+) -> dict[str, float | None]:
     base_value = base.get(key)
     candidate_value = candidate.get(key)
     delta = None
@@ -802,15 +803,15 @@ def _float_metric_delta(
 
 def _common_prefix_length(base: Sequence[str], candidate: Sequence[str]) -> int:
     count = 0
-    for left, right in zip(base, candidate):
+    for left, right in zip(base, candidate, strict=False):
         if left != right:
             break
         count += 1
     return count
 
 
-def _sequence_changes(base: Sequence[str], candidate: Sequence[str]) -> List[Dict[str, str | int]]:
-    changes: List[Dict[str, str | int]] = []
+def _sequence_changes(base: Sequence[str], candidate: Sequence[str]) -> list[dict[str, str | int]]:
+    changes: list[dict[str, str | int]] = []
     max_length = max(len(base), len(candidate))
     for index in range(max_length):
         base_action = base[index] if index < len(base) else ""
@@ -827,8 +828,8 @@ def _sequence_changes(base: Sequence[str], candidate: Sequence[str]) -> List[Dic
     return changes
 
 
-def _count_actions(actions: Sequence[str]) -> Dict[str, int]:
-    counts: Dict[str, int] = {}
+def _count_actions(actions: Sequence[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
     for action in actions:
         if not action:
             continue
@@ -837,10 +838,10 @@ def _count_actions(actions: Sequence[str]) -> Dict[str, int]:
 
 
 def _count_delta(
-    base: Dict[str, int],
-    candidate: Dict[str, int],
-) -> Dict[str, Dict[str, int]]:
-    delta: Dict[str, Dict[str, int]] = {}
+    base: dict[str, int],
+    candidate: dict[str, int],
+) -> dict[str, dict[str, int]]:
+    delta: dict[str, dict[str, int]] = {}
     for action in sorted(set(base) | set(candidate)):
         base_count = base.get(action, 0)
         candidate_count = candidate.get(action, 0)
@@ -855,10 +856,10 @@ def _count_delta(
 
 
 def _failure_events(
-    events: Sequence[Dict[str, Any]],
-    summary: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    failures: List[Dict[str, Any]] = []
+    events: Sequence[dict[str, Any]],
+    summary: dict[str, Any],
+) -> list[dict[str, Any]]:
+    failures: list[dict[str, Any]] = []
     for index, event in enumerate(events):
         name = event.get("event")
         payload = event.get("payload", {})
@@ -889,8 +890,8 @@ def _failure_item(
     index: int,
     event: str,
     stage: str,
-    payload: Dict[str, Any],
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     return {
         "event_index": index,
         "event": event,
@@ -900,7 +901,7 @@ def _failure_item(
     }
 
 
-def _classify_tool_failure(payload: Dict[str, Any]) -> str:
+def _classify_tool_failure(payload: dict[str, Any]) -> str:
     action = str(payload.get("action") or "")
     observation = str(payload.get("observation") or "")
     lowered = observation.lower()
@@ -919,7 +920,7 @@ def _classify_tool_failure(payload: Dict[str, Any]) -> str:
     return "tool"
 
 
-def _final_failure_stage(summary: Dict[str, Any], primary_stage: str) -> str:
+def _final_failure_stage(summary: dict[str, Any], primary_stage: str) -> str:
     status = str(summary.get("status") or "")
     if status == "success":
         return "none"
@@ -930,7 +931,7 @@ def _final_failure_stage(summary: Dict[str, Any], primary_stage: str) -> str:
     return status or "unknown"
 
 
-def _verification_analysis(summary: Dict[str, Any]) -> Dict[str, Any]:
+def _verification_analysis(summary: dict[str, Any]) -> dict[str, Any]:
     steps = summary.get("steps", [])
     finish_steps = [
         int(step.get("step_number") or index + 1)
@@ -970,7 +971,7 @@ def _analysis_signals(
     verification_gap: bool,
     replanned_after_failure: bool,
     failure_count: int,
-) -> List[str]:
+) -> list[str]:
     signals = []
     if primary_stage != "none":
         signals.append(f"primary_failure:{primary_stage}")
@@ -993,8 +994,8 @@ def _trace_health(
     verification_gap: bool,
     failure_count: int,
     replanned_after_failure: bool,
-    metadata: Dict[str, Any],
-) -> Dict[str, Any]:
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
     score = 1.0
     issues = []
     if not has_run_start:
@@ -1031,9 +1032,9 @@ def _trace_health(
 
 def _trace_directory_summary(
     paths: Sequence[Path],
-    analyses: Sequence[Dict[str, Any]],
-    errors: Sequence[Dict[str, Any]],
-) -> Dict[str, Any]:
+    analyses: Sequence[dict[str, Any]],
+    errors: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
     analysis_payloads = [item["analysis"] for item in analyses]
     runs_with_failures = [
         analysis
@@ -1086,15 +1087,15 @@ def _trace_directory_summary(
     }
 
 
-def _count_values(values: Iterable[str]) -> Dict[str, int]:
-    counts: Dict[str, int] = {}
+def _count_values(values: Iterable[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
     for value in values:
         key = str(value or "unknown")
         counts[key] = counts.get(key, 0) + 1
     return dict(sorted(counts.items()))
 
 
-def _display_trace_path(path: str, report: Dict[str, Any]) -> str:
+def _display_trace_path(path: str, report: dict[str, Any]) -> str:
     directory = Path(str(report.get("directory") or ""))
     trace_path = Path(path)
     try:

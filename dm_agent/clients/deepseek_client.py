@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Iterable, List, Optional
+from collections.abc import Iterable
+from typing import Any
 
 import requests
 
@@ -29,7 +30,7 @@ class DeepSeekClient(BaseLLMClient):
         timeout: int = 600,
         max_retries: int = 3,
         retry_backoff: float = 1.0,
-        retry_status_codes: Optional[Iterable[int]] = None,
+        retry_status_codes: Iterable[int] | None = None,
     ) -> None:
         super().__init__(
             api_key,
@@ -62,18 +63,18 @@ class DeepSeekClient(BaseLLMClient):
 
     def complete(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         *,
-        response_format: Optional[Dict[str, Any]] = None,
+        response_format: dict[str, Any] | None = None,
         stream: bool = False,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """向 DeepSeek API 发送聊天式补全请求。"""
 
         if stream:
             raise NotImplementedError("此客户端未实现流式传输。")
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
         }
@@ -117,7 +118,7 @@ class DeepSeekClient(BaseLLMClient):
 
         raise DeepSeekError("DeepSeek API request failed after exhausting retry budget.")
 
-    def extract_text(self, data: Dict[str, Any]) -> str:
+    def extract_text(self, data: dict[str, Any]) -> str:
         """从各种响应格式中提取助手文本内容。"""
 
         if not isinstance(data, dict):

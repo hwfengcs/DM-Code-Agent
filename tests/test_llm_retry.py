@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
@@ -29,13 +29,13 @@ class FlakyClient(BaseLLMClient):
         self.retryable = retryable
         self.calls = 0
 
-    def complete(self, messages: List[Dict[str, str]], **extra: Any) -> Dict[str, Any]:
+    def complete(self, messages: list[dict[str, str]], **extra: Any) -> dict[str, Any]:
         self.calls += 1
         if self.calls <= self.failures:
             raise LLMError("transient upstream issue", retryable=self.retryable)
         return {"text": "ok"}
 
-    def extract_text(self, data: Dict[str, Any]) -> str:
+    def extract_text(self, data: dict[str, Any]) -> str:
         return data["text"]
 
 

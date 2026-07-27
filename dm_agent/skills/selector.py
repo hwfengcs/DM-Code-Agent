@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..clients.base_client import BaseLLMClient
+    from dm_agent.clients.base_client import BaseLLMClient
+
     from .base import BaseSkill
 
 
@@ -25,14 +26,14 @@ class SkillSelector:
         max_active_skills: int = 3,
         min_keyword_score: float = 0.05,
         enable_llm_fallback: bool = False,
-        llm_client: Optional["BaseLLMClient"] = None,
+        llm_client: BaseLLMClient | None = None,
     ) -> None:
         self.max_active_skills = max_active_skills
         self.min_keyword_score = min_keyword_score
         self.enable_llm_fallback = enable_llm_fallback
         self.llm_client = llm_client
 
-    def select(self, task: str, skills: Dict[str, "BaseSkill"]) -> List[str]:
+    def select(self, task: str, skills: dict[str, BaseSkill]) -> list[str]:
         """为任务选择最合适的技能，返回技能名称列表。"""
         if not skills or not task.strip():
             return []
@@ -56,9 +57,9 @@ class SkillSelector:
     # 内部方法
     # ------------------------------------------------------------------
 
-    def _score_all(self, task: str, skills: Dict[str, "BaseSkill"]) -> Dict[str, float]:
+    def _score_all(self, task: str, skills: dict[str, BaseSkill]) -> dict[str, float]:
         """计算每个技能的综合匹配分数。"""
-        scores: Dict[str, float] = {}
+        scores: dict[str, float] = {}
         task_lower = task.lower()
 
         for name, skill in skills.items():
@@ -71,7 +72,7 @@ class SkillSelector:
         return scores
 
     @staticmethod
-    def _keyword_match(task_lower: str, keywords: List[str]) -> float:
+    def _keyword_match(task_lower: str, keywords: list[str]) -> float:
         """关键词匹配，返回 0-1 之间的分数。"""
         if not keywords:
             return 0.0
@@ -79,7 +80,7 @@ class SkillSelector:
         return hits / len(keywords)
 
     @staticmethod
-    def _pattern_match(task: str, patterns: List[str]) -> float:
+    def _pattern_match(task: str, patterns: list[str]) -> float:
         """正则模式匹配，返回 0-1 之间的分数。"""
         if not patterns:
             return 0.0
@@ -92,7 +93,7 @@ class SkillSelector:
                 continue
         return hits / len(patterns)
 
-    def _llm_select(self, task: str, skills: Dict[str, "BaseSkill"]) -> List[tuple]:
+    def _llm_select(self, task: str, skills: dict[str, BaseSkill]) -> list[tuple]:
         """使用 LLM 辅助选择技能（备用策略）。"""
         if not self.llm_client:
             return []

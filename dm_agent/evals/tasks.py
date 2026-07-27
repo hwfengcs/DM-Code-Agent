@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import List
 
 from .models import EvalExpected, EvalTask
 
@@ -31,7 +30,7 @@ def planner_response(*actions: str) -> str:
     )
 
 
-BUILTIN_TASKS: List[EvalTask] = [
+BUILTIN_TASKS: list[EvalTask] = [
     EvalTask(
         task_id="direct_finish",
         name="Direct final answer",
@@ -321,5 +320,5 @@ BUILTIN_TASKS: List[EvalTask] = [
 ]
 
 
-def get_builtin_tasks() -> List[EvalTask]:
+def get_builtin_tasks() -> list[EvalTask]:
     return list(BUILTIN_TASKS)

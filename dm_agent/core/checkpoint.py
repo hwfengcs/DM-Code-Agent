@@ -17,7 +17,7 @@ import shutil
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 BACKUP_ROOT_NAME = "dm_agent_backups"
 
@@ -28,7 +28,7 @@ def backup_root() -> Path:
     return Path(tempfile.gettempdir()) / BACKUP_ROOT_NAME
 
 
-def backup_file(path: str | Path, *, run_id: str, step: int) -> Optional[Path]:
+def backup_file(path: str | Path, *, run_id: str, step: int) -> Path | None:
     """把即将被修改的文件拷贝到 per-run 备份目录，失败时静默返回 None。
 
     备份是尽力而为的安全网，绝不能因为备份失败而中断任务执行。
@@ -57,21 +57,21 @@ class RunCheckpoint:
 
     task: str
     step_count: int
-    conversation_history: List[Dict[str, str]] = field(default_factory=list)
-    steps: List[Dict[str, Any]] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    plan: List[Dict[str, Any]] = field(default_factory=list)
-    compressor_state: Optional[Dict[str, Any]] = None
-    reflexion_memory: Optional[Dict[str, Any]] = None
-    agent_config: Dict[str, Any] = field(default_factory=dict)
+    conversation_history: list[dict[str, str]] = field(default_factory=list)
+    steps: list[dict[str, Any]] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    plan: list[dict[str, Any]] = field(default_factory=list)
+    compressor_state: dict[str, Any] | None = None
+    reflexion_memory: dict[str, Any] | None = None
+    agent_config: dict[str, Any] = field(default_factory=dict)
     cwd: str = ""
     schema_version: int = CHECKPOINT_SCHEMA_VERSION
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RunCheckpoint":
+    def from_dict(cls, data: dict[str, Any]) -> RunCheckpoint:
         version = int(data.get("schema_version", -1))
         if version != CHECKPOINT_SCHEMA_VERSION:
             raise ValueError(

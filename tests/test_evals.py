@@ -3,7 +3,8 @@ import json
 import pytest
 
 from dm_agent.evals.cli import main as eval_main
-from dm_agent.evals.gate import evaluate_gate, main as gate_main
+from dm_agent.evals.gate import evaluate_gate
+from dm_agent.evals.gate import main as gate_main
 from dm_agent.evals.models import EvalResult
 from dm_agent.evals.real_runner import get_real_tasks
 from dm_agent.evals.runner import EvalVariant, run_suite, summarize_results

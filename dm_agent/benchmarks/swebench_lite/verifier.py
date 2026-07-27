@@ -24,9 +24,9 @@ import shlex
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence
 
 from .models import SWEBenchInstance, SWEBenchVerification
 from .workspace import SWEBenchWorkspace, WorkspaceError
@@ -91,7 +91,7 @@ def _run_pytest_nodes(
     cwd: Path,
     *,
     timeout: int,
-) -> List[TestRunOutcome]:
+) -> list[TestRunOutcome]:
     return [_run_pytest_node(node, cwd, timeout=timeout) for node in node_ids]
 
 
@@ -193,7 +193,7 @@ def verify_prediction(
 
 
 def empty_verification(
-    instance: SWEBenchInstance, *, error: Optional[str] = None
+    instance: SWEBenchInstance, *, error: str | None = None
 ) -> SWEBenchVerification:
     """Build a "verification did not run" record. Used when the agent timed out
     or the workspace failed to set up."""

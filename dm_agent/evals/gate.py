@@ -14,17 +14,17 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 
 def evaluate_gate(
-    report: Dict[str, Any],
+    report: dict[str, Any],
     *,
     min_success_rate: float,
     min_variant_rate: float,
-) -> List[str]:
+) -> list[str]:
     """Return a list of human-readable violations (empty when the gate passes)."""
-    violations: List[str] = []
+    violations: list[str] = []
     summary = report.get("summary")
     if not isinstance(summary, dict):
         return ["report has no summary object"]

@@ -6,12 +6,12 @@ import json
 import os
 import statistics
 import tempfile
-from contextlib import redirect_stdout
-from contextlib import contextmanager
+from collections.abc import Iterable, Sequence
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
 from dm_agent.core import ReactAgent
 from dm_agent.skills import SkillManager
@@ -30,7 +30,7 @@ class EvalVariant:
     enable_compression: bool = True
 
 
-DEFAULT_VARIANTS: List[EvalVariant] = [
+DEFAULT_VARIANTS: list[EvalVariant] = [
     EvalVariant("full", True, True, True),
     EvalVariant("no_planning", False, True, True),
     EvalVariant("no_skills", True, False, True),
@@ -50,12 +50,12 @@ def chdir(path: Path):
 
 def run_suite(
     *,
-    tasks: Optional[Sequence[EvalTask]] = None,
-    variants: Optional[Sequence[EvalVariant]] = None,
-    task_ids: Optional[Iterable[str]] = None,
-    variant_names: Optional[Iterable[str]] = None,
+    tasks: Sequence[EvalTask] | None = None,
+    variants: Sequence[EvalVariant] | None = None,
+    task_ids: Iterable[str] | None = None,
+    variant_names: Iterable[str] | None = None,
     cost_per_1k_tokens: float = 0.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     selected_tasks = list(tasks or get_builtin_tasks())
     selected_variants = list(variants or DEFAULT_VARIANTS)
 
@@ -69,7 +69,7 @@ def run_suite(
             variant for variant in selected_variants if variant.name in allowed_variants
         ]
 
-    results: List[EvalResult] = []
+    results: list[EvalResult] = []
     for variant in selected_variants:
         for task in selected_tasks:
             results.append(run_task(task, variant, cost_per_1k_tokens=cost_per_1k_tokens))
@@ -114,7 +114,7 @@ def run_task(
             try:
                 with redirect_stdout(StringIO()):
                     raw_result = agent.run(task.prompt)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raw_result = {
                     "final_answer": "",
                     "steps": [],
@@ -163,14 +163,14 @@ RECOVERY_SIGNAL_KEYS = (
 )
 
 
-def _had_failure_signal(metadata: Dict[str, Any]) -> bool:
+def _had_failure_signal(metadata: dict[str, Any]) -> bool:
     return any(int(metadata.get(key, 0) or 0) > 0 for key in RECOVERY_SIGNAL_KEYS)
 
 
 def _tag_breakdown(
-    results: Sequence[EvalResult], tags_by_task: Dict[str, List[str]]
-) -> Dict[str, Dict[str, Any]]:
-    by_tag: Dict[str, Dict[str, Any]] = {}
+    results: Sequence[EvalResult], tags_by_task: dict[str, list[str]]
+) -> dict[str, dict[str, Any]]:
+    by_tag: dict[str, dict[str, Any]] = {}
     for result in results:
         for tag in tags_by_task.get(result.task_id, []):
             entry = by_tag.setdefault(tag, {"runs": 0, "successes": 0})
@@ -184,9 +184,9 @@ def _tag_breakdown(
 def summarize_results(
     results: Sequence[EvalResult],
     *,
-    tasks: Optional[Sequence[EvalTask]] = None,
-) -> Dict[str, Any]:
-    by_variant: Dict[str, List[EvalResult]] = {}
+    tasks: Sequence[EvalTask] | None = None,
+) -> dict[str, Any]:
+    by_variant: dict[str, list[EvalResult]] = {}
     for result in results:
         by_variant.setdefault(result.variant, []).append(result)
 
@@ -221,7 +221,7 @@ def summarize_results(
             ),
         }
 
-    summary: Dict[str, Any] = {
+    summary: dict[str, Any] = {
         "total_runs": len(results),
         "overall_success_rate": (
             sum(1 for result in results if result.success) / len(results) if results else 0.0
@@ -234,12 +234,12 @@ def summarize_results(
     return summary
 
 
-def write_json_report(report: Dict[str, Any], path: Path) -> None:
+def write_json_report(report: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
+def write_markdown_report(report: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     summary = report["summary"]
     lines = [
@@ -299,8 +299,8 @@ def write_markdown_report(report: Dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _script_for(task: EvalTask, variant: EvalVariant) -> List[str]:
-    responses: List[str] = []
+def _script_for(task: EvalTask, variant: EvalVariant) -> list[str]:
+    responses: list[str] = []
     if variant.enable_planning and task.planner_response:
         responses.append(task.planner_response)
     if variant.enable_planning and task.replan_response:
@@ -312,14 +312,14 @@ def _script_for(task: EvalTask, variant: EvalVariant) -> List[str]:
     return responses
 
 
-def _write_setup_files(workspace: Path, files: Dict[str, str]) -> None:
+def _write_setup_files(workspace: Path, files: dict[str, str]) -> None:
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
 
-def _validate(task: EvalTask, raw_result: Dict[str, Any], workspace: Path) -> tuple[bool, str]:
+def _validate(task: EvalTask, raw_result: dict[str, Any], workspace: Path) -> tuple[bool, str]:
     metadata = raw_result.get("metadata", {})
     if metadata.get("status") != "success":
         return False, metadata.get("failure_reason") or f"status={metadata.get('status')}"

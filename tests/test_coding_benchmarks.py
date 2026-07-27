@@ -1,6 +1,6 @@
 import json
-from pathlib import Path
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -9,7 +9,11 @@ from dm_agent.benchmarks.cli import main as bench_main
 from dm_agent.benchmarks.economics import build_economics_report, render_markdown
 from dm_agent.benchmarks.manifest_diff import (
     diff_report_manifests,
+)
+from dm_agent.benchmarks.manifest_diff import (
     main as manifest_diff_main,
+)
+from dm_agent.benchmarks.manifest_diff import (
     render_markdown as render_manifest_diff_markdown,
 )
 from dm_agent.benchmarks.models import (
@@ -19,9 +23,9 @@ from dm_agent.benchmarks.models import (
     CommandResult,
 )
 from dm_agent.benchmarks.runner import (
+    DEFAULT_BENCH_VARIANTS,
     benchmark_task_fingerprint,
     build_benchmark_manifest,
-    DEFAULT_BENCH_VARIANTS,
     load_trace_analysis_for_report,
     prepare_workspace,
     run_hidden_tests,

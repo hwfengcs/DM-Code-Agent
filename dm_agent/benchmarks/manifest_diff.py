@@ -11,7 +11,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -22,15 +22,15 @@ class ManifestDiff:
     suite_signature_match: bool
     suite_match: bool
     variant_names_match: bool
-    missing_in_right: List[str]
-    missing_in_left: List[str]
-    changed_fingerprints: List[str]
+    missing_in_right: list[str]
+    missing_in_left: list[str]
+    changed_fingerprints: list[str]
     left_signature: str
     right_signature: str
     left_suite: str
     right_suite: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "compatible": self.compatible,
             "suite_signature_match": self.suite_signature_match,
@@ -47,7 +47,7 @@ class ManifestDiff:
 
 
 def diff_report_manifests(
-    left_report: Dict[str, Any], right_report: Dict[str, Any]
+    left_report: dict[str, Any], right_report: dict[str, Any]
 ) -> ManifestDiff:
     """Compare the manifest blocks of two benchmark reports."""
 
@@ -127,7 +127,7 @@ def render_markdown(
     return "\n".join(lines)
 
 
-def load_json_report(path: Path) -> Dict[str, Any]:
+def load_json_report(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, dict):
@@ -164,7 +164,7 @@ def main(argv: Any = None) -> int:
     return 0 if diff.compatible else 1
 
 
-def _manifest(report: Dict[str, Any]) -> Dict[str, Any]:
+def _manifest(report: dict[str, Any]) -> dict[str, Any]:
     manifest = report.get("manifest")
     if isinstance(manifest, dict):
         return manifest
@@ -175,18 +175,18 @@ def _manifest(report: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def _task_fingerprints(manifest: Dict[str, Any]) -> Dict[str, str]:
+def _task_fingerprints(manifest: dict[str, Any]) -> dict[str, str]:
     fingerprints = manifest.get("task_fingerprints") or {}
     if not isinstance(fingerprints, dict):
         return {}
     return {str(task_id): str(fingerprint) for task_id, fingerprint in fingerprints.items()}
 
 
-def _variant_names(manifest: Dict[str, Any]) -> List[str]:
+def _variant_names(manifest: dict[str, Any]) -> list[str]:
     return sorted(str(name) for name in manifest.get("variant_names") or [])
 
 
-def _signature(manifest: Dict[str, Any]) -> str:
+def _signature(manifest: dict[str, Any]) -> str:
     return str(manifest.get("suite_signature") or "")
 
 

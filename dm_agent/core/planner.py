@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar
 
-from ..clients.base_client import BaseLLMClient
-from ..tools.base import Tool
+from dm_agent.clients.base_client import BaseLLMClient
+from dm_agent.tools.base import Tool
 
 
 @dataclass
@@ -18,7 +18,7 @@ class PlanStep:
     action: str  # 工具名称
     reason: str  # 使用工具的原因
     completed: bool = False  # 是否完成当前步骤
-    result: Optional[str] = None  # 返回结果
+    result: str | None = None  # 返回结果
 
 
 @dataclass(frozen=True)
@@ -30,9 +30,9 @@ class ReplanSignal:
     message: str
     severity: str = "medium"
     action: str = ""
-    step_number: Optional[int] = None
+    step_number: int | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "kind": self.kind,
             "strategy": self.strategy,
@@ -52,7 +52,7 @@ class ReplanDecision:
     reason: str
     signal: ReplanSignal
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "should_replan": self.should_replan,
             "strategy": self.strategy,
@@ -64,7 +64,7 @@ class ReplanDecision:
 class AdaptiveReplanPolicy:
     """Deterministic policy that maps failure observations to replan strategies."""
 
-    STRATEGIES = {
+    STRATEGIES: ClassVar[dict[str, str]] = {
         "tool_error": "simplify_plan_skip_failed_tool",
         "unknown_tool": "select_available_tool",
         "parse_error": "repair_response_format",
@@ -80,8 +80,8 @@ class AdaptiveReplanPolicy:
         observation: str,
         *,
         action: str = "",
-        step_number: Optional[int] = None,
-        error_kind: Optional[str] = None,
+        step_number: int | None = None,
+        error_kind: str | None = None,
     ) -> ReplanSignal:
         text = str(observation or "")
         lowered = text.lower()
@@ -169,9 +169,7 @@ def _compact_message(text: str, *, limit: int = 500) -> str:
     return text[: limit - 3] + "..."
 
 
-def normalize_replan_signal(
-    error_signal: Any, fallback_error: Optional[str] = None
-) -> ReplanSignal:
+def normalize_replan_signal(error_signal: Any, fallback_error: str | None = None) -> ReplanSignal:
     """Coerce caller-provided error metadata into a ReplanSignal."""
 
     if isinstance(error_signal, ReplanSignal):
@@ -197,12 +195,12 @@ def normalize_replan_signal(
 class TaskPlanner:
     """任务规划器：在执行前生成全局计划"""
 
-    def __init__(self, client: BaseLLMClient, tools: List[Tool]):
+    def __init__(self, client: BaseLLMClient, tools: list[Tool]):
         self.client = client
         self.tools = tools
-        self.current_plan: List[PlanStep] = []  # 当前计划列表
+        self.current_plan: list[PlanStep] = []  # 当前计划列表
 
-    def plan(self, task: str) -> List[PlanStep]:
+    def plan(self, task: str) -> list[PlanStep]:
         """
         为任务生成执行计划
 
@@ -281,7 +279,7 @@ class TaskPlanner:
             print(f"警告：计划生成失败 - {e}，将使用逐步执行模式")
             return []
 
-    def _parse_plan_response(self, response: str) -> Dict[str, Any]:
+    def _parse_plan_response(self, response: str) -> dict[str, Any]:
         """
         解析 LLM 返回的计划
 
@@ -297,14 +295,14 @@ class TaskPlanner:
         # 尝试直接解析
         try:
             return json.loads(response.strip())
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             # 尝试提取 JSON
             start = response.find("{")
             end = response.rfind("}")
             if start != -1 and end != -1:
                 json_str = response[start : end + 1]
                 return json.loads(json_str)
-            raise ValueError("无法解析计划响应")
+            raise ValueError("无法解析计划响应") from exc
 
     def mark_completed(self, step_number: int, result: str) -> None:
         """
@@ -332,7 +330,7 @@ class TaskPlanner:
                 step.result = result
                 break
 
-    def get_next_step(self) -> Optional[PlanStep]:
+    def get_next_step(self) -> PlanStep | None:
         """
         获取下一个未完成的步骤
 
@@ -395,11 +393,11 @@ class TaskPlanner:
     def replan(
         self,
         task: str,
-        completed_steps: List[PlanStep],
-        error: Optional[str] = None,
+        completed_steps: list[PlanStep],
+        error: str | None = None,
         *,
         error_signal: Any = None,
-    ) -> List[PlanStep]:
+    ) -> list[PlanStep]:
         """
         遇到问题时重新规划
 
@@ -467,7 +465,7 @@ class TaskPlanner:
             # 工作显示为待办，进度统计跨 replan 连续。
             carried = [step for step in completed_steps if step.completed]
             next_number = max((step.step_number for step in carried), default=0)
-            steps: List[PlanStep] = []
+            steps: list[PlanStep] = []
             for offset, item in enumerate(plan_data.get("plan", []), start=1):
                 steps.append(
                     PlanStep(

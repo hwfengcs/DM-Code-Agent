@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 STATE_CLOSED = "closed"
 STATE_OPEN = "open"
@@ -36,14 +35,14 @@ class ToolCircuitBreaker:
             raise ValueError("cooldown_steps must be at least 1")
         self.threshold = threshold
         self.cooldown_steps = cooldown_steps
-        self._entries: Dict[str, _BreakerEntry] = {}
-        self._last_error_kind: Dict[str, str] = {}
+        self._entries: dict[str, _BreakerEntry] = {}
+        self._last_error_kind: dict[str, str] = {}
 
     @staticmethod
     def _key(action: str, error_kind: str) -> str:
         return f"{action}|{error_kind or 'unknown'}"
 
-    def intercept(self, action: str, step: int) -> Optional[str]:
+    def intercept(self, action: str, step: int) -> str | None:
         """open 状态下返回拦截观察；允许执行（含探针放行）时返回 None。"""
         error_kind = self._last_error_kind.get(action, "")
         entry = self._entries.get(self._key(action, error_kind))
@@ -92,7 +91,7 @@ class ToolCircuitBreaker:
     def total_trips(self) -> int:
         return sum(entry.trip_count for entry in self._entries.values())
 
-    def snapshot(self) -> Dict[str, Dict[str, int | str]]:
+    def snapshot(self) -> dict[str, dict[str, int | str]]:
         return {
             key: {
                 "state": entry.state,

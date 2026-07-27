@@ -8,11 +8,12 @@ import platform
 import re
 import sys
 import uuid
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
-from ..memory.context_budget import estimate_tokens_from_chars
+from dm_agent.memory.context_budget import estimate_tokens_from_chars
 
 # 1.1: additive events (observation_truncated, context_budget, edit_guard, ...)
 # and the llm_call estimated_prompt_tokens field. Older traces stay parseable.
@@ -35,7 +36,7 @@ class TraceWriter:
         self._started = False
         self._ended = False
 
-    def __enter__(self) -> "TraceWriter":
+    def __enter__(self) -> TraceWriter:
         self.open()
         return self
 
@@ -60,7 +61,7 @@ class TraceWriter:
             self._handle.close()
             self._handle = None
 
-    def start_run(self, task: str, *, metadata: Optional[Dict[str, Any]] = None) -> None:
+    def start_run(self, task: str, *, metadata: dict[str, Any] | None = None) -> None:
         self._started = True
         self._ended = False
         self.record(
@@ -76,7 +77,7 @@ class TraceWriter:
             },
         )
 
-    def finish_run(self, result: Dict[str, Any]) -> None:
+    def finish_run(self, result: dict[str, Any]) -> None:
         self._ended = True
         metadata = result.get("metadata", {}) if isinstance(result, dict) else {}
         self.record(
@@ -105,19 +106,19 @@ class TraceWriter:
     def record_plan_error(self, error: str) -> None:
         self.record("plan_error", {"error": error})
 
-    def record_skills(self, skill_names: List[str]) -> None:
+    def record_skills(self, skill_names: list[str]) -> None:
         self.record("skills", {"activated": skill_names})
 
     def record_llm_call(
         self,
         *,
         step_number: int,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float,
-        raw_response: Optional[str] = None,
+        raw_response: str | None = None,
     ) -> None:
         prompt_chars = sum(len(message.get("content", "")) for message in messages)
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "step_number": step_number,
             "temperature": temperature,
             "message_count": len(messages),
@@ -133,7 +134,7 @@ class TraceWriter:
         self.record("llm_call", payload)
 
     def record_parse_error(self, *, step_number: int, raw_response: str, error: str) -> None:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "step_number": step_number,
             "error": error,
             "response_chars": len(raw_response),
@@ -180,7 +181,7 @@ class TraceWriter:
         reason: str,
         steps: Iterable[Any],
         strategy: str = "",
-        signal: Optional[Dict[str, Any]] = None,
+        signal: dict[str, Any] | None = None,
     ) -> None:
         plan = []
         for step in steps:
@@ -191,19 +192,19 @@ class TraceWriter:
                     "reason": getattr(step, "reason", None),
                 }
             )
-        payload: Dict[str, Any] = {"reason": reason, "steps": plan}
+        payload: dict[str, Any] = {"reason": reason, "steps": plan}
         if strategy:
             payload["strategy"] = strategy
         if signal:
             payload["signal"] = signal
         self.record("replan", payload)
 
-    def record_critic_review(self, *, step_number: int, review: Dict[str, Any]) -> None:
+    def record_critic_review(self, *, step_number: int, review: dict[str, Any]) -> None:
         payload = {"step_number": step_number}
         payload.update(review)
         self.record("critic_review", payload)
 
-    def record(self, event: str, payload: Dict[str, Any]) -> None:
+    def record(self, event: str, payload: dict[str, Any]) -> None:
         self.open()
         assert self._handle is not None
         envelope = {
@@ -216,8 +217,8 @@ class TraceWriter:
         self._handle.flush()
 
 
-def load_trace_events(path: str | Path) -> List[Dict[str, Any]]:
-    events: List[Dict[str, Any]] = []
+def load_trace_events(path: str | Path) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         if line.strip():
             events.append(json.loads(line))

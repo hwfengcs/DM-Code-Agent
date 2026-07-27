@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
 class EvalExpected:
     """Validation rules for one eval task."""
 
-    required_actions: List[str] = field(default_factory=list)
-    final_answer_contains: List[str] = field(default_factory=list)
-    final_answer_contains_any: List[List[str]] = field(default_factory=list)
-    workspace_files: Dict[str, str] = field(default_factory=dict)
-    metadata_min: Dict[str, int] = field(default_factory=dict)
+    required_actions: list[str] = field(default_factory=list)
+    final_answer_contains: list[str] = field(default_factory=list)
+    final_answer_contains_any: list[list[str]] = field(default_factory=list)
+    workspace_files: dict[str, str] = field(default_factory=dict)
+    metadata_min: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -24,17 +24,17 @@ class EvalTask:
     task_id: str
     name: str
     prompt: str
-    planner_response: Optional[str]
-    agent_responses: List[str]
+    planner_response: str | None
+    agent_responses: list[str]
     expected: EvalExpected
-    setup_files: Dict[str, str] = field(default_factory=dict)
-    replan_response: Optional[str] = None
+    setup_files: dict[str, str] = field(default_factory=dict)
+    replan_response: str | None = None
     max_steps: int = 8
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     # 传给 ReactAgent 构造函数的关键字覆盖（如小截断阈值），用于行为类 eval。
-    agent_overrides: Dict[str, Any] = field(default_factory=dict)
+    agent_overrides: dict[str, Any] = field(default_factory=dict)
 
-    def to_public_dict(self) -> Dict[str, Any]:
+    def to_public_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "name": self.name,
@@ -57,7 +57,7 @@ class EvalResult:
     success: bool
     final_answer: str
     failure_reason: str
-    actions: List[str]
+    actions: list[str]
     steps_count: int
     tool_calls: int
     duration_seconds: float
@@ -65,9 +65,9 @@ class EvalResult:
     completion_chars: int
     estimated_tokens: int
     estimated_cost_usd: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "task_name": self.task_name,

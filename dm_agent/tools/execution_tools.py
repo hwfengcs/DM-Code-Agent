@@ -6,12 +6,12 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .base import _require_str
 
 
-def run_python(arguments: Dict[str, Any]) -> str:
+def run_python(arguments: dict[str, Any]) -> str:
     """运行 Python 代码或脚本"""
     code = arguments.get("code")
     path_value = arguments.get("path")
@@ -33,7 +33,7 @@ def run_python(arguments: Dict[str, Any]) -> str:
     result = subprocess.run(
         command, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
-    segments: List[str] = []
+    segments: list[str] = []
     if result.stdout:
         segments.append(result.stdout.strip())
     if result.stderr:
@@ -42,13 +42,13 @@ def run_python(arguments: Dict[str, Any]) -> str:
     return "\n".join(segment for segment in segments if segment).strip() or "returncode: 0"
 
 
-def run_shell(arguments: Dict[str, Any]) -> str:
+def run_shell(arguments: dict[str, Any]) -> str:
     """运行 Shell 命令"""
     command = _require_str(arguments, "command")
     result = subprocess.run(
         command, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
-    segments: List[str] = []
+    segments: list[str] = []
     if result.stdout:
         segments.append(result.stdout.strip())
     if result.stderr:
@@ -57,7 +57,7 @@ def run_shell(arguments: Dict[str, Any]) -> str:
     return "\n".join(segment for segment in segments if segment).strip() or "returncode: 0"
 
 
-def run_tests(arguments: Dict[str, Any]) -> str:
+def run_tests(arguments: dict[str, Any]) -> str:
     """运行 Python 测试套件（支持 pytest 和 unittest）"""
     test_path = arguments.get("test_path", ".")
     framework = arguments.get("framework", "pytest")
@@ -92,7 +92,7 @@ def run_tests(arguments: Dict[str, Any]) -> str:
     result = subprocess.run(
         command, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
-    segments: List[str] = []
+    segments: list[str] = []
 
     if result.stdout:
         segments.append(result.stdout.strip())
@@ -104,7 +104,7 @@ def run_tests(arguments: Dict[str, Any]) -> str:
     return output if output else "returncode: 0"
 
 
-def run_linter(arguments: Dict[str, Any]) -> str:
+def run_linter(arguments: dict[str, Any]) -> str:
     """运行代码检查工具（支持 pylint、flake8、mypy、black）"""
     path_value = _require_str(arguments, "path")
     tool = arguments.get("tool", "flake8")
@@ -125,7 +125,7 @@ def run_linter(arguments: Dict[str, Any]) -> str:
     result = subprocess.run(
         command, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
-    segments: List[str] = []
+    segments: list[str] = []
 
     if result.stdout:
         segments.append(result.stdout.strip())

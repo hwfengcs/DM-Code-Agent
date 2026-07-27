@@ -3,17 +3,19 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
-from main import Config, write_run_report
-
 from dm_agent.core.agent import ReactAgent
 from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter, load_trace_events
+from dm_agent.tracing.cli import (
+    analyze_events,
+    analyze_trace_directory,
+    diff_events,
+    render_trace_directory_markdown,
+    replay_tools,
+    summarize_events,
+)
 from dm_agent.tracing.cli import main as trace_main
-from dm_agent.tracing.cli import analyze_events
-from dm_agent.tracing.cli import analyze_trace_directory
-from dm_agent.tracing.cli import diff_events
-from dm_agent.tracing.cli import render_trace_directory_markdown
-from dm_agent.tracing.cli import replay_tools, summarize_events
+from main import Config, write_run_report
 
 
 class FakeRespondClient:

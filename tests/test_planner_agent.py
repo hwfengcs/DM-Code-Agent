@@ -3,8 +3,7 @@ import json
 import pytest
 
 from dm_agent.core.agent import ReactAgent
-from dm_agent.core.planner import AdaptiveReplanPolicy
-from dm_agent.core.planner import TaskPlanner
+from dm_agent.core.planner import AdaptiveReplanPolicy, TaskPlanner
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
 

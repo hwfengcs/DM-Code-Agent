@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Iterable, Sequence
 from contextlib import redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import ReactAgent
@@ -25,7 +26,7 @@ from .runner import (
     summarize_results,
 )
 
-REAL_DEFAULT_VARIANTS: List[EvalVariant] = [
+REAL_DEFAULT_VARIANTS: list[EvalVariant] = [
     EvalVariant("full", True, True, True),
     EvalVariant("no_planning", False, True, True),
     EvalVariant("no_skills", True, False, True),
@@ -43,9 +44,9 @@ PROVIDER_API_KEY_ENV = {
 @dataclass(frozen=True)
 class RealEvalConfig:
     provider: str = "deepseek"
-    model: Optional[str] = None
-    base_url: Optional[str] = None
-    api_key_env: Optional[str] = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key_env: str | None = None
     timeout: int = 120
     temperature: float = 0.0
     repeat: int = 1
@@ -74,16 +75,16 @@ class UsageTrackingClient:
         self.timeout = client.timeout
         self.usage = UsageTotals()
 
-    def complete(self, messages: List[Dict[str, str]], **extra: Any) -> Dict[str, Any]:
+    def complete(self, messages: list[dict[str, str]], **extra: Any) -> dict[str, Any]:
         # Route through the inner client's retry layer when available so that
         # transient provider failures are retried for benchmark runs too.
         complete = getattr(self.client, "complete_with_retry", self.client.complete)
         return complete(messages, **extra)
 
-    def extract_text(self, data: Dict[str, Any]) -> str:
+    def extract_text(self, data: dict[str, Any]) -> str:
         return self.client.extract_text(data)
 
-    def respond(self, messages: List[Dict[str, str]], **extra: Any) -> str:
+    def respond(self, messages: list[dict[str, str]], **extra: Any) -> str:
         self.usage.request_count += 1
         self.usage.prompt_chars += sum(len(message.get("content", "")) for message in messages)
 
@@ -104,7 +105,7 @@ class UsageTrackingClient:
         return text
 
 
-def get_real_tasks() -> List[EvalTask]:
+def get_real_tasks() -> list[EvalTask]:
     """Return live-model tasks with explicit prompts and deterministic validators."""
 
     return [
@@ -236,12 +237,12 @@ def get_real_tasks() -> List[EvalTask]:
 
 def run_real_suite(
     *,
-    tasks: Optional[Sequence[EvalTask]] = None,
-    variants: Optional[Sequence[EvalVariant]] = None,
-    task_ids: Optional[Iterable[str]] = None,
-    variant_names: Optional[Iterable[str]] = None,
-    config: Optional[RealEvalConfig] = None,
-) -> Dict[str, Any]:
+    tasks: Sequence[EvalTask] | None = None,
+    variants: Sequence[EvalVariant] | None = None,
+    task_ids: Iterable[str] | None = None,
+    variant_names: Iterable[str] | None = None,
+    config: RealEvalConfig | None = None,
+) -> dict[str, Any]:
     config = config or RealEvalConfig()
     selected_tasks = list(tasks or get_real_tasks())
     selected_variants = list(variants or REAL_DEFAULT_VARIANTS)
@@ -259,7 +260,7 @@ def run_real_suite(
     if config.repeat < 1:
         raise ValueError("repeat must be at least 1")
 
-    results: List[EvalResult] = []
+    results: list[EvalResult] = []
     for repeat_index in range(config.repeat):
         for variant in selected_variants:
             for task in selected_tasks:
@@ -315,7 +316,7 @@ def run_real_task(
                         raw_result = agent.run(task.prompt)
                 else:
                     raw_result = agent.run(task.prompt)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raw_result = {
                     "final_answer": "",
                     "steps": [],

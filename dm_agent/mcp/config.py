@@ -3,7 +3,7 @@
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 
 @dataclass
@@ -24,16 +24,16 @@ class MCPServerConfig:
     # 启动命令
     command: str
     # 命令行参数
-    args: List[str] = field(default_factory=list)
+    args: list[str] = field(default_factory=list)
     # 环境变量
-    env: Optional[Dict[str, str]] = None
+    env: dict[str, str] | None = None
     # 服务器是否启用
     enabled: bool = True
     # 单次 JSON-RPC 请求的超时秒数
     timeout: float = 5.0
 
     @classmethod
-    def from_dict(cls, name: str, data: Dict[str, Any]) -> "MCPServerConfig":
+    def from_dict(cls, name: str, data: dict[str, Any]) -> "MCPServerConfig":
         """
         从字典数据创建MCPServerConfig实例
 
@@ -59,7 +59,7 @@ class MCPServerConfig:
             timeout=float(data.get("timeout", 5.0)),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         将配置转换为字典格式，便于序列化存储
 
@@ -94,10 +94,10 @@ class MCPConfig:
         servers (Dict[str, MCPServerConfig]): 服务器名称到配置的映射字典
     """
 
-    servers: Dict[str, MCPServerConfig] = field(default_factory=dict)
+    servers: dict[str, MCPServerConfig] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MCPConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "MCPConfig":
         """
         从字典数据创建MCPConfig实例
 
@@ -123,7 +123,7 @@ class MCPConfig:
         }
         return cls(servers=servers)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         将总配置转换为字典格式
 
@@ -174,7 +174,7 @@ class MCPConfig:
         if name in self.servers:
             del self.servers[name]
 
-    def get_enabled_servers(self) -> Dict[str, MCPServerConfig]:
+    def get_enabled_servers(self) -> dict[str, MCPServerConfig]:
         """
         获取所有启用的服务器配置
 
@@ -217,7 +217,7 @@ def load_mcp_config(config_path: str = "mcp_config.json") -> MCPConfig:
         return MCPConfig()
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             data = json.load(f)
         return MCPConfig.from_dict(data)
     except Exception as e:

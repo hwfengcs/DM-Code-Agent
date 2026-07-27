@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from collections.abc import Iterable
 
 from .models import BenchmarkTask
 
@@ -14,7 +14,7 @@ COMMON_PROMPT_SUFFIX = (
 )
 
 
-BUILTIN_CODING_TASKS: List[BenchmarkTask] = [
+BUILTIN_CODING_TASKS: list[BenchmarkTask] = [
     BenchmarkTask(
         task_id="slugify_cleanup",
         name="Robust slugify cleanup",
@@ -335,7 +335,7 @@ MAINTENANCE_PROMPT_SUFFIX = (
 )
 
 
-BUILTIN_MAINTENANCE_TASKS: List[BenchmarkTask] = [
+BUILTIN_MAINTENANCE_TASKS: list[BenchmarkTask] = [
     BenchmarkTask(
         task_id="config_precedence",
         name="Configuration precedence and type coercion",
@@ -848,17 +848,17 @@ BENCHMARK_SUITES = {
 }
 
 
-def get_coding_tasks(task_ids: Optional[Iterable[str]] = None) -> List[BenchmarkTask]:
+def get_coding_tasks(task_ids: Iterable[str] | None = None) -> list[BenchmarkTask]:
     return get_benchmark_tasks("coding", task_ids)
 
 
-def get_maintenance_tasks(task_ids: Optional[Iterable[str]] = None) -> List[BenchmarkTask]:
+def get_maintenance_tasks(task_ids: Iterable[str] | None = None) -> list[BenchmarkTask]:
     return get_benchmark_tasks("maintenance", task_ids)
 
 
 def get_benchmark_tasks(
-    suite: str = "coding", task_ids: Optional[Iterable[str]] = None
-) -> List[BenchmarkTask]:
+    suite: str = "coding", task_ids: Iterable[str] | None = None
+) -> list[BenchmarkTask]:
     if suite not in BENCHMARK_SUITES:
         available = ", ".join(sorted(BENCHMARK_SUITES))
         raise ValueError(f"unknown benchmark suite: {suite}. Available suites: {available}")

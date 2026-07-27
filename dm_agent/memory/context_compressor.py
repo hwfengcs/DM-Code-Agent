@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
-from ..clients.base_client import BaseLLMClient
+from dm_agent.clients.base_client import BaseLLMClient
+
 from .context_budget import estimate_messages_tokens
 
 MEMORY_TYPES = {"episodic", "semantic", "procedural"}
@@ -43,8 +45,8 @@ class MemoryItem:
     id: str
     text: str
     type: str = "episodic"
-    scope: Dict[str, str] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    scope: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     importance: float = 0.5
     created_at_turn: int = 0
     last_accessed_turn: int = 0
@@ -78,13 +80,13 @@ class Mem0StyleMemory:
             raise ValueError("max_items must be at least 1")
         self.max_items = max_items
         self.superseded_count = 0
-        self._items: Dict[str, MemoryItem] = {}
+        self._items: dict[str, MemoryItem] = {}
 
     def __len__(self) -> int:
         return len(self._items)
 
     @property
-    def items(self) -> List[MemoryItem]:
+    def items(self) -> list[MemoryItem]:
         return list(self._items.values())
 
     def clear(self) -> None:
@@ -95,8 +97,8 @@ class Mem0StyleMemory:
         text: str,
         *,
         type: str = "episodic",
-        scope: Optional[Dict[str, str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        scope: dict[str, str] | None = None,
+        metadata: dict[str, Any] | None = None,
         importance: float = 0.5,
         turn: int = 0,
     ) -> str:
@@ -130,13 +132,13 @@ class Mem0StyleMemory:
 
     def add_messages(
         self,
-        messages: Sequence[Dict[str, str]],
+        messages: Sequence[dict[str, str]],
         *,
-        scope: Optional[Dict[str, str]] = None,
+        scope: dict[str, str] | None = None,
         turn: int = 0,
         invalidate_on_success: bool = False,
-    ) -> List[str]:
-        memory_ids: List[str] = []
+    ) -> list[str]:
+        memory_ids: list[str] = []
         for message in messages:
             for memory in self._extract_from_message(message):
                 memory_id = self.add(
@@ -182,10 +184,10 @@ class Mem0StyleMemory:
         self,
         query: str,
         *,
-        scope: Optional[Dict[str, str]] = None,
+        scope: dict[str, str] | None = None,
         limit: int = 5,
-        turn: Optional[int] = None,
-    ) -> List[MemoryHit]:
+        turn: int | None = None,
+    ) -> list[MemoryHit]:
         if limit < 1:
             return []
         query_tokens = set(_tokenize(query))
@@ -198,7 +200,7 @@ class Mem0StyleMemory:
             if turn is not None
             else max((item.last_accessed_turn for item in scoped_items), default=0)
         )
-        scored: List[tuple[MemoryItem, float]] = []
+        scored: list[tuple[MemoryItem, float]] = []
         for item in scoped_items:
             item_tokens = set(_tokenize(_memory_search_text(item)))
             lexical = len(query_tokens & item_tokens) / max(len(query_tokens), 1)
@@ -222,7 +224,7 @@ class Mem0StyleMemory:
             scored = [(item, item.importance) for item in scoped_items]
 
         ranked = sorted(scored, key=lambda pair: pair[1], reverse=True)[:limit]
-        hits: List[MemoryHit] = []
+        hits: list[MemoryHit] = []
         for rank, (item, score) in enumerate(ranked, start=1):
             item.reinforce(turn=current_turn)
             hits.append(MemoryHit(item=item, score=float(score), rank=rank))
@@ -232,9 +234,9 @@ class Mem0StyleMemory:
         self,
         query: str,
         *,
-        scope: Optional[Dict[str, str]] = None,
+        scope: dict[str, str] | None = None,
         limit: int = 5,
-        turn: Optional[int] = None,
+        turn: int | None = None,
     ) -> str:
         hits = self.search(query, scope=scope, limit=limit, turn=turn)
         if not hits:
@@ -259,14 +261,14 @@ class Mem0StyleMemory:
         lines.append("</agent_memory>")
         return "\n".join(lines)
 
-    def _extract_from_message(self, message: Dict[str, str]) -> List[Dict[str, Any]]:
+    def _extract_from_message(self, message: dict[str, str]) -> list[dict[str, Any]]:
         content = str(message.get("content", ""))
         role = str(message.get("role", ""))
         compact = _compact(content, limit=1200)
         if not compact:
             return []
 
-        memories: List[Dict[str, Any]] = []
+        memories: list[dict[str, Any]] = []
         files = sorted(set(_FILE_PATTERN.findall(content)))
         if files:
             memories.append(
@@ -354,7 +356,7 @@ class Mem0StyleMemory:
         self._items = {item.id: item for item in ranked[: self.max_items]}
 
     @staticmethod
-    def _fingerprint(*, text: str, type: str, scope: Dict[str, str]) -> str:
+    def _fingerprint(*, text: str, type: str, scope: dict[str, str]) -> str:
         payload = "|".join(
             [
                 type,
@@ -364,7 +366,7 @@ class Mem0StyleMemory:
         )
         return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """序列化记忆存储（用于 run 级 checkpoint）。"""
         return {
             "max_items": self.max_items,
@@ -386,7 +388,7 @@ class Mem0StyleMemory:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Mem0StyleMemory":
+    def from_dict(cls, data: dict[str, Any]) -> Mem0StyleMemory:
         memory = cls(max_items=int(data.get("max_items", 80)))
         memory.superseded_count = int(data.get("superseded_count", 0))
         for raw in data.get("items", []):
@@ -416,13 +418,13 @@ class ContextCompressor:
 
     def __init__(
         self,
-        client: Optional[BaseLLMClient] = None,
+        client: BaseLLMClient | None = None,
         compress_every: int = 20,
         keep_recent: int = 8,
         *,
-        memory: Optional[Mem0StyleMemory] = None,
+        memory: Mem0StyleMemory | None = None,
         memory_limit: int = 5,
-        scope: Optional[Dict[str, str]] = None,
+        scope: dict[str, str] | None = None,
         token_budget: int = 24000,
         enable_hygiene: bool = False,
         use_llm_summary: bool = False,
@@ -464,7 +466,7 @@ class ContextCompressor:
         self._compression_count = 0
         self._last_compressed_turn_count = 0
 
-    def should_compress(self, history: List[Dict[str, str]]) -> bool:
+    def should_compress(self, history: list[dict[str, str]]) -> bool:
         user_messages = [msg for msg in history if msg.get("role") == "user"]
         self.turn_count = len(user_messages)
         non_system_messages = [msg for msg in history if msg.get("role") != "system"]
@@ -479,7 +481,7 @@ class ContextCompressor:
             return True
         return False
 
-    def compress(self, history: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def compress(self, history: list[dict[str, str]]) -> list[dict[str, str]]:
         if not history:
             return []
 
@@ -522,7 +524,7 @@ class ContextCompressor:
         memory_messages = [{"role": "user", "content": memory_block}] if memory_block else []
         return system_messages + memory_messages + recent_messages
 
-    def _add_llm_summary(self, older_messages: List[Dict[str, str]]) -> None:
+    def _add_llm_summary(self, older_messages: list[dict[str, str]]) -> None:
         """Fold older messages into one LLM-written semantic memory (best effort)."""
         digest_lines = [
             f"[{message.get('role', '')}] {_compact(str(message.get('content', '')), limit=400)}"
@@ -541,7 +543,7 @@ class ContextCompressor:
         ]
         try:
             summary = str(self.client.respond(prompt, temperature=0.0)).strip()
-        except Exception:  # noqa: BLE001 - 摘要失败时静默回退纯规则压缩
+        except Exception:
             self.llm_summary_error_count += 1
             return
         if not summary:
@@ -557,8 +559,8 @@ class ContextCompressor:
         self.llm_summary_count += 1
 
     def get_compression_stats(
-        self, original: List[Dict[str, str]], compressed: List[Dict[str, str]]
-    ) -> Dict[str, Any]:
+        self, original: list[dict[str, str]], compressed: list[dict[str, str]]
+    ) -> dict[str, Any]:
         return {
             "original_messages": len(original),
             "compressed_messages": len(compressed),
@@ -567,7 +569,7 @@ class ContextCompressor:
             "memory_items": self.memory_count,
         }
 
-    def export_state(self) -> Dict[str, Any]:
+    def export_state(self) -> dict[str, Any]:
         """导出压缩器可恢复状态（记忆 + 压缩节奏），用于 checkpoint。"""
         return {
             "memory": self.memory.to_dict(),
@@ -578,7 +580,7 @@ class ContextCompressor:
             "llm_summary_error_count": self.llm_summary_error_count,
         }
 
-    def restore_state(self, state: Dict[str, Any]) -> None:
+    def restore_state(self, state: dict[str, Any]) -> None:
         self.memory = Mem0StyleMemory.from_dict(state.get("memory") or {})
         self.turn_count = int(state.get("turn_count", 0))
         self._compression_count = int(state.get("compression_count", 0))
@@ -594,8 +596,8 @@ def _compact(text: str, *, limit: int) -> str:
     return compact[: max(limit - 3, 0)].rstrip() + "..."
 
 
-def _tokenize(text: str) -> List[str]:
-    tokens: List[str] = []
+def _tokenize(text: str) -> list[str]:
+    tokens: list[str] = []
     for match in _TOKEN_PATTERN.findall(text):
         parts = re.split(r"_+", match)
         for part in parts:
@@ -603,21 +605,19 @@ def _tokenize(text: str) -> List[str]:
     return [token.lower() for token in tokens if token]
 
 
-def _split_camel_case(token: str) -> List[str]:
+def _split_camel_case(token: str) -> list[str]:
     parts = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token).split()
     if len(parts) == 1:
         return parts
-    return parts + [token]
+    return [*parts, token]
 
 
-def _scope_matches(item_scope: Dict[str, str], requested: Dict[str, str]) -> bool:
-    for key, value in requested.items():
-        if value and item_scope.get(key) != value:
-            return False
-    return True
+def _scope_matches(item_scope: dict[str, str], requested: dict[str, str]) -> bool:
+    # 仅比较 requested 中取值非空的维度；空值表示「不限定该维度」。
+    return all(item_scope.get(key) == value for key, value in requested.items() if value)
 
 
-def _merge_metadata(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_metadata(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     merged = dict(left)
     for key, value in right.items():
         if key == "files":
@@ -659,12 +659,12 @@ def _message_reports_success(content: str) -> bool:
     )
 
 
-def _first_user_content(history: List[Dict[str, str]]) -> str:
+def _first_user_content(history: list[dict[str, str]]) -> str:
     for message in history:
         if message.get("role") == "user":
             return str(message.get("content", ""))
     return ""
 
 
-def json_like_scope(scope: Dict[str, str]) -> str:
+def json_like_scope(scope: dict[str, str]) -> str:
     return ";".join(f"{key}={scope[key]}" for key in sorted(scope))
