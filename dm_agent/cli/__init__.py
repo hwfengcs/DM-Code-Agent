@@ -154,25 +154,37 @@ def main(argv: Any = None) -> int:
         UI.status("warn", f"扩展加载失败：{failure.source}", failure.message)
     extension_registry = discovery.registry
 
+    if extension_registry.get_provider_factory(args.provider) is None:
+        supported = ", ".join(extension_registry.get_provider_names())
+        print(UI.paint("[ERR] 不支持的 LLM 提供商", Fore.RED, bright=True), file=sys.stderr)
+        print(
+            f"不支持的提供商: {args.provider}。支持的提供商: {supported}",
+            file=sys.stderr,
+        )
+        return 2
+
     # 如果没有提供 API 密钥，尝试根据提供商获取
     if not args.api_key:
         args.api_key = get_api_key_for_provider(args.provider)
 
-    # 检查 API 密钥
-    if not args.api_key:
+    provider_name = args.provider.casefold()
+
+    # 四家内置供应商保持原有的 API key 前置校验；扩展供应商自行决定是否需要。
+    if not args.api_key and provider_name in PROVIDER_DEFAULTS:
         print(UI.paint("[ERR] 缺少 API 密钥", Fore.RED, bright=True), file=sys.stderr)
         print(f"请提供 --api-key 或设置环境变量 {args.provider.upper()}_API_KEY。", file=sys.stderr)
         return 2
+    args.api_key = args.api_key or ""
 
     # 获取提供商的默认配置
-    provider_defaults = PROVIDER_DEFAULTS.get(args.provider, {})
+    provider_defaults = PROVIDER_DEFAULTS.get(provider_name, {})
 
     # 如果没有指定 base_url，使用提供商默认值
     if not args.base_url:
-        args.base_url = provider_defaults.get("base_url", "https://api.deepseek.com")
+        args.base_url = provider_defaults.get("base_url", "")
 
     # 如果模型是默认的 deepseek-chat 但提供商不是 deepseek，更新模型
-    if args.model == "deepseek-chat" and args.provider != "deepseek":
+    if args.model == "deepseek-chat" and provider_name != "deepseek":
         args.model = provider_defaults.get("model", args.model)
 
     # 创建配置

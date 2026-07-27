@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from .base_client import BaseLLMClient
 from .claude_client import ClaudeClient
 from .deepseek_client import DeepSeekClient
 from .gemini_client import GeminiClient
 from .openai_client import OpenAIClient
+
+if TYPE_CHECKING:
+    from dm_agent.extensions import ExtensionAPI, ExtensionRegistry
 
 
 def create_llm_client(
@@ -18,16 +21,18 @@ def create_llm_client(
     model: str | None = None,
     base_url: str | None = None,
     timeout: int = 600,
+    extension_registry: ExtensionRegistry | None = None,
     **kwargs: Any,
 ) -> BaseLLMClient:
     """创建 LLM 客户端实例。
 
     Args:
-        provider: 提供商名称 ("deepseek", "openai", "claude", "gemini")
+        provider: 已注册的提供商名称
         api_key: API 密钥
         model: 模型名称（可选，使用默认值）
         base_url: API 基础 URL（可选，使用默认值）
         timeout: 请求超时时间（秒）
+        extension_registry: 本次运行的扩展注册表；省略时只加载内置供应商
         **kwargs: 其他特定于提供商的参数
 
     Returns:
@@ -36,65 +41,108 @@ def create_llm_client(
     Raises:
         ValueError: 如果提供商不支持
     """
-    provider_lower = provider.lower()
-    # 各分支的参数集合形状不同（键与值类型均不一致），统一标注为 dict[str, Any]，
-    # 使 **params 展开时不会因联合值类型被推断为 object 而误报 arg-type。
-    params: dict[str, Any]
+    if extension_registry is None:
+        from dm_agent.extensions.discovery import create_builtin_registry
 
-    if provider_lower == "deepseek":
-        params = {
-            "api_key": api_key,
-            "model": model or "deepseek-chat",
-            "base_url": base_url or "https://api.deepseek.com",
-            "timeout": timeout,
-        }
-        if "max_retries" in kwargs:
-            params["max_retries"] = kwargs["max_retries"]
-        if "retry_backoff" in kwargs:
-            params["retry_backoff"] = kwargs["retry_backoff"]
-        if "retry_status_codes" in kwargs:
-            params["retry_status_codes"] = kwargs["retry_status_codes"]
-        return DeepSeekClient(**params)
+        extension_registry = create_builtin_registry()
+    factory = extension_registry.get_provider_factory(provider)
+    if factory is None:
+        supported = ", ".join(extension_registry.get_provider_names())
+        raise ValueError(f"不支持的提供商: {provider}。支持的提供商: {supported}")
+    client = factory(
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        timeout=timeout,
+        **kwargs,
+    )
+    return cast(BaseLLMClient, client)
 
-    elif provider_lower == "openai":
-        params = {
-            "api_key": api_key,
-            "model": model or "gpt-5",
-            "base_url": base_url or "",  # OpenAI SDK 不需要 base_url
-            "timeout": timeout,
-        }
-        if "respond_retries" in kwargs:
-            params["respond_retries"] = kwargs["respond_retries"]
-        return OpenAIClient(**params)
 
-    elif provider_lower == "claude":
-        params = {
-            "api_key": api_key,
-            "model": model or "claude-sonnet-4-5",
-            "base_url": base_url or "",  # Claude SDK 不需要 base_url
-            "timeout": timeout,
-        }
-        if "anthropic_version" in kwargs:
-            params["anthropic_version"] = kwargs["anthropic_version"]
-        if "respond_retries" in kwargs:
-            params["respond_retries"] = kwargs["respond_retries"]
-        return ClaudeClient(**params)
+def register_builtin_providers(api: ExtensionAPI) -> None:
+    """通过 ExtensionAPI 按既有顺序注册四家内置供应商。"""
+    api.register_provider("deepseek", _create_deepseek_client)
+    api.register_provider("openai", _create_openai_client)
+    api.register_provider("claude", _create_claude_client)
+    api.register_provider("gemini", _create_gemini_client)
 
-    elif provider_lower == "gemini":
-        params = {
-            "api_key": api_key,
-            "model": model or "gemini-2.5-flash",
-            "base_url": base_url or "",  # Gemini 不需要 base_url
-            "timeout": timeout,
-        }
-        if "respond_retries" in kwargs:
-            params["respond_retries"] = kwargs["respond_retries"]
-        return GeminiClient(**params)
 
-    else:
-        raise ValueError(
-            f"不支持的提供商: {provider}。" f"支持的提供商: deepseek, openai, claude, gemini"
-        )
+def _create_deepseek_client(
+    *,
+    api_key: str,
+    model: str | None = None,
+    base_url: str | None = None,
+    timeout: int = 600,
+    **kwargs: Any,
+) -> BaseLLMClient:
+    params: dict[str, Any] = {
+        "api_key": api_key,
+        "model": model or "deepseek-chat",
+        "base_url": base_url or "https://api.deepseek.com",
+        "timeout": timeout,
+    }
+    for key in ("max_retries", "retry_backoff", "retry_status_codes"):
+        if key in kwargs:
+            params[key] = kwargs[key]
+    return DeepSeekClient(**params)
+
+
+def _create_openai_client(
+    *,
+    api_key: str,
+    model: str | None = None,
+    base_url: str | None = None,
+    timeout: int = 600,
+    **kwargs: Any,
+) -> BaseLLMClient:
+    params: dict[str, Any] = {
+        "api_key": api_key,
+        "model": model or "gpt-5",
+        "base_url": base_url or "",
+        "timeout": timeout,
+    }
+    if "respond_retries" in kwargs:
+        params["respond_retries"] = kwargs["respond_retries"]
+    return OpenAIClient(**params)
+
+
+def _create_claude_client(
+    *,
+    api_key: str,
+    model: str | None = None,
+    base_url: str | None = None,
+    timeout: int = 600,
+    **kwargs: Any,
+) -> BaseLLMClient:
+    params: dict[str, Any] = {
+        "api_key": api_key,
+        "model": model or "claude-sonnet-4-5",
+        "base_url": base_url or "",
+        "timeout": timeout,
+    }
+    for key in ("anthropic_version", "respond_retries"):
+        if key in kwargs:
+            params[key] = kwargs[key]
+    return ClaudeClient(**params)
+
+
+def _create_gemini_client(
+    *,
+    api_key: str,
+    model: str | None = None,
+    base_url: str | None = None,
+    timeout: int = 600,
+    **kwargs: Any,
+) -> BaseLLMClient:
+    params: dict[str, Any] = {
+        "api_key": api_key,
+        "model": model or "gemini-2.5-flash",
+        "base_url": base_url or "",
+        "timeout": timeout,
+    }
+    if "respond_retries" in kwargs:
+        params["respond_retries"] = kwargs["respond_retries"]
+    return GeminiClient(**params)
 
 
 # 提供商默认配置

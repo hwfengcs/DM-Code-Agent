@@ -208,6 +208,7 @@ def run_single_task(
             model=config.model,
             base_url=config.base_url,
             respond_retries=config.llm_max_retries,
+            extension_registry=extension_registry,
         )
         advanced = resolve_advanced_features(config)
         if trace_path:

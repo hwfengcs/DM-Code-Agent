@@ -290,6 +290,7 @@ python -m black --check .
 - [docs/product.md](docs/product.md)：产品定位和落地场景
 - [docs/tracing.md](docs/tracing.md)：trace schema、view、replay 和隐私边界
 - [docs/benchmarks.md](docs/benchmarks.md)：benchmark suite、评分和报告字段
+- [docs/extensions.md](docs/extensions.md)：扩展 API、发现优先级、项目目录信任与安全警告
 - [MCP_GUIDE.md](MCP_GUIDE.md)：MCP 配置
 - [SKILL_GUIDE.md](SKILL_GUIDE.md)：内置和自定义 skill
 - [CHANGELOG.md](CHANGELOG.md)：版本变更

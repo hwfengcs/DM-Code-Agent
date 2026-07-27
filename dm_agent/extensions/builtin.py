@@ -7,8 +7,10 @@ from .registry import ExtensionAPI
 
 def setup_builtin_extensions(api: ExtensionAPI) -> None:
     """通过与第三方相同的 ExtensionAPI 注册内置能力。"""
+    from dm_agent.clients.llm_factory import register_builtin_providers
     from dm_agent.skills.builtin import register_builtin_skills
     from dm_agent.tools import register_builtin_tools
 
     register_builtin_tools(api)
     register_builtin_skills(api)
+    register_builtin_providers(api)

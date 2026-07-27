@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from .config import get_api_key_for_provider, load_config_from_file
+from .config import load_config_from_file
 
 
 def validate_feature_args(args: argparse.Namespace) -> str:
@@ -48,22 +48,16 @@ def parse_args(argv: Any) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="运行基于 LLM 的 ReAct 智能体来完成任务描述。")
     parser.add_argument("task", nargs="?", help="智能体要完成的自然语言任务。")
 
-    # 获取配置中的提供商或默认值
-    default_provider = saved_config.get("provider", "deepseek")
-
-    # 根据提供商获取对应的 API 密钥
-    default_api_key = get_api_key_for_provider(default_provider)
-
     parser.add_argument(
         "--api-key",
         dest="api_key",
-        default=default_api_key,
+        default=None,
         help="API 密钥（默认使用环境变量）。",
     )
     parser.add_argument(
         "--provider",
         default=saved_config.get("provider", "deepseek"),
-        help="LLM 提供商 (deepseek/openai/claude/gemini，默认：deepseek)。",
+        help="已注册的 LLM 提供商（内置 deepseek/openai/claude/gemini，默认：deepseek）。",
     )
     parser.add_argument(
         "--model",

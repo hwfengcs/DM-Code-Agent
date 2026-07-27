@@ -46,7 +46,7 @@ def print_welcome() -> None:
     print()
 
 
-def configure_settings(config: Config) -> None:
+def configure_settings(config: Config, extension_registry: ExtensionRegistry | None = None) -> None:
     """配置设置"""
     UI.key_values(
         "当前配置",
@@ -66,34 +66,39 @@ def configure_settings(config: Config) -> None:
     print()
 
     config_changed = False
+    provider_names = (
+        extension_registry.get_provider_names()
+        if extension_registry is not None
+        else list(PROVIDER_DEFAULTS)
+    )
 
     # 修改提供商
     provider_input = (
         UI.ask(
             "LLM 提供商",
-            choices=["deepseek", "openai", "claude", "gemini"],
+            choices=provider_names,
             default=config.provider,
         )
         .strip()
         .lower()
     )
-    if provider_input and provider_input in ["deepseek", "openai", "claude", "gemini"]:
+    if provider_input and provider_input in provider_names:
         if provider_input != config.provider:
             # 尝试获取新提供商的 API 密钥
             new_api_key = get_api_key_for_provider(provider_input)
-            if not new_api_key:
+            if provider_input in PROVIDER_DEFAULTS and not new_api_key:
                 UI.status("error", f"未找到 {provider_input.upper()}_API_KEY 环境变量")
                 UI.status("warn", f"请在 .env 文件中配置 {provider_input.upper()}_API_KEY")
             else:
                 config.provider = provider_input
-                config.api_key = new_api_key  # 更新 API 密钥
+                config.api_key = new_api_key or ""
                 # 自动更新默认模型和 base_url
                 defaults = PROVIDER_DEFAULTS.get(provider_input, {})
                 config.model = defaults.get("model", config.model)
                 config.base_url = defaults.get("base_url", config.base_url)
                 config_changed = True
                 UI.status("ok", f"已更新提供商为 {provider_input}", "模型和 URL 已自动调整")
-    elif provider_input and provider_input not in ["deepseek", "openai", "claude", "gemini"]:
+    elif provider_input and provider_input not in provider_names:
         UI.status("error", "无效的提供商")
 
     # 修改模型
@@ -246,6 +251,7 @@ def multi_turn_conversation(
             model=config.model,
             base_url=config.base_url,
             respond_retries=config.llm_max_retries,
+            extension_registry=extension_registry,
         )
         step_callback = create_step_callback(config.show_steps)
 
@@ -337,6 +343,7 @@ def execute_task(
             model=config.model,
             base_url=config.base_url,
             respond_retries=config.llm_max_retries,
+            extension_registry=extension_registry,
         )
 
         # 创建步骤回调函数
@@ -434,7 +441,7 @@ def interactive_mode(config: Config, extension_registry: ExtensionRegistry | Non
 
                 elif choice == "4":
                     # 配置设置
-                    configure_settings(config)
+                    configure_settings(config, extension_registry)
 
                 elif choice == "5":
                     # 查看技能列表

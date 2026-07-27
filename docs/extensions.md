@@ -75,6 +75,28 @@ dm-agent --extension ./my_extension.py "任务"
 `--no-extensions` 与 `--extension` 互斥。显式文件视为用户对该文件的一次性授权，不会把
 它所在的项目写入信任文件。
 
+## 自定义 LLM 供应商
+
+`register_provider()` 的工厂由内核使用关键字参数调用：
+
+```python
+def setup(api) -> None:
+    def create_client(*, api_key, model, base_url, timeout, **kwargs):
+        return CompanyGatewayClient(
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+            timeout=timeout,
+        )
+
+    api.register_provider("company", create_client)
+```
+
+注册后可直接使用 `dm-agent --provider company ...`。`register_provider()` 目前不携带默认
+模型、默认 URL 或密钥环境变量元数据，因此自定义供应商应在工厂中处理空值，或要求用户
+显式传 `--model`、`--base-url` 和 `--api-key`。四家内置供应商继续使用原有默认值和环境
+变量；自定义供应商是否要求 API key 则由自己的工厂决定，便于接入本地 llama.cpp。
+
 ## 生命周期处理器
 
 `api.on()` 复用内核事件总线，支持 `before_tool_call`、`after_tool_result` 和
