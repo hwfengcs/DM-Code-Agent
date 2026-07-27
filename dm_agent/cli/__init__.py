@@ -16,12 +16,18 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
 from dm_agent import PROVIDER_DEFAULTS
 from dm_agent.core.checkpoint import RunCheckpoint, load_checkpoint
+from dm_agent.extensions import (
+    ExtensionDiscoveryError,
+    ProjectTrustDecision,
+    discover_extensions,
+)
 
 from .args import parse_args, validate_feature_args
 from .config import (
@@ -127,6 +133,27 @@ def main(argv: Any = None) -> int:
         print(feature_error, file=sys.stderr)
         return 2
 
+    try:
+        discovery = discover_extensions(
+            project_root=Path.cwd(),
+            no_extensions=args.no_extensions,
+            explicit_paths=args.extension_paths,
+            trust_prompt=(
+                _prompt_project_extension_trust
+                if sys.stdin.isatty() and sys.stdout.isatty()
+                else None
+            ),
+        )
+    except ExtensionDiscoveryError as e:
+        print(UI.paint("[ERR] 扩展加载失败", Fore.RED, bright=True), file=sys.stderr)
+        print(str(e), file=sys.stderr)
+        return 2
+
+    _display_extension_diagnostics(discovery.loaded, discovery.skipped)
+    for failure in discovery.failures:
+        UI.status("warn", f"扩展加载失败：{failure.source}", failure.message)
+    extension_registry = discovery.registry
+
     # 如果没有提供 API 密钥，尝试根据提供商获取
     if not args.api_key:
         args.api_key = get_api_key_for_provider(args.provider)
@@ -204,10 +231,45 @@ def main(argv: Any = None) -> int:
             report_path=args.report,
             checkpoint_path=args.checkpoint,
             resume_state=resume_state,
+            extension_registry=extension_registry,
         )
 
     # 如果指定了交互模式或没有提供任务，进入交互式菜单
     if args.interactive or not args.task:
-        return interactive_mode(config)
+        return interactive_mode(config, extension_registry)
 
     return 0
+
+
+def _prompt_project_extension_trust(project_root: Path) -> ProjectTrustDecision:
+    UI.section(
+        "项目扩展安全确认",
+        "项目内 .dm_agent/extensions/*.py 会以当前用户权限执行任意代码。"
+        "仅在你已审查并信任此仓库时加载。",
+    )
+    UI.status("warn", "待确认项目", str(project_root))
+    choice = (
+        UI.ask(
+            "加载项目扩展？o=仅本次，a=始终信任，n=本次跳过，d=始终拒绝",
+            choices=["o", "a", "n", "d"],
+            default="n",
+        )
+        .strip()
+        .lower()
+    )
+    return {
+        "o": ProjectTrustDecision.LOAD_ONCE,
+        "a": ProjectTrustDecision.TRUST,
+        "d": ProjectTrustDecision.DENY,
+    }.get(choice, ProjectTrustDecision.SKIP_ONCE)
+
+
+def _display_extension_diagnostics(
+    loaded: list[str],
+    skipped: list[str],
+) -> None:
+    external_count = max(0, len(loaded) - 1)
+    if external_count:
+        UI.status("ok", f"已加载 {external_count} 个外部扩展")
+    for source in skipped:
+        UI.status("warn", "项目扩展未加载", source)

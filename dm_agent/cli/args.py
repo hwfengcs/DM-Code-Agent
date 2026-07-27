@@ -196,6 +196,21 @@ def parse_args(argv: Any) -> argparse.Namespace:
         action="store_true",
         help="启动交互式菜单模式。",
     )
+    extension_group = parser.add_mutually_exclusive_group()
+    extension_group.add_argument(
+        "--no-extensions",
+        action="store_true",
+        help="关闭 entry point、用户目录、项目目录及显式文件扩展；内置能力仍保留。",
+    )
+    extension_group.add_argument(
+        "--extension",
+        dest="extension_paths",
+        action="append",
+        type=Path,
+        default=[],
+        metavar="PATH",
+        help="仅本次显式加载一个可信 .py 扩展；可重复指定。",
+    )
     parser.add_argument(
         "--trace",
         type=Path,

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 ProviderFactory = Callable[..., Any]
 EventHandler = Callable[[Any], Any]
+ExtensionSetup = Callable[["ExtensionAPI"], None]
 
 _SUPPORTED_EVENTS = frozenset({"before_tool_call", "after_tool_result", "before_llm_request"})
 
@@ -41,6 +42,17 @@ class ExtensionRegistry:
         """为一个扩展创建只暴露四个注册方法的接口。"""
         normalized_source = source.strip() or "extension"
         return ExtensionAPI(self, normalized_source)
+
+    def apply_setup(self, setup: ExtensionSetup, *, source: str) -> None:
+        """事务式执行一个扩展的 setup，失败时不保留部分注册结果。"""
+        if not callable(setup):
+            raise TypeError("Extension setup must be callable.")
+        staged = ExtensionRegistry()
+        setup(staged.api(source))
+        self._tools.update(staged._tools)
+        self._skills.update(staged._skills)
+        self._providers.update(staged._providers)
+        self._event_handlers.extend(staged._event_handlers)
 
     def get_tools(self) -> list[Tool]:
         """按稳定注册顺序返回去重后的工具。"""

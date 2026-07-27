@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from dm_agent import (
     PROVIDER_DEFAULTS,
@@ -28,6 +29,9 @@ from .runner import (
     review_completed_run,
 )
 from .ui import UI, ask_bool_setting, create_step_callback, print_menu, show_skills, show_tools
+
+if TYPE_CHECKING:
+    from dm_agent.extensions import ExtensionRegistry
 
 
 def print_welcome() -> None:
@@ -222,7 +226,10 @@ def configure_settings(config: Config) -> None:
 
 
 def multi_turn_conversation(
-    config: Config, tools: list[Tool], skill_manager: SkillManager | None = None
+    config: Config,
+    tools: list[Tool],
+    skill_manager: SkillManager | None = None,
+    extension_registry: ExtensionRegistry | None = None,
 ) -> None:
     """多轮对话模式"""
     UI.section(
@@ -248,6 +255,7 @@ def multi_turn_conversation(
             tools,
             step_callback=step_callback,
             skill_manager=skill_manager,
+            extension_registry=extension_registry,
         )
 
         conversation_count = 0
@@ -308,7 +316,10 @@ def multi_turn_conversation(
 
 
 def execute_task(
-    config: Config, tools: list[Tool], skill_manager: SkillManager | None = None
+    config: Config,
+    tools: list[Tool],
+    skill_manager: SkillManager | None = None,
+    extension_registry: ExtensionRegistry | None = None,
 ) -> None:
     """执行任务"""
     UI.section("执行新任务")
@@ -337,6 +348,7 @@ def execute_task(
             tools,
             step_callback=step_callback,
             skill_manager=skill_manager,
+            extension_registry=extension_registry,
         )
 
         UI.status("run", "正在执行任务")
@@ -363,7 +375,7 @@ def execute_task(
         UI.status("error", "发生错误", str(e))
 
 
-def interactive_mode(config: Config) -> int:
+def interactive_mode(config: Config, extension_registry: ExtensionRegistry | None = None) -> int:
     """交互式菜单模式"""
     print_welcome()
 
@@ -406,11 +418,11 @@ def interactive_mode(config: Config) -> int:
 
                 if choice == "1":
                     # 执行新任务
-                    execute_task(config, tools, skill_manager)
+                    execute_task(config, tools, skill_manager, extension_registry)
 
                 elif choice == "2":
                     # 多轮对话模式
-                    multi_turn_conversation(config, tools, skill_manager)
+                    multi_turn_conversation(config, tools, skill_manager, extension_registry)
 
                 elif choice == "3":
                     # 查看工具列表

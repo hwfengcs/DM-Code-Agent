@@ -1,3 +1,4 @@
+from dm_agent.cli import Config, create_agent
 from dm_agent.core.events import BeforeToolCallEvent
 from dm_agent.extensions import ExtensionRegistry
 from dm_agent.skills import ConfigSkill
@@ -78,3 +79,41 @@ def test_extension_api_rejects_invalid_registration_values():
         assert "Unsupported lifecycle event" in str(exc)
     else:
         raise AssertionError("unknown event should fail")
+
+
+def test_failed_setup_does_not_leave_partial_registrations():
+    registry = ExtensionRegistry()
+
+    def broken_setup(api):
+        api.register_tool(_tool("partial", "partial"))
+        raise RuntimeError("boom")
+
+    try:
+        registry.apply_setup(broken_setup, source="broken")
+    except RuntimeError as exc:
+        assert str(exc) == "boom"
+    else:
+        raise AssertionError("broken setup should fail")
+
+    assert registry.get_tools() == []
+
+
+def test_cli_create_agent_materializes_a_fresh_bus_for_each_agent():
+    registry = ExtensionRegistry()
+    calls: list[str] = []
+
+    def observer(event):
+        calls.append(event.run_id)
+
+    registry.api("observer").on("before_tool_call", observer)
+    config = Config(api_key="test-key")
+    tool = _tool("noop", "ok")
+    client = type("FakeClient", (), {"respond": lambda self, messages, **kwargs: "{}"})()
+
+    first = create_agent(config, client, [tool], extension_registry=registry)
+    second = create_agent(config, client, [tool], extension_registry=registry)
+
+    assert first.event_bus is not second.event_bus
+    first.event_bus.emit_before_tool_call(BeforeToolCallEvent("noop", {}, 1, "first"))
+    second.event_bus.emit_before_tool_call(BeforeToolCallEvent("noop", {}, 1, "second"))
+    assert calls == ["first", "second"]

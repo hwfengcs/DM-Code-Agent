@@ -6,7 +6,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dm_agent import (
     CriticAgent,
@@ -21,6 +21,9 @@ from dm_agent.core.reflexion import EpisodicMemory
 from dm_agent.mcp import MCPManager, load_mcp_config
 from dm_agent.skills import SkillManager
 from dm_agent.tracing import TraceWriter
+
+if TYPE_CHECKING:
+    from dm_agent.extensions import ExtensionRegistry
 
 from .config import Config, format_advanced_feature_status, resolve_advanced_features
 from .report import collect_git_status, default_report_path, write_run_report
@@ -92,6 +95,7 @@ def create_agent(
     skill_manager: SkillManager | None = None,
     trace_writer: TraceWriter | None = None,
     reflexion_memory: EpisodicMemory | None = None,
+    extension_registry: ExtensionRegistry | None = None,
 ) -> ReactAgent:
     """Create a ReactAgent with the CLI's default-off advanced switches."""
     advanced = resolve_advanced_features(config)
@@ -118,6 +122,9 @@ def create_agent(
         enable_adaptive_replanning=advanced["adaptive_replanning"],
         max_replans=config.max_replans,
         enable_repeated_failure_policy_experiment=(advanced["repeated_failure_policy_experiment"]),
+        event_bus=(
+            extension_registry.create_event_bus() if extension_registry is not None else None
+        ),
     )
 
 
@@ -169,6 +176,7 @@ def run_single_task(
     report_path: Path | None = None,
     checkpoint_path: Path | None = None,
     resume_state: RunCheckpoint | None = None,
+    extension_registry: ExtensionRegistry | None = None,
 ) -> int:
     """运行单个任务（命令行模式）"""
     # 初始化 MCP
@@ -240,6 +248,7 @@ def run_single_task(
             skill_manager=skill_manager,
             trace_writer=trace_writer,
             reflexion_memory=reflexion_memory,
+            extension_registry=extension_registry,
         )
 
         UI.panel(
