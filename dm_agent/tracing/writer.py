@@ -15,9 +15,10 @@ from typing import Any, TextIO
 
 from dm_agent.memory.context_budget import estimate_tokens_from_chars
 
+# 1.2: 新增 hook_error 增量事件；不改变既有 envelope 与字段语义。
 # 1.1: additive events (observation_truncated, context_budget, edit_guard, ...)
 # and the llm_call estimated_prompt_tokens field. Older traces stay parseable.
-TRACE_SCHEMA_VERSION = "1.1"
+TRACE_SCHEMA_VERSION = "1.2"
 SENSITIVE_ENV_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 
 

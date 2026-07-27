@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from dm_agent.clients.base_client import BaseLLMClient
 from dm_agent.memory.context_budget import (
@@ -24,6 +24,13 @@ from dm_agent.tools.base import Tool
 from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
 from .circuit_breaker import STATE_OPEN, ToolCircuitBreaker
 from .critic import CriticAgent, CriticReview
+from .events import (
+    AfterToolResultEvent,
+    BeforeToolCallEvent,
+    EventBus,
+    HookFailure,
+    LLMRequestClient,
+)
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
 
@@ -122,6 +129,7 @@ class ReactAgent:
         enable_circuit_breaker: bool = False,
         circuit_breaker_threshold: int = 3,
         circuit_breaker_cooldown: int = 5,
+        event_bus: EventBus | None = None,
     ) -> None:
         """
         初始化 ReactAgent 实例
@@ -154,6 +162,22 @@ class ReactAgent:
         if max_trials < 1:
             raise ValueError("max_trials must be at least 1.")
         self.client = client
+        self.trace_writer = trace_writer
+        self.event_bus = event_bus or EventBus()
+        self._event_run_id = ""
+        self._event_step_number = 0
+        self._event_metadata: dict[str, Any] = {}
+        request_client = LLMRequestClient(
+            client,
+            self.event_bus,
+            lambda: (self._event_run_id, self._event_step_number, self._event_metadata),
+            self._record_hook_error,
+        )
+
+        def client_for(phase: str) -> BaseLLMClient:
+            return cast(BaseLLMClient, request_client.with_phase(phase))
+
+        self._request_client = client_for("agent")
 
         self.tools = {tool.name: tool for tool in tools}
         self.tools_list = tools  # 保留工具列表用于规划器
@@ -166,7 +190,7 @@ class ReactAgent:
 
         # 规划器
         self.enable_planning = enable_planning
-        self.planner = TaskPlanner(client, tools) if enable_planning else None
+        self.planner = TaskPlanner(client_for("planner"), tools) if enable_planning else None
 
         # 上下文压缩器：默认先充分利用现代 LLM 上下文，长会话再分批压缩。
         # token 预算超限时也会提前触发压缩（0 表示只按消息节奏压缩）。
@@ -176,7 +200,7 @@ class ReactAgent:
         self.enable_llm_compression = enable_llm_compression
         self.compressor = (
             ContextCompressor(
-                client,
+                client_for("compression"),
                 compress_every=20,
                 keep_recent=8,
                 token_budget=self.context_token_budget,
@@ -204,7 +228,6 @@ class ReactAgent:
 
         # 技能管理器
         self.skill_manager = skill_manager
-        self.trace_writer = trace_writer
         self._base_system_prompt = self.system_prompt
         self._base_tools = dict(self.tools)
         self._last_parse_repaired = False
@@ -215,7 +238,13 @@ class ReactAgent:
         self.reflexion_memory = (
             reflexion_memory if reflexion_memory is not None else EpisodicMemory()
         )
-        self.reflector = reflector or (Reflector(client) if enable_reflexion else None)
+        if reflector is not None:
+            reflector.client = client_for("reflexion")
+        self.reflector = reflector or (
+            Reflector(client_for("reflexion")) if enable_reflexion else None
+        )
+        if critic is not None:
+            critic.client = client_for("critic")
         self.critic = critic
         self.enable_adaptive_replanning = enable_adaptive_replanning
         self.replan_policy = replan_policy or AdaptiveReplanPolicy()
@@ -358,6 +387,10 @@ class ReactAgent:
             "final_answer_chars": len(str(result.get("final_answer", ""))),
         }
 
+    def _record_hook_error(self, failure: HookFailure) -> None:
+        if self.trace_writer:
+            self.trace_writer.record("hook_error", failure.to_trace_payload())
+
     def _run_once(
         self,
         task: str,
@@ -470,6 +503,9 @@ class ReactAgent:
             "max_trials": max_trials,
             "reflexion_lesson_count": len(self.reflexion_memory),
         }
+        self._event_run_id = run_token
+        self._event_step_number = 0
+        self._event_metadata = metadata
         if self.trace_writer:
             self.trace_writer.start_run(
                 task,
@@ -555,6 +591,7 @@ class ReactAgent:
             self.conversation_history.append({"role": "user", "content": task_prompt})
 
         for step_num in range(resume_from + 1, limit + 1):
+            self._event_step_number = step_num
             # 每步开始前落盘上一步完成后的快照（若启用 checkpoint）。
             if checkpoint_path is not None:
                 self._save_checkpoint_snapshot(
@@ -665,7 +702,7 @@ class ReactAgent:
 
             # 获取 AI 响应
             try:
-                raw = self.client.respond(messages_to_send, temperature=self.temperature)
+                raw = self._request_client.respond(messages_to_send, temperature=self.temperature)
             except Exception as exc:
                 if self.trace_writer:
                     self.trace_writer.record(
@@ -839,66 +876,35 @@ class ReactAgent:
 
             error_kind = ""
             guard_blocked = False
+            accepted = False
+            arguments_ready = True
 
             # task_complete 工具可以接受字符串或空参数
             if action == "task_complete":
-                accepted = False
                 if action_input is None:
                     action_input = {}
                 elif isinstance(action_input, str):
                     action_input = {"message": action_input}
                 elif not isinstance(action_input, dict):
                     action_input = {}
-                try:
-                    observation = self._bound_observation(
-                        tool.execute(action_input),
-                        action=action,
-                        action_input=action_input,
-                        metadata=metadata,
-                        step_num=step_num,
-                    )
-                except Exception as exc:
-                    metadata["tool_error_count"] += 1
-                    metadata["failure_reason"] = str(exc)
-                    observation = self._bound_observation(
-                        f"Tool execution failed: {exc}",
-                        action=action,
-                        action_input=action_input,
-                        metadata=metadata,
-                        step_num=step_num,
-                    )
-                    error_kind = "tool_error"
-                else:
-                    accepted, observation, _review = self._review_completion(
-                        task=task,
-                        completion_text=str(observation),
-                        steps=steps,
-                        metadata=metadata,
-                        step_num=step_num,
-                        action=action,
-                    )
-                    if not accepted:
-                        error_kind = "critic_rejected"
             elif action_input is None:
                 metadata["argument_error_count"] += 1
                 metadata["failure_reason"] = "Tool arguments missing"
                 observation = "Tool arguments missing: action_input is null."
                 error_kind = "invalid_arguments"
+                arguments_ready = False
             elif not isinstance(action_input, dict):
                 metadata["argument_error_count"] += 1
                 metadata["failure_reason"] = "Tool arguments must be a JSON object"
                 observation = "Tool arguments must be a JSON object."
                 error_kind = "invalid_arguments"
-            else:
+                arguments_ready = False
+
+            if arguments_ready:
                 breaker_message = (
                     self._circuit_breaker.intercept(action, step_num)
-                    if self._circuit_breaker is not None
+                    if self._circuit_breaker is not None and action != "task_complete"
                     else None
-                )
-                guard_reason = (
-                    ""
-                    if breaker_message is not None
-                    else self._check_edit_guard(action, action_input)
                 )
                 if breaker_message is not None:
                     guard_blocked = True  # 熔断拦截同样不计入计划完成
@@ -913,62 +919,102 @@ class ReactAgent:
                                 "phase": "blocked",
                             },
                         )
-                elif guard_reason:
-                    guard_blocked = True
-                    metadata["edit_guard_block_count"] += 1
-                    observation = self._edit_guard_message(
-                        str(action_input.get("path", "")), guard_reason
-                    )
-                    if self.trace_writer:
-                        self.trace_writer.record(
-                            "edit_guard",
-                            {
-                                "step_number": step_num,
-                                "path": str(action_input.get("path", "")),
-                                "reason": guard_reason,
-                            },
-                        )
                 else:
-                    if action in self._WRITE_NOTE_ACTIONS:
-                        self._backup_before_write(action_input, metadata, step_num, run_token)
-                    try:
-                        observation = self._bound_observation(
-                            tool.execute(action_input),
-                            action=action,
-                            action_input=action_input,
-                            metadata=metadata,
-                            step_num=step_num,
+                    before_event = BeforeToolCallEvent(
+                        tool_name=action,
+                        arguments=cast(dict[str, Any], action_input),
+                        step_number=step_num,
+                        run_id=run_token,
+                        metadata=metadata,
+                    )
+                    block = self.event_bus.emit_before_tool_call(
+                        before_event, on_error=self._record_hook_error
+                    )
+                    action_input = before_event.arguments
+                    guard_reason = self._check_edit_guard(action, action_input)
+                    if block is not None:
+                        guard_blocked = True
+                        observation = str(block["reason"])
+                    elif guard_reason:
+                        guard_blocked = True
+                        metadata["edit_guard_block_count"] += 1
+                        observation = self._edit_guard_message(
+                            str(action_input.get("path", "")), guard_reason
                         )
-                    except Exception as exc:
-                        metadata["tool_error_count"] += 1
-                        metadata["failure_reason"] = str(exc)
-                        observation = self._bound_observation(
-                            f"Tool execution failed: {exc}",
-                            action=action,
-                            action_input=action_input,
-                            metadata=metadata,
-                            step_num=step_num,
-                        )
-                        error_kind = "tool_error"
-                    else:
-                        self._note_file_access(action, action_input, observation, step_num)
-                    if self._circuit_breaker is not None:
-                        state = self._circuit_breaker.record(
-                            action,
-                            error_kind or "",
-                            failed=self._is_failure_observation(observation),
-                            step=step_num,
-                        )
-                        metadata["circuit_breaker_trip_count"] = self._circuit_breaker.total_trips
-                        if state == STATE_OPEN and self.trace_writer:
+                        if self.trace_writer:
                             self.trace_writer.record(
-                                "circuit_breaker",
+                                "edit_guard",
                                 {
                                     "step_number": step_num,
-                                    "action": action,
-                                    "phase": "opened",
+                                    "path": str(action_input.get("path", "")),
+                                    "reason": guard_reason,
                                 },
                             )
+                    else:
+                        if action in self._WRITE_NOTE_ACTIONS:
+                            self._backup_before_write(action_input, metadata, step_num, run_token)
+                        tool_succeeded = False
+                        try:
+                            raw_observation = str(tool.execute(action_input))
+                        except Exception as exc:
+                            metadata["tool_error_count"] += 1
+                            metadata["failure_reason"] = str(exc)
+                            raw_observation = f"Tool execution failed: {exc}"
+                            error_kind = "tool_error"
+                        else:
+                            tool_succeeded = True
+
+                        after_event = AfterToolResultEvent(
+                            tool_name=action,
+                            arguments=action_input,
+                            observation=raw_observation,
+                            step_number=step_num,
+                            run_id=run_token,
+                            tool_succeeded=tool_succeeded,
+                            metadata=metadata,
+                        )
+                        rewritten_observation = self.event_bus.emit_after_tool_result(
+                            after_event, on_error=self._record_hook_error
+                        )
+                        observation = self._bound_observation(
+                            rewritten_observation,
+                            action=action,
+                            action_input=action_input,
+                            metadata=metadata,
+                            step_num=step_num,
+                        )
+                        if tool_succeeded:
+                            self._note_file_access(action, action_input, observation, step_num)
+                        if self._circuit_breaker is not None and action != "task_complete":
+                            state = self._circuit_breaker.record(
+                                action,
+                                error_kind or "",
+                                failed=self._is_failure_observation(observation),
+                                step=step_num,
+                            )
+                            metadata["circuit_breaker_trip_count"] = (
+                                self._circuit_breaker.total_trips
+                            )
+                            if state == STATE_OPEN and self.trace_writer:
+                                self.trace_writer.record(
+                                    "circuit_breaker",
+                                    {
+                                        "step_number": step_num,
+                                        "action": action,
+                                        "phase": "opened",
+                                    },
+                                )
+                        if action == "task_complete" and tool_succeeded:
+                            accepted, observation, _review = self._review_completion(
+                                task=task,
+                                completion_text=str(observation),
+                                steps=steps,
+                                metadata=metadata,
+                                step_num=step_num,
+                                action=action,
+                            )
+                            if not accepted:
+                                error_kind = "critic_rejected"
 
             step = Step(
                 thought=thought,
