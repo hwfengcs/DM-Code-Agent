@@ -4,6 +4,7 @@ from .discovery import (
     ExtensionDiscoveryError,
     ExtensionDiscoveryResult,
     ExtensionLoadFailure,
+    create_builtin_registry,
     discover_extensions,
 )
 from .registry import ExtensionAPI, ExtensionRegistry, ExtensionSetup, ProviderFactory
@@ -19,5 +20,6 @@ __all__ = [
     "ProjectTrustDecision",
     "ProjectTrustStore",
     "ProviderFactory",
+    "create_builtin_registry",
     "discover_extensions",
 ]

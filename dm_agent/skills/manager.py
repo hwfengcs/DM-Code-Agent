@@ -10,6 +10,7 @@ from .selector import SkillSelector
 
 if TYPE_CHECKING:
     from dm_agent.clients.base_client import BaseLLMClient
+    from dm_agent.extensions import ExtensionRegistry
     from dm_agent.tools.base import Tool
 
 
@@ -26,9 +27,11 @@ class SkillManager:
         min_keyword_score: float = 0.05,
         enable_llm_fallback: bool = False,
         llm_client: BaseLLMClient | None = None,
+        extension_registry: ExtensionRegistry | None = None,
     ) -> None:
         self.skills: dict[str, BaseSkill] = {}
         self.active_skills: list[str] = []
+        self._extension_registry = extension_registry
         self._selector = SkillSelector(
             max_active_skills=max_active_skills,
             min_keyword_score=min_keyword_score,
@@ -41,11 +44,14 @@ class SkillManager:
     # ------------------------------------------------------------------
 
     def load_builtin_skills(self) -> int:
-        """从 builtin 包加载内置技能，返回加载数量。"""
-        from .builtin import get_builtin_skills
+        """从扩展注册表加载技能，返回加载数量。"""
+        registry = self._extension_registry
+        if registry is None:
+            from dm_agent.extensions.discovery import create_builtin_registry
 
+            registry = create_builtin_registry()
         count = 0
-        for skill in get_builtin_skills():
+        for skill in registry.get_skills():
             meta = skill.get_metadata()
             self.skills[meta.name] = skill
             count += 1

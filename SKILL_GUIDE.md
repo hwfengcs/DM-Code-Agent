@@ -175,16 +175,17 @@ python main.py
 
 适用于需要提供专用工具的复杂技能。
 
-#### 步骤 1：创建 Python 技能类
+#### 步骤 1：创建 Python 扩展与技能类
 
-在 `dm_agent/skills/builtin/` 下创建新文件，例如 `security_expert.py`：
+在用户扩展目录创建 `~/.dm_agent/extensions/security_expert.py`。这种方式不需要 fork 或修改
+`dm_agent/` 内核源码：
 
 ```python
 """安全专家技能"""
 
 from typing import Any, Dict, List
-from ..base import BaseSkill, SkillMetadata
-from ...tools.base import Tool
+from dm_agent.skills import BaseSkill, SkillMetadata
+from dm_agent.tools import Tool
 
 
 def _security_check_runner(arguments: Dict[str, Any]) -> str:
@@ -229,20 +230,13 @@ class SecurityExpertSkill(BaseSkill):
         ]
 ```
 
-#### 步骤 2：注册技能
+#### 步骤 2：通过 ExtensionAPI 注册技能
 
-编辑 `dm_agent/skills/builtin/__init__.py`，添加新技能：
+在同一文件末尾导出 `setup(api)`：
 
 ```python
-from .security_expert import SecurityExpertSkill
-
-def get_builtin_skills() -> List[BaseSkill]:
-    return [
-        PythonExpertSkill(),
-        DatabaseExpertSkill(),
-        FrontendDevSkill(),
-        SecurityExpertSkill(),  # 新增
-    ]
+def setup(api) -> None:
+    api.register_skill(SecurityExpertSkill())
 ```
 
 #### 步骤 3：重启系统
@@ -250,6 +244,9 @@ def get_builtin_skills() -> List[BaseSkill]:
 ```bash
 python main.py
 ```
+
+用户目录扩展由用户自行放置，默认加载。项目内 `.dm_agent/extensions/` 则必须先显式信任；
+完整安全边界与 entry point 分发方式见 `docs/extensions.md`。
 
 ---
 

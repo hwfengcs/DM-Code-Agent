@@ -393,13 +393,17 @@ def interactive_mode(config: Config, extension_registry: ExtensionRegistry | Non
 
     # 获取包含 MCP 工具的工具列表
     mcp_tools = mcp_manager.get_tools()
-    tools = default_tools(include_mcp=True, mcp_tools=mcp_tools)
+    tools = default_tools(
+        include_mcp=True,
+        mcp_tools=mcp_tools,
+        extension_registry=extension_registry,
+    )
 
     if mcp_tools:
         UI.status("ok", f"加载了 {len(mcp_tools)} 个 MCP 工具")
 
     # 初始化技能管理器
-    skill_manager = SkillManager()
+    skill_manager = SkillManager(extension_registry=extension_registry)
     skill_count = skill_manager.load_all()
     if skill_count > 0:
         UI.status("ok", f"加载了 {skill_count} 个技能")

@@ -1,6 +1,8 @@
 """工具模块 - 提供智能体可用的各类工具"""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from .base import Tool
 from .code_analysis_tools import (
@@ -18,6 +20,9 @@ from .file_tools import (
     read_file,
     search_in_file,
 )
+
+if TYPE_CHECKING:
+    from dm_agent.extensions import ExtensionAPI, ExtensionRegistry
 
 
 def task_complete(arguments: dict[str, Any]) -> str:
@@ -57,17 +62,9 @@ def task_complete(arguments: dict[str, Any]) -> str:
     return "任务已完成。"
 
 
-def default_tools(include_mcp: bool = True, mcp_tools: list[Tool] | None = None) -> list[Tool]:
-    """返回默认工具集
-
-    Args:
-        include_mcp (bool): 是否包含 MCP 工具
-        mcp_tools (Optional[List[Tool]]): MCP 工具列表（可选）
-
-    Returns:
-        tools (List[Tool]): 默认工具列表
-    """
-    tools = [
+def _builtin_tools() -> list[Tool]:
+    """构造顺序稳定的内置工具实例。"""
+    return [
         Tool(
             name="list_directory",
             description=(
@@ -191,7 +188,26 @@ def default_tools(include_mcp: bool = True, mcp_tools: list[Tool] | None = None)
         ),
     ]
 
-    # 添加 MCP 工具
+
+def register_builtin_tools(api: ExtensionAPI) -> None:
+    """通过 ExtensionAPI 注册全部内置工具。"""
+    for tool in _builtin_tools():
+        api.register_tool(tool)
+
+
+def default_tools(
+    include_mcp: bool = True,
+    mcp_tools: list[Tool] | None = None,
+    *,
+    extension_registry: ExtensionRegistry | None = None,
+) -> list[Tool]:
+    """返回注册表中的工具，并保持 MCP 工具最后追加的既有行为。"""
+    if extension_registry is None:
+        from dm_agent.extensions.discovery import create_builtin_registry
+
+        extension_registry = create_builtin_registry()
+    tools = extension_registry.get_tools()
+
     if include_mcp and mcp_tools:
         tools.extend(mcp_tools)
 
@@ -201,5 +217,6 @@ def default_tools(include_mcp: bool = True, mcp_tools: list[Tool] | None = None)
 __all__ = [
     "Tool",
     "default_tools",
+    "register_builtin_tools",
     "task_complete",
 ]

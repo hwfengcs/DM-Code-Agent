@@ -192,10 +192,14 @@ def run_single_task(
 
         # 获取工具
         mcp_tools = mcp_manager.get_tools()
-        tools = default_tools(include_mcp=True, mcp_tools=mcp_tools)
+        tools = default_tools(
+            include_mcp=True,
+            mcp_tools=mcp_tools,
+            extension_registry=extension_registry,
+        )
 
         # 初始化技能管理器
-        skill_manager = SkillManager()
+        skill_manager = SkillManager(extension_registry=extension_registry)
         skill_count = skill_manager.load_all()
 
         client = create_llm_client(

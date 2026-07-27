@@ -46,6 +46,13 @@ class ExtensionDiscoveryError(RuntimeError):
     """显式指定扩展无法加载时抛出。"""
 
 
+def create_builtin_registry() -> ExtensionRegistry:
+    """构造只含内置能力的注册表；不会发现或执行任何外部代码。"""
+    registry = ExtensionRegistry()
+    registry.apply_setup(setup_builtin_extensions, source="builtin")
+    return registry
+
+
 def discover_extensions(
     *,
     project_root: str | Path | None = None,
@@ -58,9 +65,8 @@ def discover_extensions(
     """按 builtin < entry_points < 用户目录 < 项目目录 < 显式文件的顺序加载。"""
     project = (Path.cwd() if project_root is None else Path(project_root)).resolve()
     home = Path.home() if home_dir is None else Path(home_dir)
-    registry = ExtensionRegistry()
+    registry = create_builtin_registry()
     result = ExtensionDiscoveryResult(registry=registry)
-    registry.apply_setup(setup_builtin_extensions, source="builtin")
     result.loaded.append("builtin")
 
     if no_extensions:

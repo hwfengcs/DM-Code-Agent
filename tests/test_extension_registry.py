@@ -1,8 +1,29 @@
 from dm_agent.cli import Config, create_agent
 from dm_agent.core.events import BeforeToolCallEvent
-from dm_agent.extensions import ExtensionRegistry
-from dm_agent.skills import ConfigSkill
-from dm_agent.tools import Tool
+from dm_agent.extensions import ExtensionRegistry, create_builtin_registry
+from dm_agent.skills import ConfigSkill, SkillManager
+from dm_agent.tools import Tool, default_tools
+
+BUILTIN_TOOL_NAMES = [
+    "list_directory",
+    "read_file",
+    "create_file",
+    "edit_file",
+    "search_in_file",
+    "run_python",
+    "run_shell",
+    "run_tests",
+    "run_linter",
+    "parse_ast",
+    "get_function_signature",
+    "find_dependencies",
+    "get_code_metrics",
+    "build_code_index",
+    "search_symbol",
+    "dependency_graph",
+    "task_complete",
+]
+BUILTIN_SKILL_NAMES = ["python_expert", "db_expert", "frontend_dev"]
 
 
 def _tool(name: str, result: str) -> Tool:
@@ -117,3 +138,34 @@ def test_cli_create_agent_materializes_a_fresh_bus_for_each_agent():
     first.event_bus.emit_before_tool_call(BeforeToolCallEvent("noop", {}, 1, "first"))
     second.event_bus.emit_before_tool_call(BeforeToolCallEvent("noop", {}, 1, "second"))
     assert calls == ["first", "second"]
+
+
+def test_builtin_tools_and_skills_keep_exact_names_and_order():
+    registry = create_builtin_registry()
+
+    assert [tool.name for tool in registry.get_tools()] == BUILTIN_TOOL_NAMES
+    assert [skill.get_metadata().name for skill in registry.get_skills()] == BUILTIN_SKILL_NAMES
+    assert [tool.name for tool in default_tools(include_mcp=False)] == BUILTIN_TOOL_NAMES
+
+    manager = SkillManager()
+    assert manager.load_all() == 3
+    assert list(manager.skills) == BUILTIN_SKILL_NAMES
+
+
+def test_registered_tools_and_skills_flow_into_legacy_public_loaders():
+    registry = create_builtin_registry()
+    api = registry.api("external")
+    api.register_tool(_tool("read_file", "overridden"))
+    api.register_tool(_tool("external_tool", "external"))
+    api.register_skill(_skill("python_expert", "overridden"))
+    api.register_skill(_skill("external_skill", "external"))
+
+    tools = default_tools(include_mcp=False, extension_registry=registry)
+    assert [tool.name for tool in tools].count("read_file") == 1
+    assert next(tool for tool in tools if tool.name == "read_file").execute({}) == "overridden"
+    assert tools[-1].name == "external_tool"
+
+    manager = SkillManager(extension_registry=registry)
+    assert manager.load_all() == 4
+    assert manager.skills["python_expert"].get_prompt_addition() == "overridden"
+    assert manager.skills["external_skill"].get_prompt_addition() == "external"
