@@ -32,7 +32,7 @@
         <mxCell id="cli" value="开发者 / 面试演示&#xa;CLI 输入自然语言任务" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="entry-lane">
           <mxGeometry x="35" y="70" width="185" height="75" as="geometry" />
         </mxCell>
-        <mxCell id="main" value="main.py&#xa;解析参数 / 加载 .env&#xa;单任务或交互模式" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=13;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="entry-lane">
+        <mxCell id="main" value="dm_agent/cli/&#xa;正式 CLI 实现与运行装配&#xa;根 main.py 仅兼容转发" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=13;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="entry-lane">
           <mxGeometry x="250" y="65" width="185" height="85" as="geometry" />
         </mxCell>
         <mxCell id="config" value="运行配置&#xa;Provider / Model / API Key&#xa;Trace / Report / Max Steps" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;" vertex="1" parent="entry-lane">

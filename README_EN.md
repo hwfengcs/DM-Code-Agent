@@ -241,8 +241,9 @@ into atomic episodic, semantic, and procedural memories; relevant memories are s
 
 ```mermaid
 flowchart LR
-    User[Developer CLI] --> Main[main.py]
-    Main --> Agent[ReactAgent]
+    User[Developer CLI] --> CLI[dm_agent.cli]
+    Compat[main.py compatibility shim] -.-> CLI
+    CLI --> Agent[ReactAgent]
     Agent --> Planner[TaskPlanner]
     Agent --> Tools[Built-in Tools]
     Agent --> Skills[SkillManager]
@@ -252,6 +253,9 @@ flowchart LR
     Tools --> MCP[MCPManager]
     Agent --> LLM[LLM Client Factory]
 ```
+
+The installed `dm-agent` command resolves to `dm_agent.cli:main`. The repository-root `main.py`
+only preserves the legacy `python main.py` invocation and is not installed as a top-level module.
 
 ## Local Checks
 

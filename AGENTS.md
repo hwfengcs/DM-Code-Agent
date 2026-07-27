@@ -43,7 +43,8 @@ the updated `uv.lock` — CI fails on `uv lock --check` otherwise.
 - `dm_agent/evals/`: deterministic and live-model agent evals.
 - `dm_agent/tools/`: file, execution, test, lint, and code-analysis tools.
 - `dm_agent/tools/code_index_tools.py`: repository-level Python symbol/dependency index tools.
-- `main.py`: user-facing `dm-agent` CLI.
+- `dm_agent/cli/`: user-facing `dm-agent` CLI and outer-layer runtime assembly.
+- `main.py`: thin compatibility shim for `python main.py`.
 
 ## Style
 

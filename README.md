@@ -228,8 +228,9 @@ dm-agent-bench --suite maintenance \
 
 ```mermaid
 flowchart LR
-    User[Developer CLI] --> Main[main.py]
-    Main --> Agent[ReactAgent]
+    User[Developer CLI] --> CLI[dm_agent.cli]
+    Compat[main.py 兼容转发] -.-> CLI
+    CLI --> Agent[ReactAgent]
     Agent --> Planner[TaskPlanner]
     Agent --> Tools[Built-in Tools]
     Agent --> Skills[SkillManager]
@@ -244,12 +245,16 @@ flowchart LR
     LLM --> Gemini
 ```
 
+安装后的 `dm-agent` 入口指向 `dm_agent.cli:main`；根目录 `main.py` 仅保留
+`python main.py` 的兼容转发，不会作为顶级 `main` 模块安装。
+
 ## 项目结构
 
 ```text
 DM-Code-Agent/
-├── main.py
+├── main.py             # 兼容 python main.py 的薄转发
 ├── dm_agent/
+│   ├── cli/           # CLI 入口、参数、配置、UI、报告与运行装配
 │   ├── core/          # ReactAgent and TaskPlanner
 │   ├── tools/         # file, execution, test, lint, AST tools
 │   ├── tracing/       # JSONL trace writer and trace CLI
