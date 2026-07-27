@@ -123,10 +123,15 @@ class EventBus:
     ) -> dict[str, Any] | None:
         """执行工具前置链；遇到第一个 ``block=True`` 时停止并返回。"""
         for position, handler in enumerate(self._handlers["before_tool_call"], start=1):
+            previous_arguments = dict(event.arguments)
             succeeded, result = self._call("before_tool_call", handler, position, event, on_error)
-            if not succeeded or result is None:
+            if not succeeded:
+                event.arguments = previous_arguments
+                continue
+            if result is None:
                 continue
             if not isinstance(result, Mapping):
+                event.arguments = previous_arguments
                 self._report_invalid_result(
                     "before_tool_call", handler, position, event, result, on_error
                 )
@@ -147,6 +152,7 @@ class EventBus:
             previous = event.observation
             succeeded, result = self._call("after_tool_result", handler, position, event, on_error)
             if not succeeded:
+                event.observation = previous
                 continue
             candidate = event.observation if result is None else result
             if not isinstance(candidate, str):
@@ -169,6 +175,7 @@ class EventBus:
             previous = [dict(message) for message in event.messages]
             succeeded, result = self._call("before_llm_request", handler, position, event, on_error)
             if not succeeded:
+                event.messages = previous
                 continue
             candidate = event.messages if result is None else result
             if not _valid_messages(candidate):
