@@ -106,10 +106,29 @@ ignore = [
   "RUF003",
 ]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# 分层契约（TID251）。依赖必须单向向下，CLI 是最外层的组装者，不是被复用的库：
+#   clients ← 不依赖任何其他 dm_agent 子包
+#   tools   ← 只依赖 clients
+#   core    ← 依赖 clients / tools / memory / prompts，禁止依赖 cli
+#   cli     ← 可以依赖任何层
+"dm_agent.cli".msg = "core / tools / clients / memory / evals / benchmarks / tracing 层不得依赖 CLI 层；CLI 是最外层组装者。需要共享的逻辑请下移到对应的层。"
+# 防止顶级 main 模块回归：它曾经通过 py-modules = ["main"] 被装进 site-packages 顶层，
+# 污染用户命名空间（见 d763fc8）。除根目录那个薄转发自身外，任何地方都不该 import 它。
+"main".msg = "不要 import 顶级 main 模块（它只是 dm_agent.cli 的薄转发）；直接用 dm_agent.cli。"
+
 [tool.ruff.lint.per-file-ignores]
 # BaseSkill.on_activate / on_deactivate 是 template method 模式下的「可选生命周期钩子」，
 # 空实现即为有意的默认行为。B027 建议加 @abstractmethod，那会强制所有子类实现，属于改行为。
 "dm_agent/skills/base.py" = ["B027"]
+# 分层契约（上面的 banned-api）的三类合法例外：
+#   1. cli 包内部互相依赖本就是允许的。ruff 会把相对导入 from .ui import UI 解析成绝对的
+#      dm_agent.cli.ui.UI 再做匹配，所以改写成相对导入并不能绕过，必须在这里显式豁免。
+#   2. 根目录 main.py 就是那个薄转发入口，它的职责正是 import dm_agent.cli。
+#   3. 测试需要直接触达 CLI 内部符号，断言参数解析与 agent 装配行为。
+"dm_agent/cli/**" = ["TID251"]
+"main.py" = ["TID251"]
+"tests/**" = ["TID251"]
 
 [tool.mypy]
 python_version = "3.10"
