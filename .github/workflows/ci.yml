@@ -23,40 +23,51 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v9
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      # uv.lock 必须与 pyproject.toml 保持同步：改了依赖却忘记重新 uv lock 时，
+      # 这一步直接 fail，而不是让后续步骤装出一份与锁文件不符的依赖。
+      - name: Verify lockfile is up to date
+        run: uv lock --check
+
+      # --frozen：严格按 uv.lock 安装，不做任何重解析。
+      # 这是可复现构建的关键——任意两次 CI run 装到的依赖版本完全一致。
+      - name: Install package from lockfile
+        run: uv sync --frozen --extra dev
 
       - name: Compile Python sources
-        run: python -m compileall dm_agent main.py
+        run: uv run --frozen python -m compileall dm_agent main.py
 
       - name: Run tests
-        run: python -m pytest
+        run: uv run --frozen python -m pytest
 
       - name: Run deterministic eval smoke test
-        run: python -m dm_agent.evals.cli --variant full --task direct_finish
+        run: uv run --frozen python -m dm_agent.evals.cli --variant full --task direct_finish
 
       - name: Run full deterministic eval suite with quality gate
         run: |
-          python -m dm_agent.evals.cli --output eval_reports/ci-report.json
-          python -m dm_agent.evals.gate eval_reports/ci-report.json --min-success-rate 1.0
+          uv run --frozen python -m dm_agent.evals.cli --output eval_reports/ci-report.json
+          uv run --frozen python -m dm_agent.evals.gate eval_reports/ci-report.json --min-success-rate 1.0
 
       - name: Guard benchmark manifests against silent task drift
         run: |
-          python -m dm_agent.benchmarks.cli --suite coding --manifest-only eval_reports/ci-manifest-coding.json
-          python -m dm_agent.benchmarks.cli --suite maintenance --manifest-only eval_reports/ci-manifest-maintenance.json
-          python -m dm_agent.benchmarks.manifest_diff bench_reports/manifest-baseline-coding.json eval_reports/ci-manifest-coding.json
-          python -m dm_agent.benchmarks.manifest_diff bench_reports/manifest-baseline-maintenance.json eval_reports/ci-manifest-maintenance.json
+          uv run --frozen python -m dm_agent.benchmarks.cli --suite coding --manifest-only eval_reports/ci-manifest-coding.json
+          uv run --frozen python -m dm_agent.benchmarks.cli --suite maintenance --manifest-only eval_reports/ci-manifest-maintenance.json
+          uv run --frozen python -m dm_agent.benchmarks.manifest_diff bench_reports/manifest-baseline-coding.json eval_reports/ci-manifest-coding.json
+          uv run --frozen python -m dm_agent.benchmarks.manifest_diff bench_reports/manifest-baseline-maintenance.json eval_reports/ci-manifest-maintenance.json
 
       - name: List coding benchmark tasks
-        run: python -m dm_agent.benchmarks.cli --list
+        run: uv run --frozen python -m dm_agent.benchmarks.cli --list
 
       - name: Lint
-        run: python -m ruff check .
+        run: uv run --frozen python -m ruff check .
 
       - name: Format check
-        run: python -m black --check .
+        run: uv run --frozen python -m black --check .
 
       - name: Type check
-        run: python -m mypy dm_agent
+        run: uv run --frozen python -m mypy dm_agent

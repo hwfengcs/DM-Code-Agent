@@ -28,7 +28,12 @@ python -m dm_agent.evals.cli --variant full --task direct_finish
 python -m dm_agent.benchmarks.cli --suite maintenance --list
 python -m ruff check .
 python -m black --check .
+python -m mypy dm_agent
 ```
+
+CI installs from `uv.lock` (`uv sync --frozen --extra dev`) and runs the same commands via
+`uv run --frozen`. If you change dependencies in `pyproject.toml`, re-run `uv lock` and commit
+the updated `uv.lock` — CI fails on `uv lock --check` otherwise.
 
 ## Important Modules
 
@@ -44,5 +49,9 @@ python -m black --check .
 
 - Python 3.10+.
 - Black line length: 100.
-- Ruff currently checks high-signal syntax/import issues.
+- Ruff lints with `E`, `F`, `I`, `UP`, `B`, `SIM`, `TID`, `RUF`. `E501` and `RUF001`-`RUF003`
+  are disabled on purpose (reasons documented in `pyproject.toml`); do not add `# noqa` to
+  source files — disable a rule in config with a written justification instead.
+- mypy runs over `dm_agent`; `dm_agent.tools.*` and `dm_agent.clients.*` additionally enforce
+  `disallow_untyped_defs`. New code in those two packages must be fully annotated.
 - Keep tests focused on behavior and avoid brittle stdout assertions unless validating CLI UX.
