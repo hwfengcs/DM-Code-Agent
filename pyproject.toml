@@ -141,3 +141,24 @@ module = [
   "dm_agent.benchmarks.swebench_lite.runner",
 ]
 disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+# colorama 0.4.6 不随包提供 py.typed，本项目只用到 Fore / Style / init 三个符号。
+# 改装 types-colorama 也消不掉下面那条 no-redef（降级分支必须重定义同名类），收益为零，
+# 故不引入新依赖，直接跳过对 colorama 自身的类型解析。
+module = ["colorama"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# dm_agent.cli.ui 是「rich / colorama 可选依赖降级」的集中地，两个错误码各有唯一根因，
+# 且都源自 mypy 表达不了的运行时不变式（这些代码在拆分前住在包外的 main.py 里，从未被检查）：
+#   1. no-redef：rich / colorama 缺失时，except ImportError 分支必须重定义同名的
+#      Fore / Style 空常量类，否则全部 UI.paint 调用点都要按依赖是否存在分叉。
+#      这是可选依赖的标准降级写法，无法用别名或 Protocol 消除。
+#   2. assignment：RICH_CONSOLE 在 try 分支是 Console、except 分支是 None，运行时由
+#      UI.rich_enabled() 守卫，mypy 读不出这个跨函数不变式；print_menu 的 badge 在 rich
+#      分支是 Text、降级分支是 str，而 Text 在降级路径上根本没被导入，写不出 Text | str。
+# 放宽范围收到最窄：仅这一个模块、仅这两个错误码。arg-type 等高信号检查全部保持生效
+# （ask() 里的 prompt_kwargs 就是宁可加显式标注、也不放宽 arg-type 的例子）。
+module = ["dm_agent.cli.ui"]
+disable_error_code = ["no-redef", "assignment"]

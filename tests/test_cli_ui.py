@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from dm_agent import Tool
-from main import (
+from dm_agent.cli import (
     Config,
     create_agent,
     create_step_callback,
@@ -137,7 +137,7 @@ def test_compact_step_callback_is_low_noise(capsys):
 
 
 def test_cli_advanced_features_default_off(monkeypatch):
-    monkeypatch.setattr("main.load_config_from_file", lambda: {})
+    monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
 
     args = parse_args(["do maintenance"])
 
@@ -152,7 +152,7 @@ def test_cli_advanced_features_default_off(monkeypatch):
 
 
 def test_cli_advanced_features_wire_into_agent(monkeypatch):
-    monkeypatch.setattr("main.load_config_from_file", lambda: {})
+    monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
     args = parse_args(
         [
             "do maintenance",
@@ -193,7 +193,7 @@ def test_cli_advanced_features_wire_into_agent(monkeypatch):
 
 
 def test_cli_advanced_feature_validation(monkeypatch):
-    monkeypatch.setattr("main.load_config_from_file", lambda: {})
+    monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
 
     bad_trials = parse_args(["task", "--max-trials", "0"])
     assert "--max-trials" in validate_feature_args(bad_trials)

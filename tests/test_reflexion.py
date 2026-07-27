@@ -182,7 +182,7 @@ def test_swebench_runner_reflexion_retries_after_hidden_failure(
 
 
 def test_reflexion_memory_file_roundtrip(tmp_path):
-    from main import load_reflexion_memory_file, save_reflexion_memory_file
+    from dm_agent.cli import load_reflexion_memory_file, save_reflexion_memory_file
 
     path = tmp_path / "lessons.json"
     memory = EpisodicMemory()
