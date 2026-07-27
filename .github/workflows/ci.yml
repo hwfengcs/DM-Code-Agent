@@ -57,3 +57,6 @@ jobs:
 
       - name: Format check
         run: python -m black --check .
+
+      - name: Type check
+        run: python -m mypy dm_agent

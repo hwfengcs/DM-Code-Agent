@@ -15,7 +15,7 @@ from contextlib import contextmanager, redirect_stdout
 from dataclasses import replace
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import CriticAgent, ReactAgent
@@ -279,11 +279,16 @@ def run_command(command: Sequence[str], cwd: Path, *, timeout: int = 30) -> Comm
             duration_seconds=time.perf_counter() - started_at,
         )
     except subprocess.TimeoutExpired as exc:
+        # 上面以 text=True 启动子进程，超时异常携带的 stdout/stderr 运行时必为 str；
+        # typeshed 对 TimeoutExpired 统一标注为 bytes | None，故此处用 cast 声明实际类型
+        # （cast 是运行时空操作，不改变任何行为）。
+        timed_out_stdout = cast("str | None", exc.stdout)
+        timed_out_stderr = cast("str | None", exc.stderr)
         return CommandResult(
             command=resolved,
             returncode=124,
-            stdout=_tail(exc.stdout or ""),
-            stderr=_tail((exc.stderr or "") + f"\nCommand timed out after {timeout}s"),
+            stdout=_tail(timed_out_stdout or ""),
+            stderr=_tail((timed_out_stderr or "") + f"\nCommand timed out after {timeout}s"),
             duration_seconds=time.perf_counter() - started_at,
         )
 
@@ -394,11 +399,11 @@ def summarize_benchmark_results(
 
     hidden_passes = [result for result in results if result.hidden_test.returncode == 0]
     completed = [result for result in results if result.metadata.get("status") == "success"]
-    successes = sum(1 for result in results if result.success)
+    success_count = sum(1 for result in results if result.success)
     summary = {
         "total_runs": len(results),
-        "overall_pass_rate": (successes / len(results) if results else 0.0),
-        "overall_pass_rate_ci_95": _wilson_interval(successes, len(results)),
+        "overall_pass_rate": (success_count / len(results) if results else 0.0),
+        "overall_pass_rate_ci_95": _wilson_interval(success_count, len(results)),
         "overall_hidden_test_pass_rate": len(hidden_passes) / len(results) if results else 0.0,
         "overall_hidden_test_pass_rate_ci_95": _wilson_interval(len(hidden_passes), len(results)),
         "overall_agent_completion_rate": len(completed) / len(results) if results else 0.0,
@@ -1077,11 +1082,11 @@ def _patch_fingerprint(
         return ""
     payload = {}
     for path in changed_files:
-        before_content = before.get(path)
-        after_content = after.get(path)
+        # 用 before[path] 而非 before.get(path)：条件分支已保证键存在，取值完全等价，
+        # 但下标取值能让类型检查器看到值类型是 bytes 而非 bytes | None。
         payload[path] = {
-            "before": (hashlib.sha256(before_content).hexdigest() if path in before else None),
-            "after": hashlib.sha256(after_content).hexdigest() if path in after else None,
+            "before": (hashlib.sha256(before[path]).hexdigest() if path in before else None),
+            "after": hashlib.sha256(after[path]).hexdigest() if path in after else None,
         }
     return _stable_hash(payload)
 

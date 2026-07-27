@@ -179,7 +179,7 @@ def _module_name(root: Path, path: Path) -> str:
     return ".".join(parts)
 
 
-def _index_symbols(tree: ast.AST, path: str, module: str) -> list[dict[str, Any]]:
+def _index_symbols(tree: ast.Module, path: str, module: str) -> list[dict[str, Any]]:
     symbols: list[dict[str, Any]] = []
     for node in tree.body:
         if isinstance(node, ast.ClassDef):

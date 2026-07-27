@@ -51,6 +51,8 @@ dev = [
   "pytest-cov>=5.0.0",
   "ruff>=0.6.0",
   "black>=24.0.0",
+  "mypy>=1.11.0",
+  "types-requests>=2.31.0",
   "build>=1.2.0",
 ]
 swebench = [
@@ -111,3 +113,31 @@ ignore = [
 # BaseSkill.on_activate / on_deactivate 是 template method 模式下的「可选生命周期钩子」，
 # 空实现即为有意的默认行为。B027 建议加 @abstractmethod，那会强制所有子类实现，属于改行为。
 "dm_agent/skills/base.py" = ["B027"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+# 全仓库先只做「基础检查」：不强制补全标注，只抓已标注代码里的真实类型错误。
+# 严格档位（disallow_untyped_defs）当前只对最稳定、依赖最少的 tools 与 clients 开启，
+# 后续再逐模块扩大，避免一次性产生几千个无人处理的错误。
+
+[[tool.mypy.overrides]]
+module = ["dm_agent.tools.*", "dm_agent.clients.*"]
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# 已知技术债（唯一根因）：ReactAgent / CriticAgent / Reflector 的 client 形参标注为具体基类
+# BaseLLMClient，而 eval 与 benchmark 侧注入的是鸭子类型假客户端（ScriptedLLMClient、
+# UsageTrackingClient）。这两个类不能改为继承 BaseLLMClient——后者是 ABC 且构造函数强制
+# 要求非空 api_key，继承会摧毁「确定性 eval 无需 API key 即可回归」这一核心设计。
+# 正解是把 client 形参改为结构化类型（Protocol），属于内核接口调整，留待分层重构那一步。
+# 放宽范围收到最窄：仅这 4 个模块、仅 arg-type 一个错误码，其余检查全部保持生效。
+module = [
+  "dm_agent.evals.runner",
+  "dm_agent.evals.real_runner",
+  "dm_agent.benchmarks.runner",
+  "dm_agent.benchmarks.swebench_lite.runner",
+]
+disable_error_code = ["arg-type"]

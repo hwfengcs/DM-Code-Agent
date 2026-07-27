@@ -542,7 +542,11 @@ class ContextCompressor:
             {"role": "user", "content": digest},
         ]
         try:
-            summary = str(self.client.respond(prompt, temperature=0.0)).strip()
+            # 调用点已用 `self.client is not None` 守卫，这里仅为收窄类型。
+            client = self.client
+            if client is None:
+                return
+            summary = str(client.respond(prompt, temperature=0.0)).strip()
         except Exception:
             self.llm_summary_error_count += 1
             return

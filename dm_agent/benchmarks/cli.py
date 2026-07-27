@@ -414,11 +414,11 @@ def main(argv: Any = None) -> int:
         return 0
 
     if args.list:
-        tasks = [task.to_public_dict() for task in get_benchmark_tasks(args.suite)]
-        variants = [variant.__dict__ for variant in BENCH_VARIANTS]
+        listed_tasks = [task.to_public_dict() for task in get_benchmark_tasks(args.suite)]
+        listed_variants = [variant.__dict__ for variant in BENCH_VARIANTS]
         print(
             json.dumps(
-                {"suite": args.suite, "tasks": tasks, "variants": variants},
+                {"suite": args.suite, "tasks": listed_tasks, "variants": listed_variants},
                 indent=2,
                 ensure_ascii=False,
             )

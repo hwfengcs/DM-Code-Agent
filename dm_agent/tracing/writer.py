@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from dm_agent.memory.context_budget import estimate_tokens_from_chars
 
@@ -32,7 +32,7 @@ class TraceWriter:
         self.path = Path(path)
         self.capture_llm_io = capture_llm_io
         self.run_id = uuid.uuid4().hex
-        self._handle = None
+        self._handle: TextIO | None = None
         self._started = False
         self._ended = False
 

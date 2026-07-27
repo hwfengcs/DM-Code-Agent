@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from .base_client import BaseLLMClient
 from .claude_client import ClaudeClient
 from .deepseek_client import DeepSeekClient
@@ -16,7 +18,7 @@ def create_llm_client(
     model: str | None = None,
     base_url: str | None = None,
     timeout: int = 600,
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseLLMClient:
     """创建 LLM 客户端实例。
 
@@ -35,6 +37,9 @@ def create_llm_client(
         ValueError: 如果提供商不支持
     """
     provider_lower = provider.lower()
+    # 各分支的参数集合形状不同（键与值类型均不一致），统一标注为 dict[str, Any]，
+    # 使 **params 展开时不会因联合值类型被推断为 object 而误报 arg-type。
+    params: dict[str, Any]
 
     if provider_lower == "deepseek":
         params = {

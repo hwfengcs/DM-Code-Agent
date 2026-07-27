@@ -1044,33 +1044,39 @@ class ReactAgent:
 
     def _apply_skills_for_task(self, task: str) -> list[str]:
         """根据任务自动选择并激活相关技能。"""
+        # 调用点（_run_once）已用 `if self.skill_manager:` 守卫，此处的 None 分支不可达；
+        # 取局部变量是为了让类型检查器完成收窄，同时避免管理器缺失时抛 AttributeError。
+        manager = self.skill_manager
+        if manager is None:
+            return []
+
         # 恢复基础状态，避免上一次任务的技能残留
         self.system_prompt = self._base_system_prompt
         self.tools = dict(self._base_tools)
 
         # 自动选择
-        selected = self.skill_manager.select_skills_for_task(task)
+        selected = manager.select_skills_for_task(task)
         if not selected:
-            self.skill_manager.deactivate_all()
+            manager.deactivate_all()
             return []
 
         # 激活选中技能
-        self.skill_manager.activate_skills(selected)
+        manager.activate_skills(selected)
 
         # 追加技能 prompt
-        prompt_addition = self.skill_manager.get_active_prompt_additions()
+        prompt_addition = manager.get_active_prompt_additions()
         if prompt_addition:
             self.system_prompt += prompt_addition
 
         # 合并技能工具
-        skill_tools = self.skill_manager.get_active_tools()
+        skill_tools = manager.get_active_tools()
         for tool in skill_tools:
             self.tools[tool.name] = tool
 
         # 打印激活信息
         display_names = []
         for name in selected:
-            skill = self.skill_manager.skills.get(name)
+            skill = manager.skills.get(name)
             if skill:
                 display_names.append(skill.get_metadata().display_name)
         if display_names:

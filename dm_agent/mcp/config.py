@@ -72,7 +72,7 @@ class MCPServerConfig:
             >>> "command" in data and "args" in data
             True
         """
-        result = {
+        result: dict[str, Any] = {
             "command": self.command,
             "args": self.args,
         }

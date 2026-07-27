@@ -213,6 +213,10 @@ def edit_file(arguments: dict[str, Any]) -> str:
             _atomic_write_text(path, "".join(lines))
             return f"已删除 {path} 的第 {line_start}-{line_end} 行。"
 
+    # 函数开头的白名单校验已保证 operation 仅为三者之一，此分支运行时不可达；
+    # 保留兜底是为了在未来新增 operation 却漏写分支时立即报错，而不是静默返回 None。
+    raise ValueError(f"未处理的 operation: {operation}")
+
 
 def search_in_file(arguments: dict[str, Any]) -> str:
     """在文件中搜索文本或正则表达式模式"""

@@ -150,7 +150,11 @@ class SelfConsistencyRunner:
         **trial_kwargs: Any,
     ) -> SelfConsistencyCandidate:
         if self.strategy == "critic_score":
-            review = self.critic.review(
+            # 构造函数已校验「critic_score 必须带 critic」，此 None 分支不可达，仅用于收窄类型。
+            critic = self.critic
+            if critic is None:
+                raise ValueError("critic_score strategy requires a critic")
+            review = critic.review(
                 task=task,
                 candidate_answer=str(result.get("final_answer", "")),
                 metadata=result.get("metadata", {}),

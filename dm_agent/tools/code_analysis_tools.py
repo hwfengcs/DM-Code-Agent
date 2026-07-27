@@ -114,7 +114,7 @@ def _extract_classes(tree: ast.AST) -> list[dict[str, Any]]:
     return classes
 
 
-def _extract_functions(tree: ast.AST) -> list[dict[str, Any]]:
+def _extract_functions(tree: ast.Module) -> list[dict[str, Any]]:
     """提取顶层函数定义"""
     functions = []
     for node in tree.body:  # 只提取顶层函数
@@ -146,7 +146,7 @@ def _extract_functions(tree: ast.AST) -> list[dict[str, Any]]:
     return functions
 
 
-def _extract_global_variables(tree: ast.AST) -> list[dict[str, Any]]:
+def _extract_global_variables(tree: ast.Module) -> list[dict[str, Any]]:
     """提取全局变量"""
     variables = []
     for node in tree.body:
