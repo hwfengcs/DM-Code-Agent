@@ -6,12 +6,14 @@ from pathlib import Path
 import pytest
 
 from dm_agent.cli import parse_args
+from dm_agent.core import ReactAgent
 from dm_agent.extensions import (
     ExtensionDiscoveryError,
     ProjectTrustDecision,
     ProjectTrustStore,
     discover_extensions,
 )
+from dm_agent.tools import Tool
 
 
 class FakeEntryPoint:
@@ -22,6 +24,14 @@ class FakeEntryPoint:
 
     def load(self):
         return self._setup
+
+
+class ScriptedClient:
+    def __init__(self, responses: list[str]) -> None:
+        self.responses = list(responses)
+
+    def respond(self, messages, **extra):
+        return self.responses.pop(0)
 
 
 def _write_tool_extension(path: Path, result: str, *, name: str = "priority_tool") -> None:
@@ -170,6 +180,49 @@ def test_explicit_extension_failure_is_fatal(monkeypatch, tmp_path):
             home_dir=tmp_path / "home",
             explicit_paths=[invalid],
         )
+
+
+def test_dangerous_shell_example_loads_and_blocks_only_unsafe_commands(tmp_path):
+    extension = Path(__file__).parents[1] / "examples" / "block_dangerous_shell.py"
+    discovered = discover_extensions(
+        project_root=tmp_path / "project",
+        home_dir=tmp_path / "home",
+        explicit_paths=[extension],
+    )
+    executed: list[str] = []
+
+    def run_shell(arguments):
+        command = str(arguments.get("command", ""))
+        executed.append(command)
+        return f"executed:{command}"
+
+    responses = [
+        json.dumps(
+            {"thought": "unsafe", "action": "run_shell", "action_input": {"command": "rm -rf /"}}
+        ),
+        json.dumps(
+            {
+                "thought": "safe",
+                "action": "run_shell",
+                "action_input": {"command": "echo hello"},
+            }
+        ),
+        json.dumps({"thought": "done", "action": "finish", "action_input": "complete"}),
+    ]
+    agent = ReactAgent(
+        ScriptedClient(responses),
+        [Tool("run_shell", "Run a shell command", run_shell)],
+        enable_planning=False,
+        enable_compression=False,
+        event_bus=discovered.registry.create_event_bus(),
+    )
+
+    result = agent.run("验证危险命令守卫", max_steps=3)
+
+    assert executed == ["echo hello"]
+    assert result["steps"][0]["observation"] == "安全策略拒绝执行危险 shell 命令"
+    assert result["steps"][1]["observation"] == "executed:echo hello"
+    assert result["metadata"]["status"] == "success"
 
 
 def test_cli_extension_flags(monkeypatch):

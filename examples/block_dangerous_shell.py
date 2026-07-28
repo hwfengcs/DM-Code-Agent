@@ -1,6 +1,7 @@
-"""用 before_tool_call 拦截危险 shell 命令的最小示例。"""
+"""用 before_tool_call 拦截危险 shell 命令的最小扩展示例。"""
 
-from dm_agent.core import BeforeToolCallEvent, ReactAgent
+from dm_agent.core import BeforeToolCallEvent
+from dm_agent.extensions import ExtensionAPI
 
 DANGEROUS_MARKERS = (
     "rm -rf",
@@ -20,9 +21,5 @@ def block_dangerous_shell(event: BeforeToolCallEvent) -> dict[str, object] | Non
     return None
 
 
-def install(agent: ReactAgent) -> None:
-    agent.event_bus.on(
-        "before_tool_call",
-        block_dangerous_shell,
-        name="example.block_dangerous_shell",
-    )
+def setup(api: ExtensionAPI) -> None:
+    api.on("before_tool_call", block_dangerous_shell)
