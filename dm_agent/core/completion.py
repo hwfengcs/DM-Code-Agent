@@ -71,6 +71,19 @@ class CompletionGate:
         return False, str(block["reason"])
 
 
+def build_run_result(
+    final_answer: str, steps: Sequence[Step], metadata: dict[str, Any]
+) -> dict[str, Any]:
+    """组装一次 run 的返回值；成功时顺带补一段完成摘要。"""
+    if metadata.get("status") == "success":
+        metadata["completion_summary"] = build_completion_summary(final_answer, steps)
+    return {
+        "final_answer": final_answer,
+        "steps": [step.__dict__ for step in steps],
+        "metadata": metadata,
+    }
+
+
 def format_final_answer(action_input: Any) -> str:
     """把 ``finish`` 动作的入参格式化成最终答案文本。"""
     if isinstance(action_input, str):

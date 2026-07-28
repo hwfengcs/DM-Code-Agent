@@ -16,7 +16,7 @@ from dm_agent.tools.base import Tool
 
 from .capabilities import AgentCapability, CapabilityContext
 from .checkpoint import RunCheckpoint
-from .completion import CompletionGate, build_completion_summary, format_final_answer
+from .completion import CompletionGate, build_run_result, format_final_answer
 from .context_window import ContextWindow
 from .critic import CriticAgent
 from .events import (
@@ -50,23 +50,20 @@ __all__ = ["ReactAgent", "Step"]
 
 
 class ReactAgent:
-    """
-    ReAct Agent 实现了推理(Reasoning)和行动(Action)的循环模式，允许智能体通过与环境交互来解决问题。
-    它结合了任务规划、上下文压缩等功能，提供了一个完整的智能体执行框架。
+    """ReAct（推理 + 行动）循环的内核。
 
-    Attributes:
-        client (BaseLLMClient): 用于与大语言模型通信的客户端
-        tools (Dict[str, Tool]): 可用工具的字典映射，键为工具名称
-        tools_list (List[Tool]): 工具列表，用于规划器初始化
-        max_steps (int): 最大执行步骤数
-        temperature (float): LLM生成文本的温度参数
-        system_prompt (str): 系统提示词
-        step_callback (Optional[Callable[[int, Step], None]]): 步骤执行回调函数
-        enable_planning (bool): 是否启用任务规划功能
-        enable_compression (bool): 是否启用上下文压缩功能
-        conversation_history (List[Dict[str, str]]): 对话历史记录
-        planner (Optional[TaskPlanner]): 任务规划器实例
-        compressor (Optional[ContextCompressor]): 上下文压缩器实例
+    职责只剩三件：装配协作者、跑主循环、维护对话历史。其余能力各自住在
+    独立模块里，本类通过它们完成一步的各个环节：
+
+    - ``core.context_window``：构造发给 LLM 的消息（按需压缩旧上下文）
+    - ``core.response_parser``：容错解析模型响应
+    - ``core.tool_invoker``：工具调用链（校验 → 钩子 → 备份 → 执行 → 截断）
+    - ``core.completion``：完成判定与结果格式化
+    - ``core.replan``：失败后的重规划与失败签名
+    - ``core.persistence``：checkpoint 存取与写前备份
+
+    可选能力（Critic、熔断、Reflexion）不住在这里，而是通过 ``core.events``
+    的生命周期钩子接入，见 ``core.capabilities``。
     """
 
     # 非 adaptive 默认路径的 replan 成本护栏（max_replans>=0 时以其为准）。
@@ -105,31 +102,14 @@ class ReactAgent:
         circuit_breaker_cooldown: int = 5,
         event_bus: EventBus | None = None,
     ) -> None:
-        """
-        初始化 ReactAgent 实例
+        """初始化 ReactAgent。
 
-        Args:
-            client (BaseLLMClient): LLM客户端实例
-            tools (List[Tool]): 可用工具列表
-            max_steps (int, optional): 最大执行步骤数，默认为200
-            temperature (float, optional): LLM生成文本的温度参数，默认为0.0
-            system_prompt (Optional[str], optional): 系统提示词，默认为None，将使用默认构建的提示词
-            step_callback (Optional[Callable[[int, Step], None]], optional):
-                步骤执行回调函数，可用于实时监控执行过程，默认为None
-            enable_planning (bool, optional): 是否启用任务规划功能，默认为True
-            enable_compression (bool, optional): 是否启用上下文压缩功能，默认为True
+        ``tools`` 之外的参数都有可用的默认值。带 ``enable_`` 前缀的行为类开关默认
+        关闭，基础设施护栏（观察截断、token 预算、read-before-edit 守卫）默认开启；
+        取值口径与 ``dm-agent`` CLI 的同名参数一致。
 
         Raises:
-            ValueError: 当提供的工具列表为空时抛出异常
-
-        Examples:
-            >>> from dm_agent.clients import OpenAIClient
-            >>> from dm_agent.tools import default_tools
-            >>>
-            >>> client = OpenAIClient(api_key="your-api-key")
-            >>> tools = default_tools()
-            >>> agent = ReactAgent(client, tools, max_steps=50)
-            >>> result = agent.run("分析项目代码结构")
+            ValueError: 工具列表为空，或 ``max_trials`` 小于 1
         """
         if not tools:
             raise ValueError("必须为 ReactAgent 提供至少一个工具。")
@@ -241,8 +221,22 @@ class ReactAgent:
 
         # 可选能力装配：显式传入的 capabilities 之后，追加旧开关等价的内置能力。
         # 注册顺序即钩子执行顺序，能力先于内核内置守卫注册，与迁移前的判定次序一致。
+        # 延迟导入：extensions 会反向 import core，模块级导入会与 core.agent 相互缠绕。
+        from dm_agent.extensions.capabilities import builtin_capabilities_for
+
         self.capabilities: list[AgentCapability] = list(capabilities)
-        self.capabilities.extend(self._builtin_capabilities())
+        self.capabilities.extend(
+            builtin_capabilities_for(
+                enable_circuit_breaker=enable_circuit_breaker,
+                circuit_breaker_threshold=circuit_breaker_threshold,
+                circuit_breaker_cooldown=circuit_breaker_cooldown,
+                critic=critic,
+                enable_reflexion=enable_reflexion,
+                reflexion_memory=self.reflexion_memory,
+                max_trials=max_trials,
+                reflector=self.reflector,
+            )
+        )
         capability_context = CapabilityContext(
             event_bus=self.event_bus,
             client_for=client_for,
@@ -263,38 +257,6 @@ class ReactAgent:
             self._edit_guard.after_tool_result,
             name="builtin.read_before_edit_ledger",
         )
-
-    def _builtin_capabilities(self) -> list[AgentCapability]:
-        """把仍然保留的旧构造参数翻译成等价的内置能力实例。
-
-        过渡策略：``--enable-critic`` 等 CLI 开关及其对应的构造参数语义完全不变，
-        只是内部改为「安装对应的内置扩展」。
-        """
-        from dm_agent.extensions.capabilities import (
-            CircuitBreakerGate,
-            CriticGate,
-            ReflexionLoop,
-        )
-
-        builtin: list[AgentCapability] = []
-        if self.enable_circuit_breaker:
-            builtin.append(
-                CircuitBreakerGate(
-                    threshold=self.circuit_breaker_threshold,
-                    cooldown_steps=self.circuit_breaker_cooldown,
-                )
-            )
-        if self.critic is not None:
-            builtin.append(CriticGate(self.critic))
-        if self.enable_reflexion:
-            builtin.append(
-                ReflexionLoop(
-                    memory=self.reflexion_memory,
-                    max_trials=self.max_trials,
-                    reflector=self.reflector,
-                )
-            )
-        return builtin
 
     def run(
         self,
@@ -345,6 +307,17 @@ class ReactAgent:
         if self.trace_writer:
             self.trace_writer.record("hook_error", failure.to_trace_payload())
 
+    def _note_observation(self, observation: str) -> None:
+        """把一条观察作为 user 消息投递回对话历史。"""
+        self.conversation_history.append({"role": "user", "content": f"观察：{observation}"})
+
+    def _publish_step(self, step: Step, step_num: int) -> None:
+        """一步收尾：实时回调 + trace 落步。"""
+        if self.step_callback:
+            self.step_callback(step_num, step)
+        if self.trace_writer:
+            self.trace_writer.record_step(step_number=step_num, step=step)
+
     def _run_once(
         self,
         task: str,
@@ -354,28 +327,15 @@ class ReactAgent:
         checkpoint_path: Path | None = None,
         resume_state: RunCheckpoint | None = None,
     ) -> dict[str, Any]:
-        """
-        执行指定任务
+        """跑完整的一轮 ReAct 循环：规划 → 推理 → 行动 → 观察，直到完成或步数耗尽。
 
-        该方法实现了完整的ReAct循环，包括任务规划、推理、行动和观察等阶段。它支持上下文压缩以
-        控制token消耗，并提供回调机制用于监控执行过程。
-
-        Args:
-            task (str): 要执行的任务描述
-            max_steps (Optional[int], optional): 覆盖默认的最大步骤数
+        ``run`` 负责多次尝试之间的编排，本方法只管一次尝试。
 
         Returns:
-            result (Dict[str, Any]): 包含最终答案和执行步骤的字典
-                    - final_answer (str): 任务执行的最终结果
-                    - steps (List[Dict]): 执行的所有步骤信息列表
+            含 ``final_answer`` / ``steps`` / ``metadata`` 三个键的结果字典
 
         Raises:
-            ValueError: 当任务不是非空字符串时抛出异常
-
-        Examples:
-            >>> result = agent.run("帮我分析项目的代码结构")
-            >>> print(result["final_answer"])
-            '已成功分析项目代码结构...'
+            ValueError: 任务不是非空字符串
         """
         if not isinstance(task, str) or not task.strip():
             raise ValueError("任务必须是非空字符串。")
@@ -451,13 +411,7 @@ class ReactAgent:
             )
             if metadata.get("backup_count"):
                 print(f"[backup] 修改前的原文件备份目录：{metadata['backup_dir']}")
-            if metadata.get("status") == "success":
-                metadata["completion_summary"] = build_completion_summary(final_answer, steps)
-            result = {
-                "final_answer": final_answer,
-                "steps": [step.__dict__ for step in steps],
-                "metadata": metadata,
-            }
+            result = build_run_result(final_answer, steps, metadata)
             if self.trace_writer:
                 self.trace_writer.finish_run(result)
             return result
@@ -562,14 +516,8 @@ class ReactAgent:
                 steps.append(step)
 
                 # 将错误观察添加到历史记录
-                self.conversation_history.append(
-                    {"role": "user", "content": f"观察：{observation}"}
-                )
-
-                if self.step_callback:
-                    self.step_callback(step_num, step)
-                if self.trace_writer:
-                    self.trace_writer.record_step(step_number=step_num, step=step)
+                self._note_observation(observation)
+                self._publish_step(step, step_num)
                 if plan and self.planner and self.enable_adaptive_replanning:
                     plan = self._replan_after_failure(
                         task,
@@ -631,14 +579,9 @@ class ReactAgent:
                         {"role": "user", "content": f"任务完成：{final}"}
                     )
                 else:
-                    self.conversation_history.append(
-                        {"role": "user", "content": f"观察：{observation}"}
-                    )
+                    self._note_observation(observation)
 
-                if self.step_callback:
-                    self.step_callback(step_num, step)
-                if self.trace_writer:
-                    self.trace_writer.record_step(step_number=step_num, step=step)
+                self._publish_step(step, step_num)
                 if accepted:
                     return finish_result(final)
                 if plan and self.planner:
@@ -671,9 +614,7 @@ class ReactAgent:
                 steps.append(step)
 
                 # 将观察结果添加到历史记录
-                self.conversation_history.append(
-                    {"role": "user", "content": f"观察：{observation}"}
-                )
+                self._note_observation(observation)
 
                 if self.step_callback:
                     self.step_callback(step_num, step)
@@ -751,10 +692,7 @@ class ReactAgent:
             self.conversation_history.append({"role": "user", "content": tool_info})
 
             # 调用回调函数实时输出步骤
-            if self.step_callback:
-                self.step_callback(step_num, step)
-            if self.trace_writer:
-                self.trace_writer.record_step(step_number=step_num, step=step)
+            self._publish_step(step, step_num)
 
             if self._is_failure_observation(observation) and plan and self.planner:
                 plan = self._replan_after_failure(
