@@ -6,7 +6,7 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -17,11 +17,13 @@ from dm_agent.memory.context_compressor import ContextCompressor
 from dm_agent.prompts import build_code_agent_prompt
 from dm_agent.tools.base import Tool
 
+from .capabilities import AgentCapability, CapabilityContext
 from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
 from .circuit_breaker import STATE_OPEN, ToolCircuitBreaker
-from .critic import CriticAgent, CriticReview
+from .critic import CriticAgent
 from .events import (
     AfterToolResultEvent,
+    BeforeFinishEvent,
     BeforeToolCallEvent,
     EventBus,
     HookFailure,
@@ -109,6 +111,7 @@ class ReactAgent:
         enable_compression: bool = True,  # 是否启用上下文压缩
         skill_manager: Any | None = None,  # 技能管理器
         trace_writer: Any | None = None,
+        capabilities: Sequence[AgentCapability] = (),
         enable_reflexion: bool = False,
         max_trials: int = 3,
         reflector: Reflector | None = None,
@@ -212,16 +215,6 @@ class ReactAgent:
         # read-before-edit 守卫：edit_file 前必须读过目标文件，且写后需重读。
         self.enable_edit_guard = enable_edit_guard
         self._edit_guard = ReadBeforeEditGuard(enabled=enable_edit_guard, trace_writer=trace_writer)
-        self.event_bus.on(
-            "before_tool_call",
-            self._edit_guard.before_tool_call,
-            name="builtin.read_before_edit_guard",
-        )
-        self.event_bus.on(
-            "after_tool_result",
-            self._edit_guard.after_tool_result,
-            name="builtin.read_before_edit_ledger",
-        )
         # 工具熔断器（默认关）：同一 action+error 连续失败达到阈值后临时禁用。
         self.enable_circuit_breaker = enable_circuit_breaker
         self._circuit_breaker = (
@@ -250,13 +243,48 @@ class ReactAgent:
         self.reflector = reflector or (
             Reflector(client_for("reflexion")) if enable_reflexion else None
         )
-        if critic is not None:
-            critic.client = client_for("critic")
+        # critic 的 client 由 CriticGate 在 install 时接到 phase 包装客户端上。
         self.critic = critic
         self.enable_adaptive_replanning = enable_adaptive_replanning
         self.replan_policy = replan_policy or AdaptiveReplanPolicy()
         self.max_replans = max_replans
         self.enable_repeated_failure_policy_experiment = enable_repeated_failure_policy_experiment
+
+        # 可选能力装配：显式传入的 capabilities 之后，追加旧开关等价的内置能力。
+        # 注册顺序即钩子执行顺序，能力先于内核内置守卫注册，与迁移前的判定次序一致。
+        self.capabilities: list[AgentCapability] = list(capabilities)
+        self.capabilities.extend(self._builtin_capabilities())
+        capability_context = CapabilityContext(
+            event_bus=self.event_bus,
+            client_for=client_for,
+            trace_writer=trace_writer,
+        )
+        for capability in self.capabilities:
+            capability.install(capability_context)
+
+        self.event_bus.on(
+            "before_tool_call",
+            self._edit_guard.before_tool_call,
+            name="builtin.read_before_edit_guard",
+        )
+        self.event_bus.on(
+            "after_tool_result",
+            self._edit_guard.after_tool_result,
+            name="builtin.read_before_edit_ledger",
+        )
+
+    def _builtin_capabilities(self) -> list[AgentCapability]:
+        """把仍然保留的旧构造参数翻译成等价的内置能力实例。
+
+        过渡策略：``--enable-critic`` 等 CLI 开关及其对应的构造参数语义完全不变，
+        只是内部改为「安装对应的内置扩展」。
+        """
+        from dm_agent.extensions.capabilities import CriticGate
+
+        builtin: list[AgentCapability] = []
+        if self.critic is not None:
+            builtin.append(CriticGate(self.critic))
+        return builtin
 
     def run(
         self,
@@ -790,13 +818,14 @@ class ReactAgent:
             # 检查是否完成
             if action == "finish":
                 final = self._format_final_answer(action_input)
-                accepted, observation, _review = self._review_completion(
+                accepted, observation = self._gate_completion(
                     task=task,
                     completion_text=final,
                     steps=steps,
                     metadata=metadata,
                     step_num=step_num,
                     action=action,
+                    run_id=run_token,
                 )
                 step = Step(
                     thought=thought,
@@ -994,13 +1023,14 @@ class ReactAgent:
                                     },
                                 )
                         if action == "task_complete" and tool_succeeded:
-                            accepted, observation, _review = self._review_completion(
+                            accepted, observation = self._gate_completion(
                                 task=task,
                                 completion_text=str(observation),
                                 steps=steps,
                                 metadata=metadata,
                                 step_num=step_num,
                                 action=action,
+                                run_id=run_token,
                             )
                             if not accepted:
                                 error_kind = "critic_rejected"
@@ -1157,7 +1187,7 @@ class ReactAgent:
         )
         return "\n".join(lines)
 
-    def _review_completion(
+    def _gate_completion(
         self,
         *,
         task: str,
@@ -1166,83 +1196,22 @@ class ReactAgent:
         metadata: dict[str, Any],
         step_num: int,
         action: str,
-    ) -> tuple[bool, str, CriticReview | None]:
-        if self.critic is None:
-            return True, completion_text, None
-
-        try:
-            review = self.critic.review(
-                task=task,
-                candidate_answer=completion_text,
-                metadata=metadata,
-                steps=[step.__dict__ for step in steps],
-                failure_feedback=metadata.get("failure_reason", ""),
-            )
-        except Exception as exc:
-            metadata["critic_error"] = str(exc)
-            failure_observation = f"Critic review failed: {exc}"
-            if self.trace_writer:
-                self.trace_writer.record_critic_review(
-                    step_number=step_num,
-                    review={
-                        "action": action,
-                        "passed": False,
-                        "score": 0.0,
-                        "summary": failure_observation,
-                        "reasons": [str(exc)],
-                        "suggested_fixes": [],
-                        "error": type(exc).__name__,
-                    },
-                )
-            return False, failure_observation, None
-
-        metadata["critic_review_count"] += 1
-        metadata["critic_last_score"] = review.score
-        metadata["critic_last_passed"] = review.passed
-        if review.passed:
-            metadata["critic_pass_count"] += 1
-        else:
-            metadata["critic_fail_count"] += 1
-            metadata["critic_reject_count"] += 1
-            metadata["failure_reason"] = review.summary or (
-                review.reasons[0] if review.reasons else "Critic rejected completion"
-            )
-
-        if self.trace_writer:
-            self.trace_writer.record_critic_review(
-                step_number=step_num,
-                review=self._critic_review_trace_payload(review, action=action),
-            )
-
-        if review.passed:
-            return True, completion_text, review
-        return False, self._format_critic_observation(review, completion_text), review
-
-    @staticmethod
-    def _format_critic_observation(review: CriticReview, completion_text: str) -> str:
-        details = []
-        if review.summary:
-            details.append(review.summary)
-        if review.reasons:
-            details.append("Reasons: " + "; ".join(review.reasons))
-        if review.suggested_fixes:
-            details.append("Fixes: " + "; ".join(review.suggested_fixes))
-        details.append(f"Candidate completion: {completion_text}")
-        return "Critic rejected completion.\n" + "\n".join(details)
-
-    def _critic_review_trace_payload(self, review: CriticReview, *, action: str) -> dict[str, Any]:
-        payload = {
-            "passed": review.passed,
-            "score": review.score,
-            "summary": review.summary,
-            "reasons": list(review.reasons),
-            "suggested_fixes": list(review.suggested_fixes),
-            "action": action,
-        }
-        if self.trace_writer and getattr(self.trace_writer, "capture_llm_io", False):
-            payload["raw"] = review.raw
-            payload["metadata"] = review.metadata
-        return payload
+        run_id: str,
+    ) -> tuple[bool, str]:
+        """把完成候选交给 ``before_finish`` 链，返回 (是否放行, observation)。"""
+        event = BeforeFinishEvent(
+            task=task,
+            action=action,
+            completion_text=completion_text,
+            steps=[step.__dict__ for step in steps],
+            step_number=step_num,
+            run_id=run_id,
+            metadata=metadata,
+        )
+        block = self.event_bus.emit_before_finish(event, on_error=self._record_hook_error)
+        if block is None:
+            return True, completion_text
+        return False, str(block["reason"])
 
     def _parse_agent_response(self, raw: str) -> dict[str, Any]:
         """

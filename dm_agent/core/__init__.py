@@ -1,9 +1,11 @@
 """核心模块 - Agent 实现"""
 
 from .agent import ReactAgent, Step
+from .capabilities import AgentCapability, CapabilityContext
 from .critic import CriticAgent, CriticReview
 from .events import (
     AfterToolResultEvent,
+    BeforeFinishEvent,
     BeforeLLMRequestEvent,
     BeforeToolCallEvent,
     EventBus,
@@ -16,8 +18,11 @@ from .self_consistency import SelfConsistencyCandidate, SelfConsistencyRunner
 __all__ = [
     "AdaptiveReplanPolicy",
     "AfterToolResultEvent",
+    "AgentCapability",
+    "BeforeFinishEvent",
     "BeforeLLMRequestEvent",
     "BeforeToolCallEvent",
+    "CapabilityContext",
     "CriticAgent",
     "CriticReview",
     "EpisodicMemory",

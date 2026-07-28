@@ -14,7 +14,7 @@ agent = ReactAgent(client, tools, event_bus=bus)
 也可以先创建 Agent，再通过 `agent.event_bus.on(...)` 注册处理器。注册时建议显式传入
 稳定的 `name`；未传时会使用处理器的 `module + qualname`。
 
-## 三个核心事件
+## 核心事件
 
 ### `before_tool_call`
 
@@ -49,6 +49,19 @@ agent = ReactAgent(client, tools, event_bus=bus)
 消息处理发生在一次逻辑 `respond()` 调用前，不会因 provider 内部重试重复触发。主循环的
 `llm_call` trace 会记录实际发送的改写后消息统计；完整消息仍只在 `capture_llm_io` 开启时记录。
 
+### `before_finish`
+
+处理器收到 `BeforeFinishEvent`，其中包含 `task`、`action`（`finish` 或 `task_complete`）、
+`completion_text`、已执行的 `steps`、`step_number`、`run_id` 和本次 run 的 `metadata`。
+
+- 返回 `None` 表示放行。
+- 返回 `{"block": True, "reason": "..."}` 会否决这次完成：`reason` 成为该步骤的
+  observation，写回对话历史并参与失败判定，Agent 继续下一步。第一个否决生效，后续处理器不再执行。
+
+内置的 Critic 门禁（`--enable-critic`）就是注册在这个事件上的处理器。注意它在自身
+内部捕获异常并转成否决——事件总线的异常隔离会跳过失败的处理器，那等价于「放行」，
+与 Critic「审查失败即否决」的语义相反，所以这类守卫必须自己兜底。
+
 ## 异常隔离与 trace
 
 单个处理器抛异常或返回非法类型时，事件总线会跳过该结果并继续执行后续处理器，Agent run
@@ -65,6 +78,25 @@ agent = ReactAgent(client, tools, event_bus=bus)
 工具事件还会记录 `tool_name`，LLM 事件会记录 `phase`。默认不记录完整 arguments、messages
 或 traceback，以免扩大 trace 的敏感数据面。
 
-内置 read-before-edit 守卫也是事件处理器：它在 `before_tool_call` 拦截不安全的
+## 内置能力也是事件处理器
+
+内置 read-before-edit 守卫是事件处理器：它在 `before_tool_call` 拦截不安全的
 `edit_file`，并在 `after_tool_result` 中维护成功读写的文件台账。`--disable-edit-guard`
 只关闭拦截，保持既有 CLI 语义不变。
+
+默认关闭的可选能力同样如此。它们实现 `dm_agent.core.capabilities.AgentCapability`
+协议，在 Agent 构造末尾通过 `install(context)` 把自己挂到事件总线上：
+
+| 能力 | CLI 开关 | 挂载事件 | 实现位置 |
+|---|---|---|---|
+| Critic 完成门禁 | `--enable-critic` | `before_finish` | `dm_agent/extensions/capabilities/critic_gate.py` |
+
+`CapabilityContext` 只暴露 `event_bus`、`client_for`（按 phase 包装的 LLM 客户端工厂）
+和 `trace_writer`，不会把 `ReactAgent` 交给能力实现。也可以在构造 Agent 时直接传入
+`capabilities=[...]` 安装自定义能力：
+
+```python
+agent = ReactAgent(client, tools, capabilities=[MyCapability()])
+```
+
+注册顺序即执行顺序：外部扩展（事件总线创建时注册）→ 可选能力 → 内核内置守卫。

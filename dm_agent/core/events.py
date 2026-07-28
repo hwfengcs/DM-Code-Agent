@@ -6,7 +6,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-EventName = Literal["before_tool_call", "after_tool_result", "before_llm_request"]
+EventName = Literal[
+    "before_tool_call",
+    "after_tool_result",
+    "before_llm_request",
+    "before_finish",
+]
 HookErrorHandler = Callable[["HookFailure"], None]
 
 
@@ -46,6 +51,23 @@ class BeforeLLMRequestEvent:
     step_number: int
     run_id: str
     phase: str
+    metadata: dict[str, Any] = field(default_factory=dict, repr=False)
+
+
+@dataclass
+class BeforeFinishEvent:
+    """完成候选（``finish`` / ``task_complete``）被接受前的事件。
+
+    处理器返回 ``{"block": True, "reason": ...}`` 即可否决这次完成，``reason``
+    会成为该步骤的 observation 并写回对话历史；返回 ``None`` 表示放行。
+    """
+
+    task: str
+    action: str
+    completion_text: str
+    steps: list[dict[str, Any]]
+    step_number: int
+    run_id: str
     metadata: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
@@ -93,7 +115,14 @@ class EventBus:
     非法结果时，只上报该处理器的失败并继续事件链，不会中断 Agent run。
     """
 
-    _EVENT_NAMES = frozenset({"before_tool_call", "after_tool_result", "before_llm_request"})
+    _EVENT_NAMES = frozenset(
+        {
+            "before_tool_call",
+            "after_tool_result",
+            "before_llm_request",
+            "before_finish",
+        }
+    )
 
     def __init__(self) -> None:
         self._handlers: dict[str, list[_RegisteredHandler]] = {
@@ -114,6 +143,10 @@ class EventBus:
         if not handler_name:
             handler_name = _handler_name(handler)
         self._handlers[event].append(_RegisteredHandler(handler_name, handler))
+
+    def has_handlers(self, event: EventName) -> bool:
+        """该事件上是否已注册处理器。"""
+        return bool(self._handlers.get(event))
 
     def emit_before_tool_call(
         self,
@@ -163,6 +196,27 @@ class EventBus:
                 continue
             event.observation = candidate
         return event.observation
+
+    def emit_before_finish(
+        self,
+        event: BeforeFinishEvent,
+        *,
+        on_error: HookErrorHandler | None = None,
+    ) -> dict[str, Any] | None:
+        """执行完成前置链；遇到第一个 ``block=True`` 时停止并返回否决理由。"""
+        for position, handler in enumerate(self._handlers["before_finish"], start=1):
+            succeeded, result = self._call("before_finish", handler, position, event, on_error)
+            if not succeeded or result is None:
+                continue
+            if not isinstance(result, Mapping):
+                self._report_invalid_result(
+                    "before_finish", handler, position, event, result, on_error
+                )
+                continue
+            if bool(result.get("block")):
+                reason = str(result.get("reason") or "Completion rejected by lifecycle handler.")
+                return {"block": True, "reason": reason}
+        return None
 
     def emit_before_llm_request(
         self,

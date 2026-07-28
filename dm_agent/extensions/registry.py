@@ -15,7 +15,14 @@ ProviderFactory = Callable[..., Any]
 EventHandler = Callable[[Any], Any]
 ExtensionSetup = Callable[["ExtensionAPI"], None]
 
-_SUPPORTED_EVENTS = frozenset({"before_tool_call", "after_tool_result", "before_llm_request"})
+_SUPPORTED_EVENTS = frozenset(
+    {
+        "before_tool_call",
+        "after_tool_result",
+        "before_llm_request",
+        "before_finish",
+    }
+)
 
 
 @dataclass(frozen=True)
