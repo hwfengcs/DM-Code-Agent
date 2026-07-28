@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from dm_agent.clients.base_client import BaseLLMClient
-from dm_agent.memory.context_budget import estimate_messages_tokens
 from dm_agent.memory.context_compressor import ContextCompressor
 from dm_agent.prompts import build_code_agent_prompt
 from dm_agent.tools.base import Tool
@@ -18,6 +17,7 @@ from dm_agent.tools.base import Tool
 from .capabilities import AgentCapability, CapabilityContext
 from .checkpoint import RunCheckpoint
 from .completion import CompletionGate, build_completion_summary, format_final_answer
+from .context_window import ContextWindow
 from .critic import CriticAgent
 from .events import (
     AfterToolResultEvent,
@@ -69,9 +69,6 @@ class ReactAgent:
         compressor (Optional[ContextCompressor]): 上下文压缩器实例
     """
 
-    MEMORY_STATUS_LOG_INTERVAL = 5
-    MEMORY_STATUS_SAVED_DELTA = 8
-    MEMORY_STATUS_ITEM_DELTA = 5
     # 非 adaptive 默认路径的 replan 成本护栏（max_replans>=0 时以其为准）。
     DEFAULT_REPLAN_BUDGET = 5
 
@@ -185,6 +182,13 @@ class ReactAgent:
             )
             if enable_compression
             else None
+        )
+        self._context_window = ContextWindow(
+            compressor=self.compressor,
+            enabled=enable_compression,
+            memory_hygiene=enable_memory_hygiene,
+            llm_compression=enable_llm_compression,
+            trace_writer=trace_writer,
         )
         # 单条工具观察的字符上限；0 表示不截断。
         self.max_observation_chars = max(0, int(max_observation_chars))
@@ -380,8 +384,7 @@ class ReactAgent:
         self._edit_guard.reset()
         run_token = getattr(self.trace_writer, "run_id", "") or uuid.uuid4().hex[:12]
         retry_baseline = getattr(self.client, "total_respond_retries", 0)
-        last_logged_memory_items = 0
-        last_logged_saved_messages = 0
+        self._context_window.reset()
         metadata: dict[str, Any] = initial_run_metadata(
             attempt=attempt,
             planning_enabled=self.enable_planning,
@@ -505,101 +508,11 @@ class ReactAgent:
                     limit=limit,
                 )
             # 第二步：整理旧上下文为本地记忆（如果需要）
-            system_content = self.system_prompt
-            messages_to_send = [
-                {"role": "system", "content": system_content},
-                *self.conversation_history,
-            ]
-
-            if (
-                self.enable_compression
-                and self.compressor
-                and self.compressor.should_compress(self.conversation_history)
-            ):
-                trigger = self.compressor.last_trigger
-                trigger_tokens = self.compressor.last_estimated_tokens
-                compressed_history = self.compressor.compress(self.conversation_history)
-                messages_to_send = [
-                    {"role": "system", "content": system_content},
-                    *compressed_history,
-                ]
-
-                if trigger == "token_budget":
-                    metadata["budget_compression_count"] += 1
-                    if self.trace_writer:
-                        self.trace_writer.record(
-                            "context_budget",
-                            {
-                                "step_number": step_num,
-                                "phase": "forced_compress",
-                                "estimated_tokens": trigger_tokens,
-                                "budget": self.compressor.token_budget,
-                            },
-                        )
-                if (
-                    self.trace_writer
-                    and 0
-                    < self.compressor.token_budget
-                    < estimate_messages_tokens(compressed_history)
-                ):
-                    self.trace_writer.record(
-                        "context_budget",
-                        {
-                            "step_number": step_num,
-                            "phase": "post_compress_still_over",
-                            "estimated_tokens": estimate_messages_tokens(compressed_history),
-                            "budget": self.compressor.token_budget,
-                        },
-                    )
-
-                # 显示压缩统计
-                stats = self.compressor.get_compression_stats(
-                    self.conversation_history, compressed_history
-                )
-                metadata["compressed_messages"] += stats["saved_messages"]
-                memory_count = self.compressor.memory_count
-                memory_block_injected = any(
-                    str(message.get("content", "")).startswith("<agent_memory>")
-                    for message in compressed_history
-                )
-                metadata["memory_items"] = memory_count
-                metadata["memory_injection_count"] += int(memory_block_injected)
-                metadata["memory_compression_count"] += 1
-
-                if self.enable_memory_hygiene:
-                    superseded_total = self.compressor.memory.superseded_count
-                    superseded_delta = superseded_total - int(metadata["memory_invalidation_count"])
-                    metadata["memory_invalidation_count"] = superseded_total
-                    if superseded_delta > 0 and self.trace_writer:
-                        self.trace_writer.record(
-                            "memory_invalidation",
-                            {
-                                "step_number": step_num,
-                                "superseded": superseded_delta,
-                                "total": superseded_total,
-                            },
-                        )
-                if self.enable_llm_compression:
-                    metadata["llm_summary_count"] = self.compressor.llm_summary_count
-                    metadata["llm_summary_error_count"] = self.compressor.llm_summary_error_count
-
-                if self._should_log_memory_status(
-                    compression_count=int(metadata["memory_compression_count"]),
-                    saved_messages=int(stats["saved_messages"]),
-                    memory_items=memory_count,
-                    last_logged_saved_messages=last_logged_saved_messages,
-                    last_logged_memory_items=last_logged_memory_items,
-                ):
-                    metadata["memory_log_count"] += 1
-                    last_logged_memory_items = memory_count
-                    last_logged_saved_messages = int(stats["saved_messages"])
-                    print("\n[memory] 已整理旧上下文并召回相关记忆")
-                    print(
-                        f"   保留最近 {self.compressor.keep_recent * 2} 条消息，"
-                        f"本地记忆 {memory_count} 条，"
-                        f"本轮{'已' if memory_block_injected else '未'}注入 <agent_memory>，"
-                        f"节省 {stats['saved_messages']} 条消息"
-                    )
+            messages_to_send = self._context_window.build_messages(
+                self.system_prompt,
+                self.conversation_history,
+                context=self._run_context,
+            )
 
             # 获取 AI 响应
             try:
@@ -1019,25 +932,6 @@ class ReactAgent:
             '\n用 JSON 对象回应：{"thought": string, "action": string, "action_input": object|string}。'
         )
         return "\n".join(lines)
-
-    @classmethod
-    def _should_log_memory_status(
-        cls,
-        *,
-        compression_count: int,
-        saved_messages: int,
-        memory_items: int,
-        last_logged_saved_messages: int,
-        last_logged_memory_items: int,
-    ) -> bool:
-        """Return True only for meaningful memory status updates."""
-        if compression_count <= 1:
-            return True
-        if compression_count % cls.MEMORY_STATUS_LOG_INTERVAL == 0:
-            return True
-        if saved_messages - last_logged_saved_messages >= cls.MEMORY_STATUS_SAVED_DELTA:
-            return True
-        return memory_items - last_logged_memory_items >= cls.MEMORY_STATUS_ITEM_DELTA
 
     def _config_snapshot(self, *, max_steps: int | None = None) -> dict[str, Any]:
         """当前生效的配置快照：既用于落盘，也用于 resume 时的一致性比对。"""

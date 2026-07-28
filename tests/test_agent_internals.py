@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 
 from dm_agent.core.agent import ReactAgent, Step
+from dm_agent.core.context_window import should_log_memory_status
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
 
@@ -298,7 +299,7 @@ def test_memory_status_log_throttle_branches():
             "last_logged_memory_items": 0,
         }
         base.update(kwargs)
-        return ReactAgent._should_log_memory_status(**base)
+        return should_log_memory_status(**base)
 
     # 第一次压缩总是播报；此后按固定间隔播报。
     assert should_log(compression_count=1) is True
