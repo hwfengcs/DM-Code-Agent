@@ -7,7 +7,6 @@ import re
 import time
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
@@ -34,17 +33,9 @@ from .guards import WRITE_ACTIONS, ReadBeforeEditGuard
 from .observation import is_failure_observation
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
+from .run_state import RunContext, Step, initial_run_metadata
 
-
-@dataclass
-class Step:
-    """表示智能体的一个推理步骤。"""
-
-    thought: str  # 智能体的思考过程
-    action: str  # 要执行的动作/工具名称
-    action_input: Any  # 动作的输入参数
-    observation: str  # 执行动作后的观察结果
-    raw: str = ""  # 原始响应内容
+__all__ = ["ReactAgent", "Step"]
 
 
 class ReactAgent:
@@ -166,13 +157,11 @@ class ReactAgent:
         self.client = client
         self.trace_writer = trace_writer
         self.event_bus = event_bus or EventBus()
-        self._event_run_id = ""
-        self._event_step_number = 0
-        self._event_metadata: dict[str, Any] = {}
+        self._run_context = RunContext()
         request_client = LLMRequestClient(
             client,
             self.event_bus,
-            lambda: (self._event_run_id, self._event_step_number, self._event_metadata),
+            self._run_context.as_event_context,
             self._record_hook_error,
         )
 
@@ -337,7 +326,7 @@ class ReactAgent:
             end_event = RunEndEvent(
                 task=task,
                 attempt=attempt,
-                run_id=self._event_run_id,
+                run_id=self._run_context.run_id,
                 result=result,
                 metadata=result.get("metadata", {}),
             )
@@ -397,74 +386,24 @@ class ReactAgent:
         retry_baseline = getattr(self.client, "total_respond_retries", 0)
         last_logged_memory_items = 0
         last_logged_saved_messages = 0
-        metadata: dict[str, Any] = {
-            "status": "running",
-            "planning_enabled": self.enable_planning,
-            "compression_enabled": self.enable_compression,
-            "skills_enabled": bool(self.skill_manager),
-            "activated_skills": [],
-            "initial_plan_steps": 0,
-            "parse_error_count": 0,
-            "parse_repair_count": 0,
-            "tool_error_count": 0,
-            "unknown_tool_count": 0,
-            "argument_error_count": 0,
-            "replan_count": 0,
-            "replan_budget_exhausted_count": 0,
-            "compressed_messages": 0,
-            "memory_compression_count": 0,
-            "budget_compression_count": 0,
-            "truncation_count": 0,
-            "truncated_chars_saved": 0,
-            "edit_guard_enabled": self.enable_edit_guard,
-            "edit_guard_block_count": 0,
-            "memory_hygiene_enabled": self.enable_memory_hygiene,
-            "llm_compression_enabled": self.enable_llm_compression,
-            "circuit_breaker_enabled": self.enable_circuit_breaker,
-            "circuit_breaker_block_count": 0,
-            "circuit_breaker_trip_count": 0,
-            "memory_invalidation_count": 0,
-            "llm_summary_count": 0,
-            "llm_summary_error_count": 0,
-            "memory_log_count": 0,
-            "memory_items": 0,
-            "memory_injection_count": 0,
-            "failure_reason": "",
-            "llm_retry_count": 0,
-            "backup_count": 0,
-            "backup_dir": "",
-            "reflexion_enabled": False,
-            "critic_enabled": self.critic is not None,
-            "critic_review_count": 0,
-            "critic_pass_count": 0,
-            "critic_fail_count": 0,
-            "critic_reject_count": 0,
-            "adaptive_replanning_enabled": self.enable_adaptive_replanning,
-            "max_replans": self.max_replans,
-            "replan_decision_count": 0,
-            "replan_skipped_count": 0,
-            "replan_maxed_count": 0,
-            "replan_strategy": "",
-            "replan_strategy_counts": {},
-            "replan_signals": [],
-            "last_failure_signature": "",
-            "repeated_failure_count": 0,
-            "repeated_failures": [],
-            "repeated_failure_policy_experiment_enabled": (
+        metadata: dict[str, Any] = initial_run_metadata(
+            attempt=attempt,
+            planning_enabled=self.enable_planning,
+            compression_enabled=self.enable_compression,
+            skills_enabled=bool(self.skill_manager),
+            edit_guard_enabled=self.enable_edit_guard,
+            memory_hygiene_enabled=self.enable_memory_hygiene,
+            llm_compression_enabled=self.enable_llm_compression,
+            circuit_breaker_enabled=self.enable_circuit_breaker,
+            critic_enabled=self.critic is not None,
+            adaptive_replanning_enabled=self.enable_adaptive_replanning,
+            max_replans=self.max_replans,
+            repeated_failure_policy_experiment_enabled=(
                 self.enable_repeated_failure_policy_experiment
             ),
-            "repeated_failure_policy_applied_count": 0,
-            "terminal_action_alias_count": 0,
-            "terminal_action_aliases": [],
-            # trial / max_trials / reflexion_* 的中性默认值；
-            # 装了 Reflexion 能力时由它在 on_run_start 里改写。
-            "trial": attempt,
-            "max_trials": 1,
-            "reflexion_lesson_count": len(self.reflexion_memory),
-        }
-        self._event_run_id = run_token
-        self._event_step_number = 0
-        self._event_metadata = metadata
+            reflexion_lesson_count=len(self.reflexion_memory),
+        )
+        self._run_context.begin(run_id=run_token, metadata=metadata)
         start_event = RunStartEvent(
             task=task,
             attempt=attempt,
@@ -557,7 +496,7 @@ class ReactAgent:
             self.conversation_history.append({"role": "user", "content": task_prompt})
 
         for step_num in range(resume_from + 1, limit + 1):
-            self._event_step_number = step_num
+            self._run_context.step_number = step_num
             # 每步开始前落盘上一步完成后的快照（若启用 checkpoint）。
             if checkpoint_path is not None:
                 self._save_checkpoint_snapshot(
