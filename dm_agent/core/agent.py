@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import time
 import uuid
 from collections.abc import Callable, Sequence
@@ -33,6 +32,7 @@ from .guards import WRITE_ACTIONS, ReadBeforeEditGuard
 from .observation import is_failure_observation
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
+from .response_parser import normalize_action, parse_agent_response
 from .run_state import RunContext, Step, initial_run_metadata
 
 __all__ = ["ReactAgent", "Step"]
@@ -58,18 +58,6 @@ class ReactAgent:
         compressor (Optional[ContextCompressor]): 上下文压缩器实例
     """
 
-    TERMINAL_ACTION_ALIASES: ClassVar[dict[str, str]] = {
-        "finish": "finish",
-        "final": "finish",
-        "final_answer": "finish",
-        "answer": "finish",
-        "done": "finish",
-        "completed": "finish",
-        "complete": "finish",
-        "stop": "finish",
-        "task_done": "task_complete",
-        "task_complete": "task_complete",
-    }
     MEMORY_STATUS_LOG_INTERVAL = 5
     MEMORY_STATUS_SAVED_DELTA = 8
     MEMORY_STATUS_ITEM_DELTA = 5
@@ -215,7 +203,6 @@ class ReactAgent:
         self.skill_manager = skill_manager
         self._base_system_prompt = self.system_prompt
         self._base_tools = dict(self.tools)
-        self._last_parse_repaired = False
         self.enable_reflexion = enable_reflexion
         self.max_trials = max_trials
         # 经验记忆是需要随 checkpoint 存取、随 --reflexion-memory-file 落盘的状态，
@@ -626,7 +613,7 @@ class ReactAgent:
             # 将 AI 响应添加到历史记录
             self.conversation_history.append({"role": "assistant", "content": raw})
             try:
-                parsed = self._parse_agent_response(raw)
+                parsed_response = parse_agent_response(raw)
             except ValueError as exc:
                 metadata["parse_error_count"] += 1
                 metadata["failure_reason"] = str(exc)
@@ -666,13 +653,14 @@ class ReactAgent:
                         error_kind="parse_error",
                     )
                 continue
-            if self._last_parse_repaired:
+            parsed = parsed_response.data
+            if parsed_response.repaired:
                 metadata["parse_repair_count"] += 1
 
             # 获取动作、thought 和输入
             raw_action_value = parsed.get("action", "")
             raw_action = "" if raw_action_value is None else str(raw_action_value).strip()
-            action = self._normalize_action(raw_action)
+            action = normalize_action(raw_action)
             if action != raw_action:
                 metadata["terminal_action_alias_count"] += 1
                 metadata["terminal_action_aliases"].append(
@@ -1046,39 +1034,6 @@ class ReactAgent:
             return True, completion_text
         return False, str(block["reason"])
 
-    def _parse_agent_response(self, raw: str) -> dict[str, Any]:
-        """
-        解析智能体响应
-
-        Args:
-            raw (str): 智能体的原始响应字符串
-
-        Returns:
-            parsed (Dict[str, Any]): 解析后的JSON对象
-
-        Raises:
-            ValueError: 当响应不是有效的JSON时抛出异常
-        """
-        candidate = raw.strip()
-        self._last_parse_repaired = False
-        if not candidate:
-            raise ValueError("模型返回空响应。")
-
-        for index, snippet in enumerate(self._json_candidates(candidate)):
-            strict_json = self._is_strict_json_object(snippet)
-            parsed = self._load_json_object(snippet)
-            if parsed is not None:
-                self._last_parse_repaired = index > 0 or snippet != candidate or not strict_json
-                return parsed
-
-        raise ValueError("Response is not a valid JSON object.")
-
-    @classmethod
-    def _normalize_action(cls, action: str) -> str:
-        """Normalize common model drift around terminal actions."""
-        normalized = re.sub(r"[^a-z0-9]+", "_", str(action).strip().lower()).strip("_")
-        return cls.TERMINAL_ACTION_ALIASES.get(normalized, action)
-
     @classmethod
     def _should_log_memory_status(
         cls,
@@ -1097,57 +1052,6 @@ class ReactAgent:
         if saved_messages - last_logged_saved_messages >= cls.MEMORY_STATUS_SAVED_DELTA:
             return True
         return memory_items - last_logged_memory_items >= cls.MEMORY_STATUS_ITEM_DELTA
-
-    @staticmethod
-    def _json_candidates(candidate: str) -> list[str]:
-        candidates = [candidate]
-
-        fence_match = re.search(r"```(?:json)?\s*(.*?)```", candidate, re.DOTALL | re.IGNORECASE)
-        if fence_match:
-            candidates.append(fence_match.group(1).strip())
-
-        start = candidate.find("{")
-        end = candidate.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            candidates.append(candidate[start : end + 1])
-
-        repaired_candidates = []
-        for item in candidates:
-            repaired = ReactAgent._repair_json_text(item)
-            if repaired != item:
-                repaired_candidates.append(repaired)
-
-        return candidates + repaired_candidates
-
-    @staticmethod
-    def _repair_json_text(text: str) -> str:
-        text = text.strip()
-        text = text.replace("“", '"').replace("”", '"').replace("’", "'")
-        text = re.sub(r",(\s*[}\]])", r"\1", text)
-        return text
-
-    @staticmethod
-    def _load_json_object(text: str) -> dict[str, Any] | None:
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            try:
-                import ast
-
-                parsed = ast.literal_eval(text)
-            except (ValueError, SyntaxError):
-                return None
-        if not isinstance(parsed, dict):
-            return None
-        return parsed
-
-    @staticmethod
-    def _is_strict_json_object(text: str) -> bool:
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            return False
-        return isinstance(parsed, dict)
 
     def _restore_from_checkpoint(
         self,
