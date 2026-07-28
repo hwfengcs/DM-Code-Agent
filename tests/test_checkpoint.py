@@ -15,6 +15,7 @@ from dm_agent.core.checkpoint import (
 )
 from dm_agent.core.run_state import RunContext
 from dm_agent.memory import ContextCompressor
+from dm_agent.memory.context_budget import estimate_messages_tokens
 from dm_agent.memory.context_compressor import Compaction, apply_compaction
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events, rebuild_context
@@ -284,7 +285,44 @@ def test_resume_restores_sticky_compaction_and_reuses_it_for_the_next_request(tm
     assert client.requests[0][1:] == apply_compaction(history, sticky)
     events = load_trace_events(trace_path)
     compaction = next(event for event in events if event["event"] == "compaction")
+    payload = compaction["payload"]
+    assert payload["phase"] == "sticky_reuse"
+    assert payload["trigger"] == "sticky_reuse"
+    assert payload["estimated_tokens_before"] == estimate_messages_tokens(history)
+    assert payload["estimated_tokens_after"] == estimate_messages_tokens(
+        apply_compaction(history, sticky)
+    )
+    assert payload["memory_items"] == agent.compressor.memory_count
     assert rebuild_context(events, until_entry_id=compaction["id"]) == client.requests[0][1:]
+
+
+def test_resume_without_compressor_state_clears_existing_compressor_state():
+    checkpoint = RunCheckpoint(
+        task="legacy resume without compressor state",
+        step_count=0,
+        conversation_history=[{"role": "user", "content": "legacy task"}],
+        compressor_state=None,
+    )
+    agent = ReactAgent(
+        FakeRespondClient([_action("finish", "done")]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=True,
+    )
+    assert agent.compressor is not None
+    agent.compressor.memory.add("stale memory")
+    agent.compressor.accept_beneficial_compaction(
+        Compaction(
+            first_kept_index=1,
+            folded_indexes=(0,),
+            summary="<agent_memory>stale</agent_memory>",
+        )
+    )
+
+    agent.run(checkpoint.task, max_steps=1, resume_state=checkpoint)
+
+    assert agent.compressor.memory_count == 0
+    assert agent.compressor.last_beneficial_compaction is None
 
 
 def test_run_rejects_resume_with_reflexion(tmp_path):

@@ -1,3 +1,5 @@
+from threading import Lock
+
 import pytest
 
 from dm_agent.core.context_window import ContextWindow
@@ -36,6 +38,9 @@ def _window_metadata():
         "memory_compression_count": 0,
         "memory_log_count": 0,
         "budget_compression_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
     }
 
 
@@ -191,6 +196,39 @@ def test_context_compressor_reset_clears_local_memory():
     assert compressor.turn_count == 0
 
 
+def test_context_compressor_reset_clears_all_conversation_scoped_state():
+    compressor = ContextCompressor()
+    compressor.memory.add("remember app.py")
+    compressor.memory.superseded_count = 3
+    compressor.turn_count = 5
+    compressor._compression_count = 2
+    compressor._last_compressed_turn_count = 4
+    compressor.llm_summary_count = 2
+    compressor.llm_summary_error_count = 1
+    compressor.last_trigger = "token_budget"
+    compressor.last_estimated_tokens = 321
+    compressor.accept_beneficial_compaction(
+        Compaction(
+            first_kept_index=1,
+            folded_indexes=(0,),
+            summary="<agent_memory>remember app.py</agent_memory>",
+        )
+    )
+
+    compressor.reset()
+
+    assert compressor.memory_count == 0
+    assert compressor.memory.superseded_count == 0
+    assert compressor.turn_count == 0
+    assert compressor.export_state()["compression_count"] == 0
+    assert compressor.export_state()["last_compressed_turn_count"] == 0
+    assert compressor.llm_summary_count == 0
+    assert compressor.llm_summary_error_count == 0
+    assert compressor.last_trigger == ""
+    assert compressor.last_estimated_tokens == 0
+    assert compressor.last_beneficial_compaction is None
+
+
 def test_beneficial_compaction_state_roundtrips_resets_and_accepts_legacy_state():
     compaction = Compaction(
         first_kept_index=3,
@@ -289,6 +327,16 @@ def test_context_window_rejects_zero_saving_and_rolls_back_llm_summary_state(mon
             self.render_count += 1
             return super().render(query, **kwargs)
 
+        def capture_rollback_state(self):
+            return {
+                "base": super().capture_rollback_state(),
+                "render_count": self.render_count,
+            }
+
+        def restore_rollback_state(self, state):
+            super().restore_rollback_state(state["base"])
+            self.render_count = state["render_count"]
+
     class SummaryClient:
         def respond(self, messages, **extra):
             return "summary"
@@ -331,6 +379,95 @@ def test_context_window_rejects_zero_saving_and_rolls_back_llm_summary_state(mon
     assert compressor.last_beneficial_compaction is None
     assert compressor.memory is memory
     assert memory.render_count == 0
+
+
+def test_candidate_rollback_ignores_opaque_collaborators_and_preserves_identity():
+    class OpaqueMemory(Mem0StyleMemory):
+        def __init__(self):
+            super().__init__()
+            self.lock = Lock()
+            self.backend = object()
+
+    memory = OpaqueMemory()
+    memory.add("stable memory")
+    lock = memory.lock
+    backend = memory.backend
+    compressor = ContextCompressor(memory=memory)
+
+    snapshot = compressor.snapshot_candidate_state()
+    memory.add("temporary memory")
+    compressor._compression_count = 9
+    compressor.restore_candidate_state(snapshot)
+
+    assert memory is compressor.memory
+    assert memory.lock is lock
+    assert memory.backend is backend
+    assert [item.text for item in memory.items] == ["stable memory"]
+    assert compressor.export_state()["compression_count"] == 0
+
+
+def test_sticky_reuse_syncs_memory_gauges_without_counting_a_new_compression():
+    compressor = ContextCompressor(compress_every=100, keep_recent=1, token_budget=0)
+    compressor.memory.add("remember app.py")
+    compressor.memory.superseded_count = 2
+    compressor.llm_summary_count = 3
+    compressor.llm_summary_error_count = 1
+    sticky = Compaction(
+        first_kept_index=1,
+        folded_indexes=(0,),
+        summary="<agent_memory>remember app.py</agent_memory>",
+        memory_items=1,
+    )
+    compressor.accept_beneficial_compaction(sticky)
+    metadata = _window_metadata()
+    window = ContextWindow(
+        compressor=compressor,
+        enabled=True,
+        memory_hygiene=True,
+        llm_compression=True,
+    )
+
+    sent = window.build_messages(
+        "system",
+        _growing_history(3),
+        context=RunContext(step_number=1, metadata=metadata),
+    )
+
+    assert sent[1:] == apply_compaction(_growing_history(3), sticky)
+    assert metadata["memory_items"] == 1
+    assert metadata["memory_invalidation_count"] == 2
+    assert metadata["llm_summary_count"] == 3
+    assert metadata["llm_summary_error_count"] == 1
+    assert metadata["memory_injection_count"] == 0
+    assert metadata["memory_compression_count"] == 0
+
+
+def test_existing_hygiene_invalidations_are_not_reemitted_as_new_events():
+    compressor = ContextCompressor(
+        compress_every=1,
+        keep_recent=1,
+        token_budget=0,
+        enable_hygiene=True,
+    )
+    compressor.memory.superseded_count = 2
+    recorder = _CompactionRecorder()
+    metadata = _window_metadata()
+    window = ContextWindow(
+        compressor=compressor,
+        enabled=True,
+        memory_hygiene=True,
+        llm_compression=False,
+        trace_writer=recorder,
+    )
+
+    window.build_messages(
+        "system",
+        _growing_history(17, payload_chars=180),
+        context=RunContext(step_number=1, metadata=metadata),
+    )
+
+    assert metadata["memory_invalidation_count"] == 2
+    assert not any(event["event"] == "memory_invalidation" for event in recorder.events)
 
 
 def test_context_window_rolls_back_candidate_state_when_planning_raises(monkeypatch):

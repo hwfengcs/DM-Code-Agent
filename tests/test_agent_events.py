@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from dm_agent.core import EventBus, ReactAgent
-from dm_agent.memory.context_compressor import Compaction
+from dm_agent.memory.context_compressor import Compaction, Mem0StyleMemory
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
 
@@ -305,6 +305,65 @@ def test_on_run_end_retry_discards_sticky_compaction_from_failed_attempt():
 
     assert result["final_answer"] == "second"
     assert not any("failed-attempt-only" in message["content"] for message in client.requests[1][0])
+
+
+def test_on_run_end_retry_restores_full_compressor_state_after_real_compaction():
+    class TrackingMemory(Mem0StyleMemory):
+        def __init__(self):
+            super().__init__()
+            self.render_count = 0
+
+        def render(self, query, **kwargs):
+            self.render_count += 1
+            return super().render(query, **kwargs)
+
+        def capture_rollback_state(self):
+            return {
+                "base": super().capture_rollback_state(),
+                "render_count": self.render_count,
+            }
+
+        def restore_rollback_state(self, state):
+            super().restore_rollback_state(state["base"])
+            self.render_count = state["render_count"]
+
+    bus = EventBus()
+    client = FakeRespondClient([_action("finish", "first"), _action("finish", "second")])
+    agent = ReactAgent(
+        client,
+        [Tool("echo", "Echo", lambda arguments: "ok")],
+        enable_planning=False,
+        enable_compression=True,
+        event_bus=bus,
+    )
+    assert agent.compressor is not None
+    memory = TrackingMemory()
+    agent.compressor.memory = memory
+    agent.compressor.compress_every = 1
+    agent.compressor.keep_recent = 1
+    agent.compressor.token_budget = 0
+    agent.conversation_history = [
+        {
+            "role": "user" if index % 2 == 0 else "assistant",
+            "content": f"carried message {index} app.py " + "x" * 180,
+        }
+        for index in range(16)
+    ]
+
+    def retry_first_attempt(event):
+        return {"retry": True} if event.attempt == 1 else None
+
+    bus.on("on_run_end", retry_first_attempt, name="retry_first_attempt")
+
+    result = agent.run("retry after a real compaction", max_steps=1)
+
+    first_request = client.requests[0][0]
+    second_request = client.requests[1][0]
+    assert result["final_answer"] == "second"
+    assert first_request == second_request
+    assert any(message["content"].startswith("<agent_memory>") for message in first_request[1:])
+    assert agent.compressor.export_state()["compression_count"] == 1
+    assert memory.render_count == 1
 
 
 def test_run_hook_exception_is_isolated_and_traced(tmp_path):

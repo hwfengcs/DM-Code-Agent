@@ -103,6 +103,23 @@ cadence 场景下，sticky-positive 相对当前实现预计再节省 **36.1%** 
 
 这保持了 append-only 不变式：原始消息既不覆盖也不删除；粘性只改变构造请求窗口的方式。
 
+### 落地后的审计加固
+
+实现后的独立审计又收紧了四个状态边界，但没有改变实验中的接受折叠或请求 token 总量：
+
+- `on_run_end` 重试恢复 compressor 的完整进程内快照，包括自定义 memory 状态、cadence、
+  摘要计数与 sticky 状态；checkpoint 序列化仍是另一份 JSON-safe 契约。
+- 候选回滚不再 `deepcopy` 注入 memory 的 `__dict__`。memory 提供可覆盖的捕获/恢复钩子，
+  锁、client 与共享 backend 的对象身份不会被复制或替换。
+- 跨 run/resume 重新落 sticky 折叠时使用 `phase=sticky_reuse`、当前 before/after token 与
+  当前 memory 数，不再伪装成旧 trigger 又触发了一次。
+- `rebuild_context` 把每个 `run_start` 当作上下文硬边界，同时在 append-only session 中保留
+  更早的全部条目供审计。
+
+修复后用相同 12 个场景连续复跑两次；两份输出及此前的实装后报告 SHA256 均为
+`b806758e32a35e2596432508bb1e6979032bc4d4cc18b87b2e3857264cb8804c`：仍是 149 次
+接受折叠、0 次负收益折叠、请求 token 减少 397,513。
+
 ## Verification strength
 
 本项验证强度刻意分成三层：

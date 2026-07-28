@@ -285,15 +285,15 @@ class ReactAgent:
             raise ValueError("checkpoint/resume 暂不支持与 on_run_end 重试同时使用。")
 
         initial_history = [dict(message) for message in self.conversation_history]
-        initial_sticky_compaction = (
-            self.compressor.last_beneficial_compaction if self.compressor else None
+        initial_compressor_state = (
+            self.compressor.snapshot_runtime_state() if self.compressor else None
         )
         attempt = 1
         while True:
             if attempt > 1:
                 self.conversation_history = [dict(message) for message in initial_history]
-                if self.compressor:
-                    self.compressor.last_beneficial_compaction = initial_sticky_compaction
+                if self.compressor and initial_compressor_state is not None:
+                    self.compressor.restore_runtime_state(initial_compressor_state)
             result = self._run_once(
                 task,
                 max_steps=max_steps,
@@ -837,8 +837,13 @@ class ReactAgent:
         plan = plan_from_checkpoint(resume_state.plan)
         if plan and self.planner:
             self.planner.current_plan = plan
-        if resume_state.compressor_state and self.compressor:
-            self.compressor.restore_state(resume_state.compressor_state)
+        if self.compressor:
+            if resume_state.compressor_state is None:
+                # 老 checkpoint 没有压缩器字段；checkpoint 是权威状态，不能沿用当前
+                # agent 里上一段会话遗留的 memory / cadence / sticky 折叠。
+                self.compressor.reset()
+            else:
+                self.compressor.restore_state(resume_state.compressor_state)
         if resume_state.reflexion_memory:
             self.reflexion_memory = EpisodicMemory.from_dict(resume_state.reflexion_memory)
         warn_on_config_mismatch(resume_state.agent_config, self._config_snapshot())

@@ -89,6 +89,7 @@ class ContextWindow:
         compressor = self.compressor
         if not (self.enabled and compressor):
             return messages
+        self._sync_current_memory_metadata(context)
 
         if compressor.should_compress(history):
             # ``plan_compaction`` 会写 memory、推进 cadence、更新 LLM 摘要计数；先快照，
@@ -112,6 +113,7 @@ class ContextWindow:
                     history=history,
                     compressed_history=candidate_history,
                     context=context,
+                    phase="accepted",
                 )
                 self._record_budget_events(
                     candidate_history,
@@ -136,13 +138,13 @@ class ContextWindow:
                 )
             return messages
         sticky_history = apply_compaction(history, sticky)
-        context.metadata["memory_items"] = compressor.memory_count
         if sticky != self._last_recorded_compaction:
             self._record_compaction_entry(
                 sticky,
                 history=history,
                 compressed_history=sticky_history,
                 context=context,
+                phase="sticky_reuse",
             )
         if compressor.last_trigger:
             self._record_budget_events(
@@ -161,6 +163,7 @@ class ContextWindow:
         history: list[dict[str, str]],
         compressed_history: list[dict[str, str]],
         context: RunContext,
+        phase: str,
     ) -> None:
         """把这次折叠写成一条会话条目，让上下文事后可复算。
 
@@ -169,22 +172,39 @@ class ContextWindow:
         """
         if not self.trace_writer:
             return
+        compressor = self.compressor
+        reused = phase == "sticky_reuse"
         self.trace_writer.record_compaction(
             {
                 "step_number": context.step_number,
-                "trigger": compaction.trigger,
+                "phase": phase,
+                "reused": reused,
+                "trigger": "sticky_reuse" if reused else compaction.trigger,
                 "folded_message_count": len(compaction.folded_indexes),
                 "kept_message_count": len(compressed_history),
                 "original_message_count": len(history),
                 "summary": compaction.summary,
-                "memory_items": compaction.memory_items,
-                "estimated_tokens_before": compaction.estimated_tokens,
+                "memory_items": compressor.memory_count if compressor else compaction.memory_items,
+                "estimated_tokens_before": estimate_messages_tokens(history),
                 "estimated_tokens_after": estimate_messages_tokens(compressed_history),
             },
             first_kept_index=compaction.first_kept_index,
             folded_indexes=compaction.folded_indexes,
         )
         self._last_recorded_compaction = compaction
+
+    def _sync_current_memory_metadata(self, context: RunContext) -> None:
+        """把跨请求/跨 run 延续的记忆 gauge 对齐到当前 compressor 状态。"""
+        compressor = self.compressor
+        if compressor is None:
+            return
+        metadata = context.metadata
+        metadata["memory_items"] = compressor.memory_count
+        if self.memory_hygiene:
+            metadata["memory_invalidation_count"] = compressor.memory.superseded_count
+        if self.llm_compression:
+            metadata["llm_summary_count"] = compressor.llm_summary_count
+            metadata["llm_summary_error_count"] = compressor.llm_summary_error_count
 
     def _record_budget_events(
         self,

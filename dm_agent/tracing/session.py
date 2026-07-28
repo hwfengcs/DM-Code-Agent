@@ -24,6 +24,7 @@ MESSAGE_EVENT = "message"
 COMPACTION_EVENT = "compaction"
 CHECKPOINT_EVENT = "checkpoint"
 FORK_EVENT = "fork"
+RUN_START_EVENT = "run_start"
 
 
 def new_entry_id(run_id: str, seq: int) -> str:
@@ -140,7 +141,14 @@ def rebuild_context(
     for entry in collected:
         event = entry.get("event")
         payload = entry.get("payload") or {}
-        if event == MESSAGE_EVENT:
+        if event == RUN_START_EVENT:
+            # 一个 writer 可以连续记录多个 run；run_start 是对话窗口的硬边界，旧 run
+            # 的消息与 compaction 仍留在 append-only 日志里，但不得混进当前窗口。
+            history.clear()
+            history_ids.clear()
+            summary = ""
+            first_kept_entry_id = ""
+        elif event == MESSAGE_EVENT:
             history.append(
                 {"role": str(payload.get("role", "")), "content": _message_content(payload)}
             )

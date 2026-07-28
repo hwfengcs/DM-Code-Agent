@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -92,6 +91,23 @@ class Mem0StyleMemory:
 
     def clear(self) -> None:
         self._items.clear()
+        self.superseded_count = 0
+
+    def capture_rollback_state(self) -> Any:
+        """捕获候选折叠回滚所需的纯内存状态。
+
+        默认实现只保存本类可序列化的记忆内容，不复制子类 ``__dict__``，因此不会碰
+        锁、网络 client、共享 backend 等不应复制的协作者。子类若在候选折叠期间还会
+        改写自己的可变字段，应覆盖本方法与 ``restore_rollback_state``，并把
+        ``super()`` 返回的基础状态一并保存。
+        """
+        return self.to_dict()
+
+    def restore_rollback_state(self, state: Any) -> None:
+        """在当前实例上恢复 ``capture_rollback_state`` 产出的状态。"""
+        if not isinstance(state, Mapping):
+            raise TypeError("memory rollback state must be a mapping")
+        self.restore_from_dict(dict(state))
 
     def add(
         self,
@@ -434,16 +450,18 @@ class Compaction:
 
 
 @dataclass(frozen=True)
-class _CompressionCandidateState:
-    """一次候选折叠前的运行时快照；只用于失败回滚，不写入 checkpoint。"""
+class _CompressorRuntimeState:
+    """压缩器的进程内快照；用于候选事务与 run 重试，不写入 checkpoint。"""
 
-    memory_state: dict[str, Any]
+    memory_state: Any
     turn_count: int
     compression_count: int
     last_compressed_turn_count: int
     llm_summary_count: int
     llm_summary_error_count: int
     last_beneficial_compaction: Compaction | None
+    last_trigger: str
+    last_estimated_tokens: int
 
 
 def _compaction_to_dict(compaction: Compaction | None) -> dict[str, Any] | None:
@@ -558,34 +576,49 @@ class ContextCompressor:
         self.turn_count = 0
         self._compression_count = 0
         self._last_compressed_turn_count = 0
+        self.llm_summary_count = 0
+        self.llm_summary_error_count = 0
+        self.last_trigger = ""
+        self.last_estimated_tokens = 0
         self.last_beneficial_compaction = None
 
     def accept_beneficial_compaction(self, compaction: Compaction) -> None:
         """记住一次已通过 token 净收益检查的折叠，供后续请求粘性复用。"""
         self.last_beneficial_compaction = compaction
 
-    def snapshot_candidate_state(self) -> _CompressionCandidateState:
-        """保存候选折叠可能改写的状态，同时保留调用方注入的 memory 实例身份。"""
-        return _CompressionCandidateState(
-            memory_state=deepcopy(self.memory.__dict__),
+    def snapshot_runtime_state(self) -> _CompressorRuntimeState:
+        """保存全部运行时状态，同时保留调用方注入的 memory 实例身份。"""
+        return _CompressorRuntimeState(
+            memory_state=self.memory.capture_rollback_state(),
             turn_count=self.turn_count,
             compression_count=self._compression_count,
             last_compressed_turn_count=self._last_compressed_turn_count,
             llm_summary_count=self.llm_summary_count,
             llm_summary_error_count=self.llm_summary_error_count,
             last_beneficial_compaction=self.last_beneficial_compaction,
+            last_trigger=self.last_trigger,
+            last_estimated_tokens=self.last_estimated_tokens,
         )
 
-    def restore_candidate_state(self, state: _CompressionCandidateState) -> None:
-        """回滚一次未通过净收益检查的候选折叠。"""
-        self.memory.__dict__.clear()
-        self.memory.__dict__.update(deepcopy(state.memory_state))
+    def restore_runtime_state(self, state: _CompressorRuntimeState) -> None:
+        """在当前压缩器与 memory 实例上恢复进程内快照。"""
+        self.memory.restore_rollback_state(state.memory_state)
         self.turn_count = state.turn_count
         self._compression_count = state.compression_count
         self._last_compressed_turn_count = state.last_compressed_turn_count
         self.llm_summary_count = state.llm_summary_count
         self.llm_summary_error_count = state.llm_summary_error_count
         self.last_beneficial_compaction = state.last_beneficial_compaction
+        self.last_trigger = state.last_trigger
+        self.last_estimated_tokens = state.last_estimated_tokens
+
+    def snapshot_candidate_state(self) -> _CompressorRuntimeState:
+        """兼容候选折叠调用点：捕获可完整回滚的运行时状态。"""
+        return self.snapshot_runtime_state()
+
+    def restore_candidate_state(self, state: _CompressorRuntimeState) -> None:
+        """兼容候选折叠调用点：回滚未通过净收益检查的状态。"""
+        self.restore_runtime_state(state)
 
     def should_compress(self, history: list[dict[str, str]]) -> bool:
         user_messages = [msg for msg in history if msg.get("role") == "user"]
@@ -734,6 +767,8 @@ class ContextCompressor:
         self.last_beneficial_compaction = _compaction_from_dict(
             state.get("last_beneficial_compaction")
         )
+        self.last_trigger = ""
+        self.last_estimated_tokens = 0
 
 
 def _compact(text: str, *, limit: int) -> str:

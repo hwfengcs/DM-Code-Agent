@@ -168,10 +168,12 @@ The current schema records these event types:
   (`task` / `model_response` / `tool_result` / `observation` / `completion` / `replan_note` /
   `carried` / `resumed`). `assistant` content is reduced to `content_chars` + `content_sha256`
   unless `--trace-llm-io` is set.
-- `compaction`: context was folded for one request. Records `first_kept_entry_id`,
+- `compaction`: a context fold became active for the request window. Records `first_kept_entry_id`,
   `folded_entry_ids`, the `<agent_memory>` `summary`, and the token estimate before/after.
-  **The folded `message` entries are never removed** — folding only affects the message list sent
-  to the model for that one request.
+  A newly accepted fold has `phase=accepted`; when a positive fold is reused after a run/resume
+  boundary it is re-recorded with `phase=sticky_reuse`, current token estimates, and
+  `trigger=sticky_reuse`. **The folded `message` entries are never removed** — the latest positive
+  fold remains active for following requests until a newer positive fold replaces it.
 - `checkpoint`: resumable run state appended to a `--checkpoint *.jsonl` session.
 - `fork`: this file was branched from another session (`source`, `forked_from_entry_id`).
 - `skills`: activated skill names.
@@ -182,7 +184,8 @@ The current schema records these event types:
 - `tool_call`: action, action input, observation, and failure flag.
 - `observation_truncated`: a tool observation exceeded the cap; original/kept chars and line count.
 - `context_budget`: the estimated-token budget forced an early compression
-  (`phase=forced_compress`) or the compressed view is still over budget
+  (`phase=forced_compress`), rejected a candidate with no token saving
+  (`phase=compress_rejected_no_savings`), or the effective view is still over budget
   (`phase=post_compress_still_over`).
 - `edit_guard`: an `edit_file` call was blocked (`reason=never_read` or `stale_read`) until the
   target range is re-read.
@@ -252,10 +255,16 @@ The difference between the two is exactly what compaction folded away, which is 
 `no_compression` ablation attributable rather than just a pair of end-to-end scores.
 
 `rebuild_context` also takes `until_entry_id=` to reconstruct the window as of an earlier entry.
+If one JSONL contains multiple runs, the latest `run_start` in the selected prefix is a hard
+boundary: earlier messages and compactions remain auditable in the file but are not mixed into the
+new run's window.
 
-Note that `estimated_tokens_after` can exceed `estimated_tokens_before` when only a message or two
-is folded but an `<agent_memory>` block is injected. That was always true; it is now visible in
-the log.
+New compactions are committed only when `estimated_tokens_after < estimated_tokens_before`.
+Candidates with zero or negative saving are rolled back, including their memory/cadence side
+effects. Historical logs may still contain negative-benefit compactions written by older versions.
+The run metadata fields `compressed_messages`, `memory_injection_count`, and
+`memory_compression_count` count newly accepted folds; sticky reuse is represented by the
+`compaction` event rather than counted as a new compression.
 
 ## Privacy Boundary
 

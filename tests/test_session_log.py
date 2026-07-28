@@ -177,6 +177,32 @@ def test_reset_conversation_clears_the_entry_id_mapping(tmp_path):
     assert agent._run_context.history_entry_ids == []
 
 
+def test_rebuild_context_uses_only_entries_after_the_latest_run_start(tmp_path):
+    trace_path = tmp_path / "multiple-runs.jsonl"
+    writer = TraceWriter(trace_path, capture_llm_io=True)
+    agent = ReactAgent(
+        FakeRespondClient(
+            [_action("finish", {"answer": "first"}), _action("finish", {"answer": "second"})]
+        ),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+        trace_writer=writer,
+    )
+
+    agent.run("first task", max_steps=1)
+    agent.reset_conversation()
+    agent.run("second task", max_steps=1)
+    writer.close()
+
+    entries = load_session_entries(trace_path)
+    compacted = rebuild_context(entries, apply_compaction=True)
+    full = rebuild_context(entries, apply_compaction=False)
+    assert compacted == full
+    assert any("second task" in message["content"] for message in full)
+    assert all("first task" not in message["content"] for message in full)
+
+
 def test_find_entry_reports_unknown_and_ambiguous_references():
     from dm_agent.tracing import find_entry
 
