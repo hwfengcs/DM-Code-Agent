@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 from dm_agent.clients.base_client import BaseLLMClient
-from dm_agent.memory.context_budget import estimate_messages_tokens, truncate_observation
+from dm_agent.memory.context_budget import estimate_messages_tokens
 from dm_agent.memory.context_compressor import ContextCompressor
 from dm_agent.prompts import build_code_agent_prompt
 from dm_agent.tools.base import Tool
@@ -29,7 +29,7 @@ from .events import (
     RunStartEvent,
 )
 from .guards import WRITE_ACTIONS, ReadBeforeEditGuard
-from .observation import is_failure_observation
+from .observation import ObservationBounder, is_failure_observation
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
 from .response_parser import normalize_action, parse_agent_response
@@ -191,6 +191,9 @@ class ReactAgent:
         )
         # 单条工具观察的字符上限；0 表示不截断。
         self.max_observation_chars = max(0, int(max_observation_chars))
+        self._observation_bounder = ObservationBounder(
+            max_chars=self.max_observation_chars, trace_writer=trace_writer
+        )
         # read-before-edit 守卫：edit_file 前必须读过目标文件，且写后需重读。
         self.enable_edit_guard = enable_edit_guard
         self._edit_guard = ReadBeforeEditGuard(enabled=enable_edit_guard, trace_writer=trace_writer)
@@ -828,12 +831,11 @@ class ReactAgent:
                     after_event = AfterToolResultEvent(
                         tool_name=action,
                         arguments=action_input,
-                        observation=self._bound_observation(
+                        observation=self._observation_bounder.bound(
                             raw_observation,
                             action=action,
                             action_input=action_input,
-                            metadata=metadata,
-                            step_num=step_num,
+                            context=self._run_context,
                         ),
                         step_number=step_num,
                         run_id=run_token,
@@ -1189,38 +1191,6 @@ class ReactAgent:
                     "backup_path": str(backup_path),
                 },
             )
-
-    def _bound_observation(
-        self,
-        observation: Any,
-        *,
-        action: str,
-        action_input: Any,
-        metadata: dict[str, Any],
-        step_num: int,
-    ) -> str:
-        """截断超长观察并记录审计信息；模型、历史与 trace 看到同一份文本。"""
-        result = truncate_observation(
-            str(observation),
-            max_chars=self.max_observation_chars,
-            action=action,
-            action_input=action_input,
-        )
-        if result.truncated:
-            metadata["truncation_count"] += 1
-            metadata["truncated_chars_saved"] += result.original_chars - result.kept_chars
-            if self.trace_writer:
-                self.trace_writer.record(
-                    "observation_truncated",
-                    {
-                        "step_number": step_num,
-                        "action": action,
-                        "original_chars": result.original_chars,
-                        "kept_chars": result.kept_chars,
-                        "original_lines": result.original_lines,
-                    },
-                )
-        return result.text
 
     @staticmethod
     def _is_failure_observation(observation: str) -> bool:
