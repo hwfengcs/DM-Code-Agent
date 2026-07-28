@@ -160,6 +160,33 @@ rebuild_context(entries, apply_compaction=False)   # 同一份日志，假装从
 4. `python -m dm_agent.evals.cli` 与改造前逐字段一致；`optional_paths_probe` 的四条
    默认关闭路径除新增的 `message` / `compaction` 条目外逐字段一致。
 
+## 落地后观察到的两件事
+
+**1. 「压缩」有时会让上下文变大，现在这件事看得见了。**
+第一次折叠的 compaction 条目实测：
+
+```
+trigger = 'token_budget'   folded_message_count = 1   kept_message_count = 17
+estimated_tokens_before = 309   estimated_tokens_after = 329
+```
+
+只折叠了 1 条消息，却注入了一整块 `<agent_memory>`，净效果是上下文**增大** 20 token。
+这不是本次改出来的 bug——改造前就是这个行为，只是当时没有任何记录，所以没人知道。
+非破坏化的第一个实际收益就是把它暴露出来。后续可以在 `plan_compaction` 里加一条
+「折叠收益为负就不折叠」的判据，但那是行为变更，不该夹在本次重构里。
+
+**2. `message` / `compaction` 条目跟着 `--trace` 走，不跟 `--checkpoint` 走。**
+只传 `--checkpoint x.jsonl` 时，会话日志里只有 `checkpoint` 条目。这不影响续跑与
+fork（checkpoint 条目自带完整 `conversation_history`），但 `dm-agent-trace view`
+会显示 0 步。要两者都要就分别指定两个文件：
+
+```bash
+dm-agent "task" --trace sessions/run.trace.jsonl --checkpoint sessions/run.cp.jsonl
+```
+
+根因是 `ReactAgent` 只有一个 trace 汇。要修得干净需要把「会话写入」抽象成可扇出多个
+sink，属于独立一步。
+
 ## Open questions / next bets
 
 - **压缩粘性**：见上文，改造后有了 `compaction` 条目，粘性压缩可以做成
@@ -168,6 +195,8 @@ rebuild_context(entries, apply_compaction=False)   # 同一份日志，假装从
   「切走的分支自动生成摘要」。等 fork 的实际用法沉淀后再定。
 - **会话日志体积**：`message` 条目与 `tool_call` 条目内容有重叠（user 消息是 observation
   的包装），trace 体积约增加 30–50%。等真实使用后再决定是否给 `message` 做去重引用。
+- **`--checkpoint` 单独使用时缺 message/compaction 条目**：见上一节第 2 条，需要把会话
+  写入抽象成多 sink。
 - **A-3（`build_user_prompt` 的死代码）**：resume 之后模型看不到「之前的步骤」摘要。
   有了 `message` 条目后，这个问题可以改成「从会话日志重建提示词」，但属于行为变更，
   仍按缺陷清单单独处理。

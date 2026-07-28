@@ -1,7 +1,33 @@
 # Trace And Replay
 
-DM-Code-Agent writes JSONL traces so an agent run can be inspected after it finishes. The
-trace format is append-only, which means partial traces still survive if a run fails midway.
+DM-Code-Agent writes JSONL sessions so an agent run can be inspected after it finishes. The
+format is append-only, which means partial sessions still survive if a run fails midway.
+
+Every entry carries an `id` (`<run-id-prefix>-<seq>`) and a `parent_id` pointing at the previous
+entry, so a session is a navigable tree rather than a flat log. That is what makes
+`--resume-at` and `dm-agent-trace fork` possible. See
+[`docs/research-log/29-session-tree.md`](research-log/29-session-tree.md) for the design record.
+
+```json
+{"id": "a1b2c3d4-0007", "parent_id": "a1b2c3d4-0006", "timestamp": "...",
+ "run_id": "a1b2c3d4...", "event": "tool_call", "payload": {"...": "..."}}
+```
+
+Sessions written before schema `2.0` have no `id`/`parent_id`. They are still readable: the
+loader synthesizes `legacy-0000`, `legacy-0001`, … on read, so `view`, `analyze`, `analyze-dir`,
+`replay`, `diff`, and `fork` all keep working on old files unchanged.
+
+## Two Fidelity Tiers, One Format
+
+| | `--trace path.jsonl` | `--checkpoint path.jsonl` |
+| --- | --- | --- |
+| Purpose | shareable audit view | local resumable session |
+| Model responses | `content_chars` + `content_sha256` only (full text needs `--trace-llm-io`) | full text |
+| Redaction | yes | `checkpoint` entries are not redacted (redaction rewrites `$HOME` to `~`, which would corrupt resumed context) |
+| Tooling | `view` / `analyze` / `replay` / `diff` / `fork` | same, plus `--resume` |
+
+Pointing both flags at the same file is rejected: the redacted, shareable tier would silently
+gain the full conversation.
 
 ## Enable Trace
 
@@ -61,6 +87,47 @@ dm-agent-trace replay traces/retry-fix.jsonl
 Dry replay does not call a model and does not execute tools. It verifies that the recorded
 timeline can be read and replayed as an audit artifact.
 
+## Fork A Session
+
+`fork` branches a new session file from any entry of an existing one:
+
+```bash
+dm-agent-trace fork sessions/run.jsonl --at a1b2c3d4-0042
+dm-agent-trace fork sessions/run.jsonl --at a1b2c3d4-0042 --output sessions/branch.jsonl
+```
+
+Entries `[0..--at]` are copied verbatim (so the original ids survive) and one `fork` entry is
+appended, recording the source file and the fork point. That entry's `parent_id` points back at
+the fork point, which is what links the two JSONL files into a tree. `--at` accepts an exact id
+or a unique prefix; an existing output file is never overwritten.
+
+Whether the branch can actually keep running depends on there being a `checkpoint` entry at or
+before the fork point. If there is, `fork` prints the ready-to-paste command:
+
+```bash
+dm-agent --resume sessions/branch.jsonl
+```
+
+If there is not (for example a plain `--trace` file, or a pre-2.0 trace), `fork` says so
+explicitly instead of failing later.
+
+## Resume From A Session Entry
+
+```bash
+# append-only session: every step's snapshot is kept
+dm-agent "Fix retry.py" --checkpoint sessions/run.jsonl
+dm-agent --resume sessions/run.jsonl                      # last checkpoint entry
+dm-agent --resume sessions/run.jsonl --resume-at a1b2c3d4-0031   # or an earlier one
+
+# single-file JSON snapshot: unchanged behaviour
+dm-agent "Fix retry.py" --checkpoint sessions/run.json
+dm-agent --resume sessions/run.json
+```
+
+`--resume` sniffs the file: a file that parses as one JSON object is the legacy snapshot, anything
+else is read as a session log. `--resume-at` only applies to session logs and resolves to that
+entry *or the closest `checkpoint` entry before it*.
+
 ## Tool Replay
 
 Tool replay is explicit because it can read files, modify files, or run commands:
@@ -86,6 +153,16 @@ The current schema records these event types:
 
 - `runtime`: CLI/provider/runtime metadata.
 - `run_start`: task, working directory, platform, safe metadata, and tool list.
+- `message`: one message appended to the conversation history, with `role` and `kind`
+  (`task` / `model_response` / `tool_result` / `observation` / `completion` / `replan_note` /
+  `carried` / `resumed`). `assistant` content is reduced to `content_chars` + `content_sha256`
+  unless `--trace-llm-io` is set.
+- `compaction`: context was folded for one request. Records `first_kept_entry_id`,
+  `folded_entry_ids`, the `<agent_memory>` `summary`, and the token estimate before/after.
+  **The folded `message` entries are never removed** — folding only affects the message list sent
+  to the model for that one request.
+- `checkpoint`: resumable run state appended to a `--checkpoint *.jsonl` session.
+- `fork`: this file was branched from another session (`source`, `forked_from_entry_id`).
 - `skills`: activated skill names.
 - `plan`: initial planner steps.
 - `plan_error`: planning failure.
@@ -145,6 +222,29 @@ Example JSON fields:
 - `tool_usage.delta`
 - `plan_changed`
 - `final_answer_changed`
+
+## Non-Destructive Compaction
+
+Context compaction never deletes history. It appends one `compaction` entry describing the fold,
+and the message list for that request is assembled by *skipping* the folded range. Because the
+originals stay in the log, the same session can be replayed both ways:
+
+```python
+from dm_agent.tracing import load_session_entries, rebuild_context
+
+entries = load_session_entries("sessions/run.jsonl")
+sent = rebuild_context(entries, apply_compaction=True)    # what the model actually saw
+full = rebuild_context(entries, apply_compaction=False)   # as if compaction never happened
+```
+
+The difference between the two is exactly what compaction folded away, which is what makes the
+`no_compression` ablation attributable rather than just a pair of end-to-end scores.
+
+`rebuild_context` also takes `until_entry_id=` to reconstruct the window as of an earlier entry.
+
+Note that `estimated_tokens_after` can exceed `estimated_tokens_before` when only a message or two
+is folded but an `<agent_memory>` block is injected. That was always true; it is now visible in
+the log.
 
 ## Privacy Boundary
 
