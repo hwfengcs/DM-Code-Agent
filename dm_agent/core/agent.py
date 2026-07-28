@@ -421,6 +421,15 @@ class ReactAgent:
             metadata=metadata,
         )
         prompt_suffix = self.event_bus.emit_run_start(start_event, on_error=self._record_hook_error)
+
+        # resume 必须先恢复持久化状态，再落 trace 的 run_start；否则会记录恢复前的
+        # reflexion lesson 数，而最终 metadata / run_end 使用恢复后的值。
+        plan: list[PlanStep] = []
+        resume_from = 0
+        if resume_state is not None:
+            plan, resume_from = self._restore_from_checkpoint(resume_state, steps, metadata)
+            metadata["reflexion_lesson_count"] = len(self.reflexion_memory)
+
         if self.trace_writer:
             self.trace_writer.start_run(
                 task,
@@ -470,10 +479,7 @@ class ReactAgent:
             self.system_prompt += "\n\n" + prompt_suffix
 
         # 第一步：生成计划（如果启用）；resume 时改为恢复既有状态
-        plan: list[PlanStep] = []
-        resume_from = 0
         if resume_state is not None:
-            plan, resume_from = self._restore_from_checkpoint(resume_state, steps, metadata)
             self._adopt_existing_history(kind="resumed")
             if self.trace_writer:
                 self.trace_writer.record(
