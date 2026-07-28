@@ -15,10 +15,12 @@ from dm_agent.memory.context_compressor import ContextCompressor, apply_compacti
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import (
     TraceWriter,
+    find_entry_index,
     load_session_entries,
     message_entries,
     normalize_entries,
     rebuild_context,
+    summarize_events,
 )
 
 
@@ -363,6 +365,104 @@ def test_session_checkpoint_appends_one_entry_per_step(tmp_path):
     assert all(entry["payload"]["state"]["task"] for entry in checkpoints)
 
 
+def _checkpoint_compaction_run(checkpoint_path, *, trace_path=None):
+    responses = [_action("echo", {"text": f"turn {index}"}) for index in range(12)]
+    responses.append(_action("finish", {"answer": "done"}))
+    writer = TraceWriter(trace_path) if trace_path is not None else None
+    agent = ReactAgent(
+        FakeRespondClient(responses),
+        _tools(),
+        enable_planning=False,
+        enable_compression=True,
+        context_token_budget=60,
+        trace_writer=writer,
+    )
+    result = agent.run(
+        "echo many times with a complete checkpoint session",
+        max_steps=20,
+        checkpoint_path=checkpoint_path,
+    )
+    if writer is not None:
+        writer.close()
+    return result
+
+
+def test_checkpoint_only_jsonl_contains_a_complete_viewable_session(tmp_path):
+    checkpoint_path = tmp_path / "run.jsonl"
+
+    result = _checkpoint_compaction_run(checkpoint_path)
+    entries = load_session_entries(checkpoint_path)
+    events = [entry["event"] for entry in entries]
+
+    assert result["metadata"]["status"] == "success"
+    assert "message" in events
+    assert "step" in events
+    assert "compaction" in events
+    assert "checkpoint" in events
+    assert summarize_events(entries)["step_count"] > 0
+
+
+def test_trace_and_checkpoint_fanout_preserves_fidelity_and_local_compaction_ids(tmp_path):
+    trace_path = tmp_path / "run.trace.jsonl"
+    checkpoint_path = tmp_path / "run.checkpoint.jsonl"
+
+    _checkpoint_compaction_run(checkpoint_path, trace_path=trace_path)
+    trace_entries = load_session_entries(trace_path)
+    checkpoint_entries = load_session_entries(checkpoint_path)
+    trace_messages = message_entries(trace_entries)
+    checkpoint_messages = message_entries(checkpoint_entries)
+
+    assert len(trace_messages) == len(checkpoint_messages)
+    assert [(entry["payload"]["role"], entry["payload"]["kind"]) for entry in trace_messages] == [
+        (entry["payload"]["role"], entry["payload"]["kind"]) for entry in checkpoint_messages
+    ]
+    assert trace_messages[0]["id"] != checkpoint_messages[0]["id"]
+
+    trace_assistant = [
+        entry["payload"] for entry in trace_messages if entry["payload"]["role"] == "assistant"
+    ]
+    checkpoint_assistant = [
+        entry["payload"] for entry in checkpoint_messages if entry["payload"]["role"] == "assistant"
+    ]
+    assert all(
+        "content" not in payload and payload["content_sha256"] for payload in trace_assistant
+    )
+    assert all(payload["content"] for payload in checkpoint_assistant)
+
+    for entries in (trace_entries, checkpoint_entries):
+        ids = [entry["id"] for entry in entries]
+        message_ids = {entry["id"] for entry in message_entries(entries)}
+        assert len(ids) == len(set(ids))
+        assert entries[0]["parent_id"] == ""
+        assert all(
+            entries[index]["parent_id"] == entries[index - 1]["id"]
+            for index in range(1, len(entries))
+        )
+        for compaction in (entry["payload"] for entry in entries if entry["event"] == "compaction"):
+            assert compaction["first_kept_entry_id"] in message_ids
+            assert set(compaction["folded_entry_ids"]) <= message_ids
+
+    assert not [entry for entry in trace_entries if entry["event"] == "checkpoint"]
+    assert [entry for entry in checkpoint_entries if entry["event"] == "checkpoint"]
+
+
+def test_checkpoint_session_sink_failure_warns_and_does_not_abort_the_run(tmp_path, capsys):
+    blocked_parent = tmp_path / "not-a-directory"
+    blocked_parent.write_text("occupied", encoding="utf-8")
+    checkpoint_path = blocked_parent / "run.jsonl"
+    agent = ReactAgent(
+        FakeRespondClient([_action("finish", {"answer": "done"})]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    result = agent.run("checkpoint failure is best effort", checkpoint_path=checkpoint_path)
+
+    assert result["metadata"]["status"] == "success"
+    assert capsys.readouterr().out.count("checkpoint 会话写入失败") == 1
+
+
 def test_resume_from_a_session_checkpoint_continues_the_run(tmp_path):
     from dm_agent.core.persistence import load_resume_state
 
@@ -446,7 +546,10 @@ def test_fork_copies_entries_up_to_the_fork_point_and_appends_a_fork_entry(tmp_p
 
     forked = load_session_entries(result["output"])
     assert result["forked_from_entry_id"] == at
-    assert [entry["id"] for entry in forked[:-1]] == [entry["id"] for entry in entries[:2]]
+    fork_index = find_entry_index(entries, at)
+    assert [entry["id"] for entry in forked[:-1]] == [
+        entry["id"] for entry in entries[: fork_index + 1]
+    ]
     assert forked[-1]["event"] == "fork"
     # fork 条目的 parent_id 指回分叉点，两份 JSONL 由此串成一棵树。
     assert forked[-1]["parent_id"] == at

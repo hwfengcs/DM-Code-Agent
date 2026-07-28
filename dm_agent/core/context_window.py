@@ -27,13 +27,6 @@ MEMORY_STATUS_ITEM_DELTA = 5
 MEMORY_BLOCK_PREFIX = "<agent_memory>"
 
 
-def _entry_id_at(entry_ids: list[str], index: int) -> str:
-    """把「历史里的第几条消息」翻译成会话条目 id；越界或未记录时返回空串。"""
-    if 0 <= index < len(entry_ids):
-        return entry_ids[index]
-    return ""
-
-
 def should_log_memory_status(
     *,
     compression_count: int,
@@ -125,21 +118,15 @@ class ContextWindow:
     ) -> None:
         """把这次折叠写成一条会话条目，让上下文事后可复算。
 
-        ``first_kept_entry_id`` / ``folded_entry_ids`` 取自
-        ``RunContext.history_entry_ids``——它与 ``conversation_history`` 逐位对应。
-        没有会话日志（未开 --trace/--checkpoint）时什么都不做。
+        ``first_kept_entry_id`` / ``folded_entry_ids`` 由会话写入门面按历史下标分别
+        翻译成各 sink 的本地 id。没有会话日志（未开 --trace/--checkpoint）时什么都不做。
         """
         if not self.trace_writer:
             return
-        entry_ids = context.history_entry_ids
         self.trace_writer.record_compaction(
             {
                 "step_number": context.step_number,
                 "trigger": compaction.trigger,
-                "first_kept_entry_id": _entry_id_at(entry_ids, compaction.first_kept_index),
-                "folded_entry_ids": [
-                    _entry_id_at(entry_ids, index) for index in compaction.folded_indexes
-                ],
                 "folded_message_count": len(compaction.folded_indexes),
                 "kept_message_count": len(compressed_history),
                 "original_message_count": len(history),
@@ -147,7 +134,9 @@ class ContextWindow:
                 "memory_items": compaction.memory_items,
                 "estimated_tokens_before": compaction.estimated_tokens,
                 "estimated_tokens_after": estimate_messages_tokens(compressed_history),
-            }
+            },
+            first_kept_index=compaction.first_kept_index,
+            folded_indexes=compaction.folded_indexes,
         )
 
     def _record_budget_events(

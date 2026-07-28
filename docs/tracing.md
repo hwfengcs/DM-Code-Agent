@@ -26,6 +26,17 @@ loader synthesizes `legacy-0000`, `legacy-0001`, … on read, so `view`, `analyz
 | Redaction | yes | `checkpoint` entries are not redacted (redaction rewrites `$HOME` to `~`, which would corrupt resumed context) |
 | Tooling | `view` / `analyze` / `replay` / `diff` / `fork` | same, plus `--resume` |
 
+When both flags are supplied, session events fan out to two independent writers. The writers
+do not copy one serialized payload: the shareable trace applies its redaction policy while the
+local checkpoint keeps complete `message` content. Each writer has its own entry-id sequence, so
+`compaction.first_kept_entry_id` is translated to the id that exists in that particular file.
+Checkpoint state is written only to the local file. Full LLM request/response capture remains
+opt-in via `--trace-llm-io`; a checkpoint file having complete messages does not enable it.
+
+Supplying only `--checkpoint sessions/run.jsonl` still creates a complete session log. It contains
+the ordinary `run_start`, `message`, `step`, and `compaction` entries as well as the resumable
+`checkpoint` entries, so `dm-agent-trace view` reports the run's steps instead of an empty session.
+
 Pointing both flags at the same file is rejected: the redacted, shareable tier would silently
 gain the full conversation.
 

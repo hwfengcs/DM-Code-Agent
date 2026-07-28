@@ -20,7 +20,7 @@ from dm_agent.core.checkpoint import RunCheckpoint
 from dm_agent.core.reflexion import EpisodicMemory
 from dm_agent.mcp import MCPManager, load_mcp_config
 from dm_agent.skills import SkillManager
-from dm_agent.tracing import TraceWriter
+from dm_agent.tracing import SessionWriter, TraceWriter
 
 if TYPE_CHECKING:
     from dm_agent.extensions import ExtensionRegistry
@@ -93,7 +93,7 @@ def create_agent(
     *,
     step_callback: Any = None,
     skill_manager: SkillManager | None = None,
-    trace_writer: TraceWriter | None = None,
+    trace_writer: SessionWriter | TraceWriter | None = None,
     reflexion_memory: EpisodicMemory | None = None,
     extension_registry: ExtensionRegistry | None = None,
 ) -> ReactAgent:
@@ -182,7 +182,7 @@ def run_single_task(
     # 初始化 MCP
     mcp_config = load_mcp_config()
     mcp_manager = MCPManager(mcp_config)
-    trace_writer: TraceWriter | None = None
+    trace_writer: SessionWriter | None = None
 
     try:
         # 启动 MCP 服务器
@@ -211,8 +211,13 @@ def run_single_task(
             extension_registry=extension_registry,
         )
         advanced = resolve_advanced_features(config)
-        if trace_path:
-            trace_writer = TraceWriter(trace_path, capture_llm_io=trace_llm_io)
+        if trace_path or (checkpoint_path and checkpoint_path.suffix.lower() == ".jsonl"):
+            trace_sink = (
+                TraceWriter(trace_path, capture_llm_io=trace_llm_io) if trace_path else None
+            )
+            trace_writer = SessionWriter(trace_sink)
+            if checkpoint_path:
+                trace_writer.ensure_checkpoint_sink(checkpoint_path)
             trace_writer.record(
                 "runtime",
                 {

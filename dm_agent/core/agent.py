@@ -13,6 +13,7 @@ from dm_agent.clients.base_client import BaseLLMClient
 from dm_agent.memory.context_compressor import ContextCompressor
 from dm_agent.prompts import build_code_agent_prompt
 from dm_agent.tools.base import Tool
+from dm_agent.tracing.writer import SessionWriter
 
 from .capabilities import AgentCapability, CapabilityContext
 from .checkpoint import RunCheckpoint
@@ -116,7 +117,9 @@ class ReactAgent:
         if max_trials < 1:
             raise ValueError("max_trials must be at least 1.")
         self.client = client
-        self.trace_writer = trace_writer
+        self.trace_writer = (
+            trace_writer if isinstance(trace_writer, SessionWriter) else SessionWriter(trace_writer)
+        )
         self.event_bus = event_bus or EventBus()
         self._run_context = RunContext()
         request_client = LLMRequestClient(
@@ -168,14 +171,14 @@ class ReactAgent:
             enabled=enable_compression,
             memory_hygiene=enable_memory_hygiene,
             llm_compression=enable_llm_compression,
-            trace_writer=trace_writer,
+            trace_writer=self.trace_writer,
         )
         # 单条工具观察的字符上限；0 表示不截断。
         self.max_observation_chars = max(0, int(max_observation_chars))
         self._observation_bounder = ObservationBounder(
-            max_chars=self.max_observation_chars, trace_writer=trace_writer
+            max_chars=self.max_observation_chars, trace_writer=self.trace_writer
         )
-        self._persistence = RunPersistence(trace_writer=trace_writer)
+        self._persistence = RunPersistence(trace_writer=self.trace_writer)
         self._tool_invoker = ToolInvoker(
             event_bus=self.event_bus,
             bounder=self._observation_bounder,
@@ -184,7 +187,9 @@ class ReactAgent:
         )
         # read-before-edit 守卫：edit_file 前必须读过目标文件，且写后需重读。
         self.enable_edit_guard = enable_edit_guard
-        self._edit_guard = ReadBeforeEditGuard(enabled=enable_edit_guard, trace_writer=trace_writer)
+        self._edit_guard = ReadBeforeEditGuard(
+            enabled=enable_edit_guard, trace_writer=self.trace_writer
+        )
         # 工具熔断器（默认关）：同一 action+error 连续失败达到阈值后临时禁用。
         self.enable_circuit_breaker = enable_circuit_breaker
         self.circuit_breaker_threshold = circuit_breaker_threshold
@@ -213,7 +218,7 @@ class ReactAgent:
         self._replan_coordinator = ReplanCoordinator(
             planner=self.planner,
             policy=self.replan_policy,
-            trace_writer=trace_writer,
+            trace_writer=self.trace_writer,
             adaptive=enable_adaptive_replanning,
             max_replans=max_replans,
             repeated_failure_experiment=enable_repeated_failure_policy_experiment,
@@ -240,7 +245,7 @@ class ReactAgent:
         capability_context = CapabilityContext(
             event_bus=self.event_bus,
             client_for=client_for,
-            trace_writer=trace_writer,
+            trace_writer=self.trace_writer,
         )
         for capability in self.capabilities:
             capability.install(capability_context)
@@ -385,6 +390,8 @@ class ReactAgent:
         started_at = time.perf_counter()
         steps: list[Step] = []
         limit = max_steps or self.max_steps
+        if checkpoint_path is not None:
+            self._persistence.prepare_session_checkpoint(checkpoint_path)
         self._edit_guard.reset()
         run_token = getattr(self.trace_writer, "run_id", "") or uuid.uuid4().hex[:12]
         retry_baseline = getattr(self.client, "total_respond_retries", 0)

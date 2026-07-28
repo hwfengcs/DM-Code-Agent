@@ -19,9 +19,10 @@ from .session import (
     normalize_entries,
     rebuild_context,
 )
-from .writer import TraceWriter, load_trace_events
+from .writer import SessionWriter, TraceWriter, load_trace_events
 
 __all__ = [
+    "SessionWriter",
     "TraceWriter",
     "analyze_events",
     "analyze_trace_directory",

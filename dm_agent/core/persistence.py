@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from dm_agent.tracing.session import latest_checkpoint_entry, load_session_entries
-from dm_agent.tracing.writer import TraceWriter
+from dm_agent.tracing.writer import SessionWriter, TraceWriter
 
 from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
 from .planner import PlanStep
@@ -57,9 +57,16 @@ class RunPersistence:
 
     def __init__(self, *, trace_writer: Any | None = None) -> None:
         self.trace_writer = trace_writer
-        # 会话日志形态的 checkpoint 需要跨步保持 entry id 链，所以 writer 实例常驻；
-        # 文件句柄不常驻——每次写完就 close，避免长跑时占着句柄。
+        # 旧的直接使用 RunPersistence 的调用方仍可走兼容 fallback；Agent 主路径
+        # 使用共享 SessionWriter，因此 checkpoint 与普通会话条目共用同一条写入链。
         self._session_writer: TraceWriter | None = None
+
+    def prepare_session_checkpoint(self, path: str | Path) -> None:
+        """在 run_start 前准备 JSONL checkpoint sink，让首条消息也能被扇出。"""
+        if not is_session_checkpoint(path):
+            return
+        if isinstance(self.trace_writer, SessionWriter):
+            self.trace_writer.ensure_checkpoint_sink(path)
 
     def backup_before_write(self, action_input: Any, context: RunContext) -> None:
         """写入类工具执行前备份原文件（尽力而为，失败不影响任务）。"""
@@ -105,6 +112,13 @@ class RunPersistence:
             )
 
     def _append_session_checkpoint(self, path: Path, checkpoint: RunCheckpoint) -> None:
+        if isinstance(self.trace_writer, SessionWriter):
+            self.trace_writer.ensure_checkpoint_sink(path)
+            self.trace_writer.record_checkpoint_state(
+                step_number=checkpoint.step_count,
+                state=checkpoint.to_dict(),
+            )
+            return
         if self._session_writer is None:
             self._session_writer = TraceWriter(path)
         writer = self._session_writer

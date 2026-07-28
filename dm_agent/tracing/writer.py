@@ -45,9 +45,13 @@ class TraceWriter:
         *,
         capture_llm_io: bool = False,
         fork_parent_id: str = "",
+        redact: bool = True,
+        auto_close: bool = False,
     ) -> None:
         self.path = Path(path)
         self.capture_llm_io = capture_llm_io
+        self.redact = redact
+        self.auto_close = auto_close
         self.run_id = uuid.uuid4().hex
         self._handle: TextIO | None = None
         self._started = False
@@ -236,13 +240,19 @@ class TraceWriter:
             "kind": kind,
             "content_chars": len(content),
         }
-        if role == "assistant" and not self.capture_llm_io:
+        if role == "assistant" and self.redact and not self.capture_llm_io:
             payload["content_sha256"] = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
         else:
             payload["content"] = content
         return self.record("message", payload)
 
-    def record_compaction(self, payload: dict[str, Any]) -> str:
+    def record_compaction(
+        self,
+        payload: dict[str, Any],
+        *,
+        first_kept_index: int | None = None,
+        folded_indexes: Iterable[int] = (),
+    ) -> str:
         """记录一次非破坏式折叠：原始消息条目一条不删，只记下这次跳过了哪些。"""
         return self.record("compaction", payload)
 
@@ -254,7 +264,13 @@ class TraceWriter:
             sanitize=False,
         )
 
-    def record(self, event: str, payload: dict[str, Any], *, sanitize: bool = True) -> str:
+    def record(
+        self,
+        event: str,
+        payload: dict[str, Any],
+        *,
+        sanitize: bool | None = None,
+    ) -> str:
         """追加一条会话条目，返回它的 entry id。
 
         ``sanitize=False`` 只给 ``checkpoint`` 条目用：脱敏会把 ``$HOME`` 改写成
@@ -270,11 +286,15 @@ class TraceWriter:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "run_id": self.run_id,
             "event": event,
-            "payload": _sanitize(payload) if sanitize else payload,
+            "payload": (
+                _sanitize(payload) if (self.redact if sanitize is None else sanitize) else payload
+            ),
         }
         self._handle.write(json.dumps(envelope, ensure_ascii=False, sort_keys=True) + "\n")
         self._handle.flush()
         self._last_entry_id = entry_id
+        if self.auto_close:
+            self.close()
         return entry_id
 
 
@@ -285,6 +305,170 @@ def load_trace_events(path: str | Path) -> list[dict[str, Any]]:
         if line.strip():
             events.append(json.loads(line))
     return normalize_entries(events)
+
+
+class SessionWriter:
+    """把会话事件扇出到多个保真档的门面。
+
+    每个 ``TraceWriter`` 都保留自己的序号、父指针和隐私策略；本类只维护逻辑消息
+    下标到各 sink 本地 entry id 的映射。这样同一条消息在 trace 与 checkpoint 中
+    可以有不同 payload 和不同 id，而 ``compaction`` 仍能准确指向各自文件中的条目。
+    """
+
+    def __init__(self, trace_writer: TraceWriter | None = None) -> None:
+        self._sinks: dict[str, TraceWriter] = {}
+        self._message_entry_ids: dict[str, list[str]] = {}
+        self._disabled_checkpoint_paths: set[Path] = set()
+        if trace_writer is not None:
+            self._sinks["trace"] = trace_writer
+            self._message_entry_ids["trace"] = []
+
+    def __bool__(self) -> bool:
+        return bool(self._sinks)
+
+    @property
+    def run_id(self) -> str:
+        writer = self._primary_writer()
+        return str(getattr(writer, "run_id", "")) if writer is not None else ""
+
+    @property
+    def capture_llm_io(self) -> bool:
+        """只暴露 trace sink 的 opt-in 状态，避免 checkpoint 反向打开脱敏档原文。"""
+        writer = self._sinks.get("trace")
+        return bool(getattr(writer, "capture_llm_io", False)) if writer is not None else False
+
+    def start_run(self, task: str, *, metadata: dict[str, Any] | None = None) -> None:
+        self._message_entry_ids = {name: [] for name in self._sinks}
+        self._fanout("start_run", task, metadata=metadata)
+
+    def finish_run(self, result: dict[str, Any]) -> None:
+        self._fanout("finish_run", result)
+
+    def close(self) -> None:
+        for writer in list(self._sinks.values()):
+            writer.close()
+
+    def record(self, event: str, payload: dict[str, Any], *, sanitize: bool | None = None) -> str:
+        return self._fanout("record", event, payload, sanitize=sanitize)
+
+    def record_message(self, *, role: str, content: str, step_number: int, kind: str) -> str:
+        """同时写入各 sink，并返回主 sink 的本地 entry id。"""
+        results: dict[str, str] = {}
+        for name, writer in list(self._sinks.items()):
+            try:
+                entry_id = writer.record_message(
+                    role=role,
+                    content=content,
+                    step_number=step_number,
+                    kind=kind,
+                )
+            except OSError as exc:
+                self._disable_checkpoint_sink(name, exc)
+                continue
+            self._message_entry_ids.setdefault(name, []).append(entry_id)
+            results[name] = entry_id
+        return results.get(self._primary_name(), "")
+
+    def record_compaction(
+        self,
+        payload: dict[str, Any],
+        *,
+        first_kept_index: int | None = None,
+        folded_indexes: Iterable[int] = (),
+    ) -> str:
+        """按每个 sink 的消息 id 映射写折叠条目。"""
+        folded_indexes = tuple(folded_indexes)
+        results: dict[str, str] = {}
+        for name, writer in list(self._sinks.items()):
+            local_payload = dict(payload)
+            if first_kept_index is not None:
+                ids = self._message_entry_ids.get(name, [])
+                local_payload["first_kept_entry_id"] = _local_message_id(ids, first_kept_index)
+                local_payload["folded_entry_ids"] = [
+                    _local_message_id(ids, index) for index in folded_indexes
+                ]
+            try:
+                results[name] = writer.record_compaction(local_payload)
+            except OSError as exc:
+                self._disable_checkpoint_sink(name, exc)
+        return results.get(self._primary_name(), "")
+
+    def record_checkpoint_state(self, *, step_number: int, state: dict[str, Any]) -> str:
+        """checkpoint 状态只进入本地完整 sink，不泄露到分享档。"""
+        writer = self._sinks.get("checkpoint")
+        if writer is None:
+            return ""
+        try:
+            return writer.record_checkpoint_state(step_number=step_number, state=state)
+        except OSError as exc:
+            self._disable_checkpoint_sink("checkpoint", exc)
+            return ""
+
+    def ensure_checkpoint_sink(self, path: str | Path) -> None:
+        """为 ``*.jsonl`` checkpoint 准备本地完整 sink。"""
+        target = Path(path)
+        if target.suffix.lower() != ".jsonl":
+            return
+        resolved = target.resolve()
+        if resolved in self._disabled_checkpoint_paths:
+            return
+        for name, writer in self._sinks.items():
+            if writer.path.resolve() == resolved:
+                if name == "trace":
+                    raise ValueError("--trace 与 --checkpoint 不能指向同一个文件。")
+                return
+        old = self._sinks.get("checkpoint")
+        if old is not None:
+            old.close()
+        self._sinks["checkpoint"] = TraceWriter(
+            target,
+            capture_llm_io=False,
+            redact=False,
+            auto_close=True,
+        )
+        self._message_entry_ids["checkpoint"] = []
+
+    def __getattr__(self, name: str) -> Any:
+        """把新增的 ``record_*`` 方法透明转发给所有 sink。"""
+        if name.startswith("record_"):
+            return lambda *args, **kwargs: self._fanout(name, *args, **kwargs)
+        raise AttributeError(name)
+
+    def _fanout(self, method: str, *args: Any, **kwargs: Any) -> str:
+        results: dict[str, Any] = {}
+        for name, writer in list(self._sinks.items()):
+            try:
+                results[name] = getattr(writer, method)(*args, **kwargs)
+            except OSError as exc:
+                self._disable_checkpoint_sink(name, exc)
+        return results.get(self._primary_name(), "")
+
+    def _primary_name(self) -> str:
+        if "trace" in self._sinks:
+            return "trace"
+        if "checkpoint" in self._sinks:
+            return "checkpoint"
+        return ""
+
+    def _primary_writer(self) -> TraceWriter | None:
+        name = self._primary_name()
+        return self._sinks.get(name) if name else None
+
+    def _disable_checkpoint_sink(self, name: str, error: OSError) -> None:
+        if name != "checkpoint":
+            raise error
+        writer = self._sinks.pop(name, None)
+        self._message_entry_ids.pop(name, None)
+        if writer is not None:
+            self._disabled_checkpoint_paths.add(writer.path.resolve())
+            writer.close()
+        print(f"[warn] checkpoint 会话写入失败，已停用该 sink：{error}")
+
+
+def _local_message_id(entry_ids: list[str], index: int) -> str:
+    if 0 <= index < len(entry_ids):
+        return entry_ids[index]
+    return ""
 
 
 def _sanitize(value: Any) -> Any:

@@ -188,8 +188,13 @@ flowchart LR
     E3 -. parent_id .-> F4
 ```
 
-条目类型、两个保真档（`--trace` 脱敏 vs `--checkpoint` 完整）、非破坏式折叠与
+条目类型、两个保真档（`--trace` 脱敏 vs `--checkpoint` 完整）、多 sink 扇出、非破坏式折叠与
 `rebuild_context` 的 ablation 用法，见 [会话与 trace](tracing.md)。
+
+Agent 持有一个 `SessionWriter` 门面；它把普通会话事件扇出到各个 `TraceWriter`，并按
+历史下标为每个 sink 维护独立的 message id 映射。`RunContext.history_entry_ids` 仍保留
+主 sink 的兼容视图，折叠起点不会跨文件复用 id。JSONL checkpoint sink 的写入失败按
+checkpoint 的“尽力而为”约定隔离并告警，不会拖垮分享档或主循环。
 
 ## 三条约定
 
