@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -14,7 +13,6 @@ from typing import Any
 from dm_agent.tools.base import Tool
 
 from .planner import PlanStep
-from .run_state import Step
 
 RESPONSE_FORMAT_HINT = (
     '\n用 JSON 对象回应：{"thought": string, "action": string, "action_input": object|string}。'
@@ -30,14 +28,11 @@ class SkillActivation:
     tools: list[Tool] = field(default_factory=list)
 
 
-def build_user_prompt(
-    task: str, steps: Sequence[Step], plan: Sequence[PlanStep] | None = None
-) -> str:
+def build_user_prompt(task: str, plan: Sequence[PlanStep] | None = None) -> str:
     """构建用户提示词。
 
     Args:
         task: 当前任务描述
-        steps: 已执行的步骤列表
         plan: 执行计划
 
     Returns:
@@ -54,13 +49,6 @@ def build_user_prompt(
                 f"{status} 步骤 {plan_step.step_number}: {plan_step.action} - {plan_step.reason}"
             )
 
-    if steps:
-        lines.append("\n之前的步骤：")
-        for index, step in enumerate(steps, start=1):
-            lines.append(f"步骤 {index} 思考：{step.thought}")
-            lines.append(f"步骤 {index} 动作：{step.action}")
-            lines.append(f"步骤 {index} 输入：{json.dumps(step.action_input, ensure_ascii=False)}")
-            lines.append(f"步骤 {index} 观察：{step.observation}")
     lines.append(RESPONSE_FORMAT_HINT)
     return "\n".join(lines)
 

@@ -198,6 +198,6 @@ checkpoint 状态条目只写本地完整档，完整 LLM I/O 仍需显式 `--tr
 - **会话日志体积**：`message` 条目与 `tool_call` 条目内容有重叠（user 消息是 observation
   的包装），trace 体积约增加 30–50%。等真实使用后再决定是否给 `message` 做去重引用。
 - **`--checkpoint` 单独使用时缺 message/compaction 条目**：第 9 步已用多 sink 扇出解决。
-- **A-3（`build_user_prompt` 的死代码）**：resume 之后模型看不到「之前的步骤」摘要。
-  有了 `message` 条目后，这个问题可以改成「从会话日志重建提示词」，但属于行为变更，
-  仍按缺陷清单单独处理。
+- **A-3（`build_user_prompt` 的死代码）**：第 9 步确认 checkpoint 中的完整
+  `conversation_history` 才是恢复上下文的权威来源；额外合成「之前的步骤」会重复内容并
+  偏离“像从未中断一样继续”的语义，因此删除了该死分支，没有在 resume 时追加摘要。

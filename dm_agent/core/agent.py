@@ -498,7 +498,7 @@ class ReactAgent:
                     print(f"[warn] 计划生成失败：{e}，将使用常规模式执行")
 
             # 添加新任务到对话历史
-            task_prompt: str = build_user_prompt(task, steps, plan)
+            task_prompt: str = build_user_prompt(task, plan)
             self._append_history("user", task_prompt, kind="task")
 
         for step_num in range(resume_from + 1, limit + 1):

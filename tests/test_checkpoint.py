@@ -21,9 +21,11 @@ from dm_agent.tracing import TraceWriter, load_trace_events
 class FakeRespondClient:
     def __init__(self, responses):
         self.responses = list(responses)
+        self.requests = []
         self.model = "fake-model"
 
     def respond(self, messages, **extra):
+        self.requests.append([dict(message) for message in messages])
         if not self.responses:
             raise AssertionError("FakeRespondClient ran out of responses")
         return self.responses.pop(0)
@@ -162,6 +164,39 @@ def test_agent_resumes_from_checkpoint_and_finishes(tmp_path):
     # Restored history contains the original task prompt from the first run.
     history_texts = [m.get("content", "") for m in second_agent.conversation_history]
     assert any("echo then finish" in text for text in history_texts)
+
+
+def test_resume_reuses_exact_history_without_synthesizing_previous_steps():
+    history = [
+        {"role": "user", "content": "任务：resume exactly"},
+        {"role": "assistant", "content": _action("echo", {"text": "one"})},
+        {"role": "user", "content": "观察：echo:one"},
+    ]
+    checkpoint = RunCheckpoint(
+        task="resume exactly",
+        step_count=1,
+        conversation_history=history,
+        steps=[
+            {
+                "thought": "step",
+                "action": "echo",
+                "action_input": {"text": "one"},
+                "observation": "echo:one",
+            }
+        ],
+    )
+    client = FakeRespondClient([_action("finish", "resumed")])
+    agent = ReactAgent(
+        client,
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    agent.run(checkpoint.task, max_steps=3, resume_state=checkpoint)
+
+    assert client.requests[0][1:] == history
+    assert all("之前的步骤：" not in message["content"] for message in client.requests[0])
 
 
 def test_resume_restores_compressor_memory(tmp_path):

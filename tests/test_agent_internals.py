@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 
-from dm_agent.core.agent import ReactAgent, Step
+from dm_agent.core.agent import ReactAgent
 from dm_agent.core.context_window import should_log_memory_status
+from dm_agent.core.planner import PlanStep
 from dm_agent.core.prompting import build_user_prompt
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
@@ -315,24 +316,21 @@ def test_memory_status_log_throttle_branches():
 # --- 用户提示词与公开接口 -------------------------------------------------------
 
 
-def test_build_user_prompt_renders_plan_and_previous_steps():
-    steps = [
-        Step(
-            thought="inspect the file",
+def test_build_user_prompt_renders_task_and_plan():
+    plan = [
+        PlanStep(
+            step_number=1,
             action="echo",
-            action_input={"text": "one"},
-            observation="echo:one",
+            reason="inspect the file",
         )
     ]
 
-    prompt = build_user_prompt("排查回归", steps, None)
+    prompt = build_user_prompt("排查回归", plan)
 
     assert "任务：排查回归" in prompt
-    assert "之前的步骤：" in prompt
-    assert "步骤 1 思考：inspect the file" in prompt
-    assert "步骤 1 动作：echo" in prompt
-    assert '步骤 1 输入：{"text": "one"}' in prompt
-    assert "步骤 1 观察：echo:one" in prompt
+    assert "执行计划：" in prompt
+    assert "[todo] 步骤 1: echo - inspect the file" in prompt
+    assert "之前的步骤：" not in prompt
 
 
 def test_get_conversation_history_returns_a_copy():
