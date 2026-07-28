@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Architecture refactor (2026-07, eight steps)
+
+An eight-step restructuring benchmarked against
+[Pi Agent Harness](https://github.com/earendil-works/pi-mono). Every step was required to
+keep `python -m dm_agent.evals.cli` **identical field by field** to the pre-refactor
+baseline; the four default-off paths (Reflexion / Critic / circuit breaker /
+breaker×guard) were A/B-compared with a dedicated probe script on top of that.
+
+#### Added
+- **Lifecycle event bus** (`dm_agent/core/events.py`) with six interceptable hooks:
+  `before_tool_call` (rewrite arguments in place, or `{"block": True, "reason": ...}`),
+  `after_tool_result` (middleware-style observation rewriting), `before_llm_request`
+  (rewrite messages, carries a `phase`), `before_finish` (veto a completion),
+  `on_run_start` (mutate metadata, append to the system prompt), and `on_run_end`
+  (`{"retry": True}` to discard the attempt and rerun). Handlers run in registration order;
+  an exception in one handler is isolated, logged as a `hook_error` entry, and does not
+  abort the run.
+- **Extension system** (`dm_agent/extensions/`): `ExtensionAPI` with `register_tool` /
+  `register_skill` / `register_provider` / `on`, plus three discovery sources in ascending
+  priority — built-ins, `dm_agent.extensions` entry points, `~/.dm_agent/extensions/*.py`,
+  project-local `.dm_agent/extensions/*.py`, and `--extension PATH`. Adding a tool, skill,
+  provider, or guard now requires **zero changes under `dm_agent/`**.
+- **Project trust model**: project-local extensions are never imported without explicit
+  authorization. Decisions are stored outside the repository in
+  `~/.dm_agent/trusted-projects.json`; non-interactive environments skip untrusted projects
+  instead of blocking. New `--no-extensions` and `--extension` flags (mutually exclusive).
+- **Session tree**: every JSONL entry now carries `id` (`<run-id-prefix>-<seq>`) and
+  `parent_id`, making the run history a navigable tree (schema `1.2` → `2.0`, purely
+  additive — `event`/`payload` keys unchanged). New entry types: `message`, `compaction`,
+  `checkpoint`, `fork`.
+- **Non-destructive context compaction**: folding now appends a `compaction` entry
+  (`first_kept_entry_id`, `folded_entry_ids`, summary, token estimates) and the request's
+  message list is assembled by *skipping* the folded range. **No original entry is ever
+  deleted.** `tracing.session.rebuild_context(entries, apply_compaction=False)` replays the
+  same session as if compaction never happened — the difference is exactly what was folded,
+  which makes the `no_compression` ablation attributable instead of just two end-to-end
+  scores. The messages sent to the model are byte-identical to before.
+- **`dm-agent-trace fork <session.jsonl> --at <entry-id>`**: branch a new session from any
+  entry. Entries up to the fork point are copied verbatim and a `fork` entry whose
+  `parent_id` points back at the fork point is appended.
+- **`--checkpoint *.jsonl`**: append-only session-format checkpointing (every step's snapshot
+  is kept) with `--resume-at <entry-id>` to resume from an earlier entry. `--checkpoint`
+  with any other suffix keeps the original single-file JSON snapshot, and `--resume` sniffs
+  both formats, so existing usage is unchanged.
+- **`uv.lock`** for reproducible installs; CI now runs `uv sync --frozen --extra dev` and
+  fails on `uv lock --check`.
+- **mypy** over `dm_agent`, with `disallow_untyped_defs` enforced for `dm_agent.tools.*` and
+  `dm_agent.clients.*`.
+- **Layering contract** enforced by ruff `TID251`: `core` / `tools` / `clients` / `memory` /
+  `tracing` / `evals` / `benchmarks` may not import `dm_agent.cli`.
+
+#### Changed
+- **`main.py` moved into the package.** `dm-agent` now points at `dm_agent.cli:main` and
+  `py-modules = ["main"]` is gone — installing the project no longer puts a top-level `main`
+  module into `site-packages`. The root `main.py` is a thin shim for `python main.py`.
+- **Ruff rule set widened** from `E9 F63 F7 F82` to `E F I UP B SIM TID RUF`, with `E501` and
+  `RUF001`–`RUF003` disabled on purpose (rationale in `pyproject.toml`). No `# noqa` in
+  source files.
+- **LLM providers, built-in tools, and built-in skills are now registered** through the same
+  `ExtensionAPI` third parties use, rather than hard-coded lists.
+- **Optional capabilities moved out of the kernel.** Critic, circuit breaker, Reflexion, and
+  the read-before-edit guard are now event handlers under
+  `dm_agent/extensions/capabilities/` (and `core/guards.py`). The `--enable-*` flags are kept
+  as a transitional surface and are internally equivalent to loading the matching capability;
+  behavior and eval output are unchanged.
+- **`dm_agent/core/agent.py` split** from 1616 to 866 lines. Per-step concerns became sibling
+  modules: `run_state`, `prompting`, `context_window`, `response_parser`, `tool_invoker`,
+  `observation`, `completion`, `replan`, `persistence`. `ReactAgent` is down to 4 public
+  methods.
+- **Documentation restructured.** `README.md` 19.6 KB → 2.7 KB navigation page; content split
+  into `docs/getting-started.md`, `docs/cli.md`, `docs/capabilities.md`,
+  `docs/project-status.md`, and a `docs/README.md` index. `MCP_GUIDE.md` → `docs/mcp.md`,
+  `SKILL_GUIDE.md` → `docs/skills.md`. New `docs/architecture.md` (prose/mermaid, now the
+  authoritative source over the drawio/png) and a rewritten `docs/extensions.md` with an API
+  reference, the security model, and three verified runnable examples.
+
+#### Removed
+- `README_FR.md`. Measured at 1,955 characters versus the Chinese README's 14,324, with 5
+  sections against 19 and no French accents anywhere, it had never actually been maintained.
+  `README_EN.md` is kept and synchronized with the slimmed structure; pages under `docs/`
+  are Chinese-only, stated explicitly in both READMEs.
+
+#### Notes
+- No evaluation claims changed. Real SWE-bench / Docker / cross-model scoring remains frozen.
+- Devlogs: [`docs/research-log/29-session-tree.md`](docs/research-log/29-session-tree.md)
+  covers the session tree and non-destructive compaction.
+
 ### Added
 - Default-on observation truncation: tool outputs beyond
   `--max-observation-chars` (default 8000) keep head+tail with an explicit
