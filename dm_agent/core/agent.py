@@ -42,6 +42,7 @@ from .persistence import (
 )
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
+from .replan import FailureContext, ReplanCoordinator
 from .response_parser import normalize_action, parse_agent_response
 from .run_state import RunContext, Step, initial_run_metadata
 
@@ -219,6 +220,14 @@ class ReactAgent:
         self.replan_policy = replan_policy or AdaptiveReplanPolicy()
         self.max_replans = max_replans
         self.enable_repeated_failure_policy_experiment = enable_repeated_failure_policy_experiment
+        self._replan_coordinator = ReplanCoordinator(
+            planner=self.planner,
+            policy=self.replan_policy,
+            trace_writer=trace_writer,
+            adaptive=enable_adaptive_replanning,
+            max_replans=max_replans,
+            repeated_failure_experiment=enable_repeated_failure_policy_experiment,
+        )
 
         # 可选能力装配：显式传入的 capabilities 之后，追加旧开关等价的内置能力。
         # 注册顺序即钩子执行顺序，能力先于内核内置守卫注册，与迁移前的判定次序一致。
@@ -643,14 +652,16 @@ class ReactAgent:
                 if self.trace_writer:
                     self.trace_writer.record_step(step_number=step_num, step=step)
                 if plan and self.planner and self.enable_adaptive_replanning:
-                    plan = self._try_replan(
+                    plan = self._replan_after_failure(
                         task,
                         plan,
-                        observation,
                         metadata,
-                        action="error",
-                        step_number=step_num,
-                        error_kind="parse_error",
+                        FailureContext(
+                            observation=observation,
+                            action="error",
+                            step_number=step_num,
+                            error_kind="parse_error",
+                        ),
                     )
                 continue
             parsed = parsed_response.data
@@ -712,14 +723,16 @@ class ReactAgent:
                 if accepted:
                     return finish_result(final)
                 if plan and self.planner:
-                    plan = self._try_replan(
+                    plan = self._replan_after_failure(
                         task,
                         plan,
-                        observation,
                         metadata,
-                        action=action,
-                        step_number=step_num,
-                        error_kind="critic_rejected",
+                        FailureContext(
+                            observation=observation,
+                            action=action,
+                            step_number=step_num,
+                            error_kind="critic_rejected",
+                        ),
                     )
                 continue
 
@@ -755,14 +768,16 @@ class ReactAgent:
                     )
                     self.trace_writer.record_step(step_number=step_num, step=step)
                 if plan and self.planner:
-                    plan = self._try_replan(
+                    plan = self._replan_after_failure(
                         task,
                         plan,
-                        observation,
                         metadata,
-                        action=action,
-                        step_number=step_num,
-                        error_kind="unknown_tool",
+                        FailureContext(
+                            observation=observation,
+                            action=action,
+                            step_number=step_num,
+                            error_kind="unknown_tool",
+                        ),
                     )
                 continue
 
@@ -886,14 +901,16 @@ class ReactAgent:
                 self.trace_writer.record_step(step_number=step_num, step=step)
 
             if self._is_failure_observation(observation) and plan and self.planner:
-                plan = self._try_replan(
+                plan = self._replan_after_failure(
                     task,
                     plan,
-                    observation,
                     metadata,
-                    action=action,
-                    step_number=step_num,
-                    error_kind=error_kind or None,
+                    FailureContext(
+                        observation=observation,
+                        action=action,
+                        step_number=step_num,
+                        error_kind=error_kind or None,
+                    ),
                 )
 
             # 检查是否调用了 task_complete 工具
@@ -1090,161 +1107,24 @@ class ReactAgent:
         """委托到 ``core.observation``，让内核外的能力复用同一份失败判定。"""
         return is_failure_observation(observation)
 
-    def _try_replan(
+    def _replan_after_failure(
         self,
         task: str,
         plan: list[PlanStep],
-        observation: str,
         metadata: dict[str, Any],
-        *,
-        action: str = "",
-        step_number: int | None = None,
-        error_kind: str | None = None,
+        failure: FailureContext,
     ) -> list[PlanStep]:
-        completed_steps = [step for step in plan if step.completed]
-        signal = None
-        decision = None
-        repeated_failure = False
-        repeated_failure_payload = None
-        if self.enable_adaptive_replanning:
-            repeated_failure, repeated_failure_payload = self._record_failure_signature(
-                observation,
-                metadata,
-                action=action,
-                error_kind=error_kind,
-                step_number=step_number,
-            )
-            signal = self.replan_policy.classify(
-                observation,
-                action=action,
-                step_number=step_number,
-                error_kind=error_kind,
-            )
-            decision = self.replan_policy.decide(
-                signal,
-                replan_count=int(metadata.get("replan_count", 0)),
-                max_replans=self.max_replans,
-                repeated_failure=repeated_failure,
-                use_repeated_failure_escape=self.enable_repeated_failure_policy_experiment,
-            )
-            if repeated_failure and self.enable_repeated_failure_policy_experiment:
-                metadata["repeated_failure_policy_applied_count"] = (
-                    int(metadata.get("repeated_failure_policy_applied_count", 0)) + 1
-                )
-            metadata["replan_decision_count"] += 1
-            metadata["replan_strategy"] = decision.strategy
-            strategy_counts = metadata.setdefault("replan_strategy_counts", {})
-            strategy_counts[decision.strategy] = strategy_counts.get(decision.strategy, 0) + 1
-            metadata.setdefault("replan_signals", []).append(decision.to_dict())
-            if self.trace_writer:
-                payload = {
-                    "step_number": step_number,
-                    "action": action,
-                    "repeated_failure": repeated_failure,
-                    **decision.to_dict(),
-                }
-                if repeated_failure_payload:
-                    payload["repeated_failure_details"] = repeated_failure_payload
-                self.trace_writer.record("replan_decision", payload)
-            if not decision.should_replan:
-                metadata["replan_skipped_count"] += 1
-                if decision.strategy == "replan_budget_exhausted":
-                    metadata["replan_maxed_count"] += 1
-                return plan
-        else:
-            # 非 adaptive 默认路径此前没有任何预算：每个失败观察都会触发一次
-            # 完整的 planner LLM 调用。这里加一道成本护栏。
-            budget = self.max_replans if self.max_replans >= 0 else self.DEFAULT_REPLAN_BUDGET
-            if int(metadata.get("replan_count", 0)) >= budget:
-                metadata["replan_skipped_count"] += 1
-                metadata["replan_budget_exhausted_count"] = (
-                    int(metadata.get("replan_budget_exhausted_count", 0)) + 1
-                )
-                if self.trace_writer:
-                    self.trace_writer.record(
-                        "replan_decision",
-                        {
-                            "step_number": step_number,
-                            "action": action,
-                            "should_replan": False,
-                            "strategy": "replan_budget_exhausted",
-                            "reason": (
-                                "Default replan budget exhausted "
-                                f"({metadata.get('replan_count', 0)}/{budget})."
-                            ),
-                        },
-                    )
-                return plan
-
-        try:
-            new_plan = (
-                self.planner.replan(
-                    task,
-                    completed_steps,
-                    observation,
-                    error_signal=signal,
-                )
-                if self.planner
-                else []
-            )
-        except Exception as exc:
-            metadata["failure_reason"] = f"Replan failed: {exc}"
-            return plan
-
-        if new_plan:
-            metadata["replan_count"] += 1
-            if self.trace_writer:
-                self.trace_writer.record_replan(
-                    reason=observation,
-                    steps=new_plan,
-                    strategy=decision.strategy if decision else "",
-                    signal=signal.to_dict() if signal else None,
-                )
-            self.conversation_history.append(
-                {
-                    "role": "user",
-                    "content": (
-                        "Recovery: execution plan was regenerated after failure.\n"
-                        f"Failure observation: {observation}"
-                    ),
-                }
-            )
-            return new_plan
-        return plan
-
-    def _record_failure_signature(
-        self,
-        observation: str,
-        metadata: dict[str, Any],
-        *,
-        action: str,
-        error_kind: str | None,
-        step_number: int | None,
-    ) -> tuple[bool, dict[str, Any] | None]:
-        signature = self._failure_signature(action, error_kind, observation)
-        previous = str(metadata.get("last_failure_signature") or "")
-        metadata["last_failure_signature"] = signature
-        if not signature or signature != previous:
-            return False, None
-
-        payload = {
-            "step_number": step_number,
-            "action": action,
-            "kind": error_kind or "unknown",
-            "signature": signature,
-        }
-        metadata["repeated_failure_count"] = int(metadata.get("repeated_failure_count", 0)) + 1
-        metadata.setdefault("repeated_failures", []).append(payload)
-        return True, payload
-
-    @staticmethod
-    def _failure_signature(
-        action: str,
-        error_kind: str | None,
-        observation: str,
-    ) -> str:
-        compact_observation = " ".join(str(observation or "").split())[:160]
-        return "|".join([str(action or ""), str(error_kind or "unknown"), compact_observation])
+        """失败后尝试重规划；新计划生效时把恢复提示追加进对话历史。"""
+        outcome = self._replan_coordinator.try_replan(
+            task,
+            plan,
+            failure,
+            metadata,
+            default_budget=self.DEFAULT_REPLAN_BUDGET,
+        )
+        if outcome.history_note:
+            self.conversation_history.append({"role": "user", "content": outcome.history_note})
+        return outcome.plan
 
     def reset_conversation(self) -> None:
         """重置对话历史
