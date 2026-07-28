@@ -60,8 +60,9 @@ the updated `uv.lock` — CI fails on `uv lock --check` otherwise.
   (`discovery.py`), project trust store (`trust.py`), and the built-in capabilities under
   `capabilities/`.
 - `dm_agent/tracing/`: append-only JSONL session log — `writer.py` (entry ids, privacy tiers),
-  `session.py` (read-side normalization, `rebuild_context`), `cli.py`
-  (`view` / `analyze` / `analyze-dir` / `replay` / `diff` / `fork`).
+  `session.py` (read-side normalization, `rebuild_context`), `summary.py` / `analysis.py`
+  (deterministic algorithms), `render.py` (human/JSON/Markdown output), `replay.py` / `fork.py`
+  (explicit actions), and the thin `cli.py` parser/dispatcher.
 - `dm_agent/benchmarks/`: coding and maintenance benchmark suites.
 - `dm_agent/evals/`: deterministic and live-model agent evals.
 - `dm_agent/tools/`: file, execution, test, lint, and code-analysis tools.

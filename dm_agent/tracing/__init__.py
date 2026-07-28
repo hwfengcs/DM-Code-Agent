@@ -1,13 +1,8 @@
 """Trace capture, analysis, diff, and replay helpers for DM-Code-Agent."""
 
-from .cli import (
-    analyze_events,
-    analyze_trace_directory,
-    diff_events,
-    fork_session,
-    render_trace_directory_markdown,
-    summarize_events,
-)
+from .analysis import analyze_events, analyze_trace_directory
+from .fork import fork_session
+from .render import render_trace_directory_markdown
 from .session import (
     conversation_from_entries,
     find_entry,
@@ -19,6 +14,7 @@ from .session import (
     normalize_entries,
     rebuild_context,
 )
+from .summary import diff_events, summarize_events
 from .writer import SessionWriter, TraceWriter, load_trace_events
 
 __all__ = [

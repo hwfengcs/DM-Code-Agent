@@ -45,6 +45,10 @@ cli          最外层组装者，可以依赖任何层
 | `dm_agent/evals/` | 确定性与真实模型 eval |
 | `dm_agent/cli/` | argparse、Config、UI、报告、运行装配 |
 
+`tracing/` 内部同样按职责单向拆分：`summary.py` / `analysis.py` 放确定性算法，
+`render.py` 只做输出，`replay.py` / `fork.py` 承担显式动作，`cli.py` 只保留参数解析与分发。
+这些模块不依赖 `core`，避免形成 `core → tracing → core` 回环。
+
 ## `core/` 的模块分工
 
 第 6 步把 `agent.py` 从 1616 行拆到 866 行。`ReactAgent` 现在只做三件事：装配协作者、
