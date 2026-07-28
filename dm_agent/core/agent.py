@@ -7,7 +7,7 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import Any, cast
 
 from dm_agent.clients.base_client import BaseLLMClient
 from dm_agent.memory.context_budget import estimate_messages_tokens
@@ -17,10 +17,10 @@ from dm_agent.tools.base import Tool
 
 from .capabilities import AgentCapability, CapabilityContext
 from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
+from .completion import CompletionGate, build_completion_summary, format_final_answer
 from .critic import CriticAgent
 from .events import (
     AfterToolResultEvent,
-    BeforeFinishEvent,
     BeforeToolCallEvent,
     EventBus,
     HookFailure,
@@ -63,21 +63,6 @@ class ReactAgent:
     MEMORY_STATUS_ITEM_DELTA = 5
     # 非 adaptive 默认路径的 replan 成本护栏（max_replans>=0 时以其为准）。
     DEFAULT_REPLAN_BUDGET = 5
-    TERSE_COMPLETION_ANSWERS: ClassVar[set[str]] = {
-        "done",
-        "ok",
-        "complete",
-        "completed",
-        "finished",
-        "success",
-        "fixed",
-        "recovered",
-        "repaired",
-        "完成",
-        "已完成",
-        "成功",
-        "修复完成",
-    }
 
     def __init__(
         self,
@@ -157,6 +142,7 @@ class ReactAgent:
             return cast(BaseLLMClient, request_client.with_phase(phase))
 
         self._request_client = client_for("agent")
+        self._completion_gate = CompletionGate(self.event_bus, on_error=self._record_hook_error)
 
         self.tools = {tool.name: tool for tool in tools}
         self.tools_list = tools  # 保留工具列表用于规划器
@@ -437,7 +423,7 @@ class ReactAgent:
             if metadata.get("backup_count"):
                 print(f"[backup] 修改前的原文件备份目录：{metadata['backup_dir']}")
             if metadata.get("status") == "success":
-                metadata["completion_summary"] = self._build_completion_summary(final_answer, steps)
+                metadata["completion_summary"] = build_completion_summary(final_answer, steps)
             result = {
                 "final_answer": final_answer,
                 "steps": [step.__dict__ for step in steps],
@@ -678,15 +664,13 @@ class ReactAgent:
 
             # 检查是否完成
             if action == "finish":
-                final = self._format_final_answer(action_input)
-                accepted, observation = self._gate_completion(
+                final = format_final_answer(action_input)
+                accepted, observation = self._completion_gate.review(
                     task=task,
+                    action=action,
                     completion_text=final,
                     steps=steps,
-                    metadata=metadata,
-                    step_num=step_num,
-                    action=action,
-                    run_id=run_token,
+                    context=self._run_context,
                 )
                 step = Step(
                     thought=thought,
@@ -846,14 +830,12 @@ class ReactAgent:
                         after_event, on_error=self._record_hook_error
                     )
                     if action == "task_complete" and tool_succeeded:
-                        accepted, observation = self._gate_completion(
+                        accepted, observation = self._completion_gate.review(
                             task=task,
+                            action=action,
                             completion_text=str(observation),
                             steps=steps,
-                            metadata=metadata,
-                            step_num=step_num,
-                            action=action,
-                            run_id=run_token,
+                            context=self._run_context,
                         )
                         if not accepted:
                             error_kind = "critic_rejected"
@@ -1009,32 +991,6 @@ class ReactAgent:
             '\n用 JSON 对象回应：{"thought": string, "action": string, "action_input": object|string}。'
         )
         return "\n".join(lines)
-
-    def _gate_completion(
-        self,
-        *,
-        task: str,
-        completion_text: str,
-        steps: list[Step],
-        metadata: dict[str, Any],
-        step_num: int,
-        action: str,
-        run_id: str,
-    ) -> tuple[bool, str]:
-        """把完成候选交给 ``before_finish`` 链，返回 (是否放行, observation)。"""
-        event = BeforeFinishEvent(
-            task=task,
-            action=action,
-            completion_text=completion_text,
-            steps=[step.__dict__ for step in steps],
-            step_number=step_num,
-            run_id=run_id,
-            metadata=metadata,
-        )
-        block = self.event_bus.emit_before_finish(event, on_error=self._record_hook_error)
-        if block is None:
-            return True, completion_text
-        return False, str(block["reason"])
 
     @classmethod
     def _should_log_memory_status(
@@ -1377,53 +1333,3 @@ class ReactAgent:
             conversation_history (List[Dict[str, str]]): 对话历史记录的副本
         """
         return self.conversation_history.copy()
-
-    @staticmethod
-    def _format_final_answer(action_input: Any) -> str:
-        """
-        格式化最终答案
-
-        Args:
-            action_input (Any): finish动作的输入参数
-
-        Returns:
-            answer (str): 格式化后的最终答案字符串
-        """
-        if isinstance(action_input, str):
-            return action_input
-        if isinstance(action_input, dict):
-            for key in ("answer", "message", "final_answer", "summary", "result"):
-                value = action_input.get(key)
-                if isinstance(value, str):
-                    return value
-        return json.dumps(action_input, ensure_ascii=False)
-
-    @classmethod
-    def _build_completion_summary(cls, final_answer: str, steps: list[Step]) -> str:
-        answer = str(final_answer or "").strip()
-        if cls._looks_like_completion_summary(answer):
-            return answer
-        if answer:
-            return f"任务已完成。结果：{answer}"
-
-        tool_actions = []
-        for step in steps:
-            action = str(step.action or "")
-            if action in {"finish", "task_complete", "error"}:
-                continue
-            if action not in tool_actions:
-                tool_actions.append(action)
-        if tool_actions:
-            actions = ", ".join(tool_actions[:5])
-            suffix = " 等步骤" if len(tool_actions) > 5 else ""
-            return f"任务已完成。本轮通过 {actions}{suffix} 完成处理。"
-        return "任务已完成。本轮对话已收尾。"
-
-    @classmethod
-    def _looks_like_completion_summary(cls, text: str) -> bool:
-        compact = " ".join(str(text or "").split())
-        if not compact:
-            return False
-        if compact.lower() in cls.TERSE_COMPLETION_ANSWERS:
-            return False
-        return len(compact) >= 12
