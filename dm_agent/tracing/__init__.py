@@ -4,6 +4,7 @@ from .cli import (
     analyze_events,
     analyze_trace_directory,
     diff_events,
+    fork_session,
     render_trace_directory_markdown,
     summarize_events,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "diff_events",
     "find_entry",
     "find_entry_index",
+    "fork_session",
     "latest_checkpoint_entry",
     "load_session_entries",
     "load_trace_events",

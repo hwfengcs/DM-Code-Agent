@@ -429,3 +429,136 @@ def test_trace_and_checkpoint_may_not_share_one_file():
     args = parse_args(["task", "--trace", "same.jsonl", "--checkpoint", "same.jsonl"])
 
     assert "不能指向同一个文件" in validate_feature_args(args)
+
+
+# --- 7.3 fork -------------------------------------------------------------
+
+
+def test_fork_copies_entries_up_to_the_fork_point_and_appends_a_fork_entry(tmp_path):
+    from dm_agent.tracing import fork_session
+
+    checkpoint_path = tmp_path / "run.jsonl"
+    _stalled_run(checkpoint_path)
+    entries = load_session_entries(checkpoint_path)
+    at = [entry for entry in entries if entry["event"] == "checkpoint"][1]["id"]
+
+    result = fork_session(entries, source=checkpoint_path, at=at)
+
+    forked = load_session_entries(result["output"])
+    assert result["forked_from_entry_id"] == at
+    assert [entry["id"] for entry in forked[:-1]] == [entry["id"] for entry in entries[:2]]
+    assert forked[-1]["event"] == "fork"
+    # fork 条目的 parent_id 指回分叉点，两份 JSONL 由此串成一棵树。
+    assert forked[-1]["parent_id"] == at
+    # fork 条目走的是常规脱敏路径，所以 source 里的家目录会被写成 ~（与 run_start.cwd 一致）。
+    assert forked[-1]["payload"]["source"].endswith("run.jsonl")
+    assert result["resumable_checkpoint_entry_id"] == at
+    assert result["resumable_step_number"] == 1
+
+
+def test_forked_session_can_be_resumed_and_finished(tmp_path):
+    from dm_agent.core.persistence import load_resume_state
+    from dm_agent.tracing import fork_session
+
+    checkpoint_path = tmp_path / "run.jsonl"
+    _stalled_run(checkpoint_path)
+    entries = load_session_entries(checkpoint_path)
+    at = [entry for entry in entries if entry["event"] == "checkpoint"][1]["id"]
+    forked = fork_session(entries, source=checkpoint_path, at=at)["output"]
+
+    resume_state = load_resume_state(forked)
+    agent = ReactAgent(
+        FakeRespondClient([_action("finish", {"answer": "finished on the branch"})]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+    )
+    result = agent.run(resume_state.task, max_steps=4, resume_state=resume_state)
+
+    # 分叉点在第 1 步，所以新分支从第 2 步继续，而不是从原会话的第 3 步。
+    assert resume_state.step_count == 1
+    assert result["metadata"]["resumed_from_step"] == 1
+    assert result["metadata"]["status"] == "success"
+    assert result["final_answer"] == "finished on the branch"
+
+
+def test_fork_refuses_to_overwrite_and_reports_unknown_entries(tmp_path):
+    from dm_agent.tracing import fork_session
+
+    checkpoint_path = tmp_path / "run.jsonl"
+    _stalled_run(checkpoint_path)
+    entries = load_session_entries(checkpoint_path)
+    at = entries[1]["id"]
+    output = tmp_path / "branch.jsonl"
+    fork_session(entries, source=checkpoint_path, at=at, output=output)
+
+    with pytest.raises(ValueError, match="Refusing to overwrite"):
+        fork_session(entries, source=checkpoint_path, at=at, output=output)
+    with pytest.raises(ValueError, match="No session entry"):
+        fork_session(entries, source=checkpoint_path, at="nope-9999")
+
+
+def test_fork_works_on_a_legacy_trace_but_says_it_cannot_be_resumed(tmp_path, capsys):
+    from dm_agent.tracing.cli import main as trace_main
+
+    legacy_path = tmp_path / "legacy.jsonl"
+    legacy_path.write_text(
+        "\n".join(
+            json.dumps(entry, ensure_ascii=False)
+            for entry in [
+                {"timestamp": "t0", "run_id": "r", "event": "run_start", "payload": {"task": "x"}},
+                {
+                    "timestamp": "t1",
+                    "run_id": "r",
+                    "event": "step",
+                    "payload": {"step_number": 1, "action": "echo", "observation": "o"},
+                },
+                {
+                    "timestamp": "t2",
+                    "run_id": "r",
+                    "event": "run_end",
+                    "payload": {"status": "success", "final_answer": "done", "metadata": {}},
+                },
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert trace_main(["fork", str(legacy_path), "--at", "legacy-0001"]) == 0
+
+    output = capsys.readouterr().out
+    assert "legacy-0001" in output
+    assert "not resumed" in output
+    assert (tmp_path / "legacy.fork-legacy-0001.jsonl").is_file()
+
+
+def test_legacy_traces_still_work_with_view_analyze_and_replay(tmp_path):
+    from dm_agent.tracing.cli import main as trace_main
+
+    legacy_path = tmp_path / "legacy.jsonl"
+    legacy_path.write_text(
+        "\n".join(
+            json.dumps(entry, ensure_ascii=False)
+            for entry in [
+                {
+                    "timestamp": "t0",
+                    "run_id": "r",
+                    "event": "run_start",
+                    "payload": {"schema_version": "1.0", "task": "legacy"},
+                },
+                {
+                    "timestamp": "t1",
+                    "run_id": "r",
+                    "event": "run_end",
+                    "payload": {"status": "success", "final_answer": "done", "metadata": {}},
+                },
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert trace_main(["view", str(legacy_path), "--json"]) == 0
+    assert trace_main(["analyze", str(legacy_path), "--json"]) == 0
+    assert trace_main(["replay", str(legacy_path)]) == 0

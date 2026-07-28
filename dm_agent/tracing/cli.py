@@ -1,4 +1,4 @@
-"""Command-line tools for viewing and replaying DM-Code-Agent traces."""
+"""Command-line tools for viewing, forking, and replaying DM-Code-Agent sessions."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ from typing import Any
 
 from dm_agent.tools import default_tools
 
-from .writer import load_trace_events
+from .session import find_entry_index, latest_checkpoint_entry
+from .writer import TraceWriter, load_trace_events
 
 EXECUTION_TOOLS = {"run_python", "run_shell", "run_tests", "run_linter"}
 VERIFICATION_TOOLS = {"run_python", "run_tests", "run_linter"}
@@ -75,6 +76,24 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     diff_parser.add_argument("base_trace", type=Path, help="Baseline JSONL trace file.")
     diff_parser.add_argument("candidate_trace", type=Path, help="Candidate JSONL trace file.")
     diff_parser.add_argument("--json", action="store_true", help="Print diff result as JSON.")
+
+    fork_parser = subparsers.add_parser(
+        "fork",
+        help="Branch a new session file from one entry of an existing session.",
+    )
+    fork_parser.add_argument("session", type=Path, help="Path to a JSONL session/trace file.")
+    fork_parser.add_argument(
+        "--at",
+        required=True,
+        metavar="ENTRY_ID",
+        help="Entry to fork at (exact id or a unique prefix). Entries after it are dropped.",
+    )
+    fork_parser.add_argument(
+        "--output",
+        type=Path,
+        help="Destination file. Defaults to <session>.fork-<entry-id>.jsonl next to the source.",
+    )
+    fork_parser.add_argument("--json", action="store_true", help="Print fork result as JSON.")
     return parser.parse_args(argv)
 
 
@@ -115,7 +134,109 @@ def main(argv: Any = None) -> int:
         if base_events is None or candidate_events is None:
             return 2
         return _diff(base_events, candidate_events, as_json=args.json)
+    if args.command == "fork":
+        events = _load_trace_for_cli(args.session)
+        if events is None:
+            return 2
+        return _fork(
+            events,
+            source=args.session,
+            at=args.at,
+            output=args.output,
+            as_json=args.json,
+        )
     return 2
+
+
+def _fork(
+    entries: list[dict[str, Any]],
+    *,
+    source: Path,
+    at: str,
+    output: Path | None,
+    as_json: bool,
+) -> int:
+    """把源会话截到 ``--at``（含）写成一份新会话，并指出能不能直接续跑。"""
+    try:
+        result = fork_session(entries, source=source, at=at, output=output)
+    except ValueError as exc:
+        print(f"Fork failed: {exc}", file=sys.stderr)
+        return 2
+
+    if as_json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+
+    print(f"Forked from: {source}")
+    print(f"At entry: {result['forked_from_entry_id']}")
+    print(f"Entries copied: {result['entry_count']}")
+    print(f"Output: {result['output']}")
+    if result["resumable_checkpoint_entry_id"]:
+        print(
+            f"Resumable at step {result['resumable_step_number']} "
+            f"(entry {result['resumable_checkpoint_entry_id']})"
+        )
+        print(f"Next: dm-agent --resume {result['output']}")
+    else:
+        print(
+            "No checkpoint entry at or before the fork point: this branch can be inspected "
+            "but not resumed. Re-run the source task with --checkpoint <file>.jsonl to make "
+            "forks resumable."
+        )
+    return 0
+
+
+def fork_session(
+    entries: list[dict[str, Any]],
+    *,
+    source: Path,
+    at: str,
+    output: Path | None = None,
+) -> dict[str, Any]:
+    """从 ``at`` 条目分叉出一份新的会话日志。
+
+    分叉产物 = 源会话 ``[0..at]`` 的全部条目 + 一条 ``fork`` 条目（记下源文件与分叉点）。
+    条目原样拷贝，因此新文件保留了原来的 id 链；``fork`` 条目的 ``parent_id`` 指回
+    分叉点，把两份 JSONL 串成一棵树。
+
+    Raises:
+        ValueError: ``at`` 未命中/歧义，或目标文件已存在
+    """
+    index = find_entry_index(entries, at)
+    entry_id = str(entries[index].get("id", ""))
+    kept = entries[: index + 1]
+    target = output or source.with_suffix("").with_name(f"{source.stem}.fork-{entry_id}.jsonl")
+    if target.exists():
+        raise ValueError(f"Refusing to overwrite an existing file: {target}")
+
+    checkpoint = latest_checkpoint_entry(kept)
+    checkpoint_payload = (checkpoint or {}).get("payload") or {}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8") as handle:
+        for entry in kept:
+            handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    writer = TraceWriter(target, fork_parent_id=entry_id)
+    try:
+        writer.record(
+            "fork",
+            {
+                "source": str(source),
+                "forked_from_entry_id": entry_id,
+                "entry_count": len(kept),
+            },
+        )
+    finally:
+        writer.close()
+
+    return {
+        "mode": "session_fork",
+        "source": str(source),
+        "output": str(target),
+        "forked_from_entry_id": entry_id,
+        "entry_count": len(kept),
+        "resumable_checkpoint_entry_id": str((checkpoint or {}).get("id", "")),
+        "resumable_step_number": checkpoint_payload.get("step_number"),
+    }
 
 
 def _view(events: list[dict[str, Any]], *, as_json: bool, raw: bool) -> int:
