@@ -37,7 +37,14 @@ the updated `uv.lock` — CI fails on `uv lock --check` otherwise.
 
 ## Important Modules
 
-- `dm_agent/core/agent.py`: ReAct loop, planning, recovery, trace event hooks.
+- `dm_agent/core/agent.py`: ReAct loop and agent assembly. Per-step concerns live in sibling
+  modules and are wired in as collaborators: `context_window.py` (message building and
+  compression), `response_parser.py` (fault-tolerant JSON parsing), `tool_invoker.py` (the
+  validate → hook → backup → execute → truncate chain), `completion.py` (finish gating and
+  result formatting), `replan.py` (failure signatures and replanning), `persistence.py`
+  (checkpoint codec and pre-write backup), `observation.py`, `prompting.py`, `run_state.py`.
+- `dm_agent/core/events.py` + `capabilities.py`: lifecycle hooks and the capability contract.
+  Optional behaviors (Critic, circuit breaker, Reflexion) are extensions, not kernel branches.
 - `dm_agent/tracing/`: JSONL trace writing, viewing, and replay.
 - `dm_agent/benchmarks/`: coding and maintenance benchmark suites.
 - `dm_agent/evals/`: deterministic and live-model agent evals.
