@@ -565,7 +565,7 @@ class ReactAgent:
                 # 将错误观察添加到历史记录
                 self._note_observation(observation)
                 self._publish_step(step, step_num)
-                if plan and self.planner and self.enable_adaptive_replanning:
+                if plan and self.planner:
                     plan = self._replan_after_failure(
                         task,
                         plan,

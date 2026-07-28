@@ -618,6 +618,48 @@ def test_react_agent_adaptive_replan_handles_parse_error():
     assert result["metadata"]["replan_strategy"] == "repair_response_format"
 
 
+def test_react_agent_default_replan_handles_parse_error():
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            "not json",
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "task_complete", "reason": "repair format"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "thought": "Use strict JSON.",
+                    "action": "task_complete",
+                    "action_input": {"message": "format repaired"},
+                }
+            ),
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done"))],
+        enable_planning=True,
+        enable_compression=False,
+    )
+
+    result = agent.run("finish after default parse repair")
+
+    assert result["final_answer"] == "format repaired"
+    assert result["metadata"]["parse_error_count"] == 1
+    assert result["metadata"]["replan_count"] == 1
+    assert result["metadata"]["replan_decision_count"] == 0
+
+
 def test_react_agent_adaptive_replan_records_repeated_failures(tmp_path):
     trace_path = tmp_path / "repeat.jsonl"
     client = FakeRespondClient(
