@@ -20,15 +20,13 @@ from .completion import CompletionGate, build_completion_summary, format_final_a
 from .context_window import ContextWindow
 from .critic import CriticAgent
 from .events import (
-    AfterToolResultEvent,
-    BeforeToolCallEvent,
     EventBus,
     HookFailure,
     LLMRequestClient,
     RunEndEvent,
     RunStartEvent,
 )
-from .guards import WRITE_ACTIONS, ReadBeforeEditGuard
+from .guards import ReadBeforeEditGuard
 from .observation import ObservationBounder, is_failure_observation
 from .persistence import (
     RunPersistence,
@@ -45,6 +43,7 @@ from .reflexion import EpisodicMemory, Reflector
 from .replan import FailureContext, ReplanCoordinator
 from .response_parser import normalize_action, parse_agent_response
 from .run_state import RunContext, Step, initial_run_metadata
+from .tool_invoker import ToolInvoker
 
 __all__ = ["ReactAgent", "Step"]
 
@@ -196,6 +195,12 @@ class ReactAgent:
             max_chars=self.max_observation_chars, trace_writer=trace_writer
         )
         self._persistence = RunPersistence(trace_writer=trace_writer)
+        self._tool_invoker = ToolInvoker(
+            event_bus=self.event_bus,
+            bounder=self._observation_bounder,
+            persistence=self._persistence,
+            on_error=self._record_hook_error,
+        )
         # read-before-edit 守卫：edit_file 前必须读过目标文件，且写后需重读。
         self.enable_edit_guard = enable_edit_guard
         self._edit_guard = ReadBeforeEditGuard(enabled=enable_edit_guard, trace_writer=trace_writer)
@@ -694,90 +699,27 @@ class ReactAgent:
                     )
                 continue
 
-            error_kind = ""
-            guard_blocked = False
+            invocation = self._tool_invoker.invoke(
+                tool,
+                action=action,
+                action_input=action_input,
+                context=self._run_context,
+            )
+            action_input = invocation.arguments
+            observation = invocation.observation
+            error_kind = invocation.error_kind
+            guard_blocked = invocation.blocked  # 被守卫拦下的编辑不算计划完成
             accepted = False
-            arguments_ready = True
-
-            # task_complete 工具可以接受字符串或空参数
-            if action == "task_complete":
-                if action_input is None:
-                    action_input = {}
-                elif isinstance(action_input, str):
-                    action_input = {"message": action_input}
-                elif not isinstance(action_input, dict):
-                    action_input = {}
-            elif action_input is None:
-                metadata["argument_error_count"] += 1
-                metadata["failure_reason"] = "Tool arguments missing"
-                observation = "Tool arguments missing: action_input is null."
-                error_kind = "invalid_arguments"
-                arguments_ready = False
-            elif not isinstance(action_input, dict):
-                metadata["argument_error_count"] += 1
-                metadata["failure_reason"] = "Tool arguments must be a JSON object"
-                observation = "Tool arguments must be a JSON object."
-                error_kind = "invalid_arguments"
-                arguments_ready = False
-
-            if arguments_ready:
-                before_event = BeforeToolCallEvent(
-                    tool_name=action,
-                    arguments=cast(dict[str, Any], action_input),
-                    step_number=step_num,
-                    run_id=run_token,
-                    metadata=metadata,
+            if action == "task_complete" and invocation.tool_succeeded:
+                accepted, observation = self._completion_gate.review(
+                    task=task,
+                    action=action,
+                    completion_text=str(observation),
+                    steps=steps,
+                    context=self._run_context,
                 )
-                block = self.event_bus.emit_before_tool_call(
-                    before_event, on_error=self._record_hook_error
-                )
-                action_input = before_event.arguments
-                if block is not None:
-                    guard_blocked = True  # 被拦下的调用不计入计划完成
-                    observation = str(block["reason"])
-                else:
-                    if action in WRITE_ACTIONS:
-                        self._persistence.backup_before_write(action_input, self._run_context)
-                    tool_succeeded = False
-                    try:
-                        raw_observation = str(tool.execute(action_input))
-                    except Exception as exc:
-                        metadata["tool_error_count"] += 1
-                        metadata["failure_reason"] = str(exc)
-                        raw_observation = f"Tool execution failed: {exc}"
-                        error_kind = "tool_error"
-                    else:
-                        tool_succeeded = True
-
-                    # 观察截断是内核护栏，先于 after_tool_result 链执行：处理器看到的
-                    # 就是最终写进 step、对话历史与 trace 的那份文本。
-                    after_event = AfterToolResultEvent(
-                        tool_name=action,
-                        arguments=action_input,
-                        observation=self._observation_bounder.bound(
-                            raw_observation,
-                            action=action,
-                            action_input=action_input,
-                            context=self._run_context,
-                        ),
-                        step_number=step_num,
-                        run_id=run_token,
-                        tool_succeeded=tool_succeeded,
-                        metadata=metadata,
-                    )
-                    observation = self.event_bus.emit_after_tool_result(
-                        after_event, on_error=self._record_hook_error
-                    )
-                    if action == "task_complete" and tool_succeeded:
-                        accepted, observation = self._completion_gate.review(
-                            task=task,
-                            action=action,
-                            completion_text=str(observation),
-                            steps=steps,
-                            context=self._run_context,
-                        )
-                        if not accepted:
-                            error_kind = "critic_rejected"
+                if not accepted:
+                    error_kind = "critic_rejected"
 
             step = Step(
                 thought=thought,
