@@ -1,3 +1,8 @@
+# MCP 配置
+
+MCP（Model Context Protocol）服务器给 agent 提供额外工具。配置文件是当前工作目录下的
+`mcp_config.json`，独立于 `config.json` 与 CLI 参数。
+
 ## 快速开始
 
 ### 1. 准备工作
@@ -459,4 +464,4 @@ npx @playwright/mcp@latest
 
 ---
 
-**需要帮助？** 查看项目 README 或提交 Issue！
+**需要帮助？** 查看 [文档索引](README.md) 或提交 Issue！

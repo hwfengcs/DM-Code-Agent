@@ -246,7 +246,7 @@ python main.py
 ```
 
 用户目录扩展由用户自行放置，默认加载。项目内 `.dm_agent/extensions/` 则必须先显式信任；
-完整安全边界与 entry point 分发方式见 `docs/extensions.md`。
+完整安全边界与 entry point 分发方式见 [扩展开发](extensions.md)。
 
 ---
 
@@ -343,4 +343,4 @@ Skill 系统采用混合选择策略，自动为任务匹配最相关的技能�
 
 ---
 
-**需要帮助？** 查看项目 [README.md](README.md) 或提交 Issue！
+**需要帮助？** 查看 [文档索引](README.md) 或提交 Issue！
