@@ -408,6 +408,42 @@ class Mem0StyleMemory:
         return memory
 
 
+@dataclass(frozen=True)
+class Compaction:
+    """一次非破坏式折叠的完整描述。
+
+    压缩不再是「现算一份短消息、算完就丢」：``plan_compaction`` 只做决策，产出
+    「折叠哪几条、从哪条起保留、摘要是什么」；``apply_compaction`` 才按这份描述
+    重建消息。**原始历史一条不删**，描述本身会作为一条 ``compaction`` 条目落进
+    会话日志，于是事后可以在同一份日志上反复开关压缩、精确量化折叠掉了什么。
+    """
+
+    first_kept_index: int
+    folded_indexes: tuple[int, ...]
+    summary: str
+    trigger: str = ""
+    estimated_tokens: int = 0
+    memory_items: int = 0
+
+
+def apply_compaction(history: list[dict[str, str]], compaction: Compaction) -> list[dict[str, str]]:
+    """按折叠描述重建要发给 LLM 的消息：跳过被折叠的区间，其余原样保留。
+
+    ``system`` 消息永远保留并前置，与折叠决策无关。
+    """
+    folded = set(compaction.folded_indexes)
+    system_messages = [message for message in history if message.get("role") == "system"]
+    memory_messages = (
+        [{"role": "user", "content": compaction.summary}] if compaction.summary else []
+    )
+    kept = [
+        message
+        for index, message in enumerate(history)
+        if message.get("role") != "system" and index not in folded
+    ]
+    return system_messages + memory_messages + kept
+
+
 class ContextCompressor:
     """Compress conversation history via scoped atomic memories.
 
@@ -481,24 +517,32 @@ class ContextCompressor:
             return True
         return False
 
-    def compress(self, history: list[dict[str, str]]) -> list[dict[str, str]]:
+    def plan_compaction(self, history: list[dict[str, str]]) -> Compaction:
+        """决定这一轮折叠哪些消息、从哪条起保留、摘要是什么。
+
+        折叠决策与既有 ``compress`` 完全同构（旧消息进本地记忆、保留最近
+        ``keep_recent * 2`` 条、按需注入 ``<agent_memory>``），只是不再直接返回
+        消息列表，而是返回一份可落盘、可复算的描述。副作用（记忆写入、压缩节奏
+        计数）与改造前一致。
+        """
         if not history:
-            return []
+            return Compaction(first_kept_index=0, folded_indexes=(), summary="")
 
         self.turn_count = len([msg for msg in history if msg.get("role") == "user"])
         self._last_compressed_turn_count = self.turn_count
         self._compression_count += 1
-        system_messages = [msg for msg in history if msg.get("role") == "system"]
-        non_system = [msg for msg in history if msg.get("role") != "system"]
+        non_system_indexes = [
+            index for index, msg in enumerate(history) if msg.get("role") != "system"
+        ]
         recent_message_count = self.keep_recent * 2
-        recent_messages = (
-            non_system[-recent_message_count:]
-            if len(non_system) > recent_message_count
-            else list(non_system)
-        )
-        older_messages = (
-            non_system[:-recent_message_count] if len(non_system) > recent_message_count else []
-        )
+        if len(non_system_indexes) > recent_message_count:
+            folded_indexes = tuple(non_system_indexes[:-recent_message_count])
+            kept_indexes = non_system_indexes[-recent_message_count:]
+        else:
+            folded_indexes = ()
+            kept_indexes = list(non_system_indexes)
+        older_messages = [history[index] for index in folded_indexes]
+        recent_messages = [history[index] for index in kept_indexes]
 
         if older_messages:
             self.memory.add_messages(
@@ -521,8 +565,18 @@ class ContextCompressor:
             limit=self.memory_limit,
             turn=self._compression_count,
         )
-        memory_messages = [{"role": "user", "content": memory_block}] if memory_block else []
-        return system_messages + memory_messages + recent_messages
+        return Compaction(
+            first_kept_index=kept_indexes[0] if kept_indexes else len(history),
+            folded_indexes=folded_indexes,
+            summary=memory_block,
+            trigger=self.last_trigger,
+            estimated_tokens=self.last_estimated_tokens,
+            memory_items=self.memory_count,
+        )
+
+    def compress(self, history: list[dict[str, str]]) -> list[dict[str, str]]:
+        """旧 API：等价于「先规划折叠、再按折叠重建消息」，输出逐字节不变。"""
+        return apply_compaction(history, self.plan_compaction(history))
 
     def _add_llm_summary(self, older_messages: list[dict[str, str]]) -> None:
         """Fold older messages into one LLM-written semantic memory (best effort)."""

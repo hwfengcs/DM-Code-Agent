@@ -1,8 +1,13 @@
-"""构造发给 LLM 的消息窗口：按需压缩旧上下文，并汇报压缩效果。
+"""构造发给 LLM 的消息窗口：按需折叠旧上下文，并汇报折叠效果。
 
-压缩本身在 ``memory/context_compressor.py``（本地确定性的 Mem0 风格原子记忆）。
-本模块负责内核这一侧的编排：什么时候触发、压缩后往 metadata 与 trace 里记什么、
+折叠决策在 ``memory/context_compressor.py``（本地确定性的 Mem0 风格原子记忆）。
+本模块负责内核这一侧的编排：什么时候触发、折叠后往 metadata 与会话日志里记什么、
 以及把"已整理上下文"的播报节流到不刷屏。
+
+**折叠是非破坏式的**：原始消息条目一条不删，只往会话日志追加一条 ``compaction``
+条目（记下折叠了哪些 entry、从哪条起保留、摘要是什么），构造消息时按这条条目
+跳过被折叠的区间。于是事后可以在同一份会话日志上开关压缩重算上下文
+（``tracing.session.rebuild_context``），精确量化折叠掉了什么。
 """
 
 from __future__ import annotations
@@ -10,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from dm_agent.memory.context_budget import estimate_messages_tokens
-from dm_agent.memory.context_compressor import ContextCompressor
+from dm_agent.memory.context_compressor import Compaction, ContextCompressor, apply_compaction
 
 from .run_state import RunContext
 
@@ -20,6 +25,13 @@ MEMORY_STATUS_SAVED_DELTA = 8
 MEMORY_STATUS_ITEM_DELTA = 5
 
 MEMORY_BLOCK_PREFIX = "<agent_memory>"
+
+
+def _entry_id_at(entry_ids: list[str], index: int) -> str:
+    """把「历史里的第几条消息」翻译成会话条目 id；越界或未记录时返回空串。"""
+    if 0 <= index < len(entry_ids):
+        return entry_ids[index]
+    return ""
 
 
 def should_log_memory_status(
@@ -72,7 +84,11 @@ class ContextWindow:
         *,
         context: RunContext,
     ) -> list[dict[str, str]]:
-        """返回本步要发给 LLM 的消息；必要时先把旧上下文折叠成本地记忆。"""
+        """返回本步要发给 LLM 的消息；必要时先把旧上下文折叠成本地记忆。
+
+        折叠只影响**这一次请求的消息列表**：``history`` 与会话日志里的原始条目
+        都原样保留，折叠事实作为一条 ``compaction`` 条目单独落盘。
+        """
         messages = [{"role": "system", "content": system_prompt}, *history]
         compressor = self.compressor
         if not (self.enabled and compressor and compressor.should_compress(history)):
@@ -80,9 +96,16 @@ class ContextWindow:
 
         trigger = compressor.last_trigger
         trigger_tokens = compressor.last_estimated_tokens
-        compressed_history = compressor.compress(history)
+        compaction = compressor.plan_compaction(history)
+        compressed_history = apply_compaction(history, compaction)
         messages = [{"role": "system", "content": system_prompt}, *compressed_history]
 
+        self._record_compaction_entry(
+            compaction,
+            history=history,
+            compressed_history=compressed_history,
+            context=context,
+        )
         self._record_budget_events(
             compressed_history,
             context=context,
@@ -91,6 +114,41 @@ class ContextWindow:
         )
         self._record_compression_stats(history, compressed_history, context=context)
         return messages
+
+    def _record_compaction_entry(
+        self,
+        compaction: Compaction,
+        *,
+        history: list[dict[str, str]],
+        compressed_history: list[dict[str, str]],
+        context: RunContext,
+    ) -> None:
+        """把这次折叠写成一条会话条目，让上下文事后可复算。
+
+        ``first_kept_entry_id`` / ``folded_entry_ids`` 取自
+        ``RunContext.history_entry_ids``——它与 ``conversation_history`` 逐位对应。
+        没有会话日志（未开 --trace/--checkpoint）时什么都不做。
+        """
+        if not self.trace_writer:
+            return
+        entry_ids = context.history_entry_ids
+        self.trace_writer.record_compaction(
+            {
+                "step_number": context.step_number,
+                "trigger": compaction.trigger,
+                "first_kept_entry_id": _entry_id_at(entry_ids, compaction.first_kept_index),
+                "folded_entry_ids": [
+                    _entry_id_at(entry_ids, index) for index in compaction.folded_indexes
+                ],
+                "folded_message_count": len(compaction.folded_indexes),
+                "kept_message_count": len(compressed_history),
+                "original_message_count": len(history),
+                "summary": compaction.summary,
+                "memory_items": compaction.memory_items,
+                "estimated_tokens_before": compaction.estimated_tokens,
+                "estimated_tokens_after": estimate_messages_tokens(compressed_history),
+            }
+        )
 
     def _record_budget_events(
         self,

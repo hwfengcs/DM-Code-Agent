@@ -11,8 +11,15 @@ import json
 import pytest
 
 from dm_agent.core.agent import ReactAgent
+from dm_agent.memory.context_compressor import ContextCompressor, apply_compaction
 from dm_agent.tools.base import Tool
-from dm_agent.tracing import TraceWriter, load_session_entries, message_entries, normalize_entries
+from dm_agent.tracing import (
+    TraceWriter,
+    load_session_entries,
+    message_entries,
+    normalize_entries,
+    rebuild_context,
+)
 
 
 class FakeRespondClient:
@@ -183,3 +190,143 @@ def test_find_entry_reports_unknown_and_ambiguous_references():
         find_entry(entries, "zzzz")
     with pytest.raises(ValueError, match="ambiguous"):
         find_entry(entries, "abcd")
+
+
+# --- 7.2 压缩非破坏化 ------------------------------------------------------
+
+
+def _legacy_compress(compressor, history):
+    """改造前 ``ContextCompressor.compress`` 的算法，逐字节对照用。
+
+    保留这份参考实现是为了钉住「非破坏化没有改变发给 LLM 的消息」这一条：
+    折叠决策与消息重建拆开之后，输出必须与老实现完全一致。
+    """
+    if not history:
+        return []
+    system_messages = [msg for msg in history if msg.get("role") == "system"]
+    non_system = [msg for msg in history if msg.get("role") != "system"]
+    recent_count = compressor.keep_recent * 2
+    recent = non_system[-recent_count:] if len(non_system) > recent_count else list(non_system)
+    older = non_system[:-recent_count] if len(non_system) > recent_count else []
+    if older:
+        compressor.memory.add_messages(
+            older,
+            scope=compressor.scope,
+            turn=1,
+            invalidate_on_success=compressor.enable_hygiene,
+        )
+    query = "\n".join(message.get("content", "") for message in recent[-4:])
+    block = compressor.memory.render(
+        query, scope=compressor.scope, limit=compressor.memory_limit, turn=1
+    )
+    memory_messages = [{"role": "user", "content": block}] if block else []
+    return system_messages + memory_messages + recent
+
+
+def _long_history(turns=24):
+    history = [{"role": "user", "content": "任务：修复 module.py 里的失败测试"}]
+    for index in range(turns):
+        history.append({"role": "assistant", "content": f"assistant turn {index}"})
+        history.append({"role": "user", "content": f"观察：module.py 第 {index} 次运行 error"})
+    return history
+
+
+def test_plan_and_apply_compaction_reproduce_the_legacy_compress_output():
+    history = _long_history()
+    reference = _legacy_compress(ContextCompressor(compress_every=2, keep_recent=8), history)
+
+    planned = ContextCompressor(compress_every=2, keep_recent=8).plan_compaction(history)
+    wrapped = ContextCompressor(compress_every=2, keep_recent=8).compress(history)
+
+    assert apply_compaction(history, planned) == reference
+    assert wrapped == reference
+
+
+def test_compaction_describes_the_folded_range_without_dropping_messages():
+    history = _long_history()
+    compressor = ContextCompressor(compress_every=2, keep_recent=8)
+
+    compaction = compressor.plan_compaction(history)
+
+    assert compaction.first_kept_index == len(history) - 16
+    assert compaction.folded_indexes == tuple(range(len(history) - 16))
+    assert len(history) == 49  # 原始历史一条没少
+    assert set(compaction.folded_indexes).isdisjoint({compaction.first_kept_index})
+
+
+def _compaction_run(trace_path, *, enable_compression):
+    """跑同一份脚本任务；只有压缩开关不同。"""
+    responses = [_action("echo", {"text": f"turn {index}"}) for index in range(12)]
+    responses.append(_action("finish", {"answer": "done"}))
+    writer = TraceWriter(trace_path)
+    agent = ReactAgent(
+        FakeRespondClient(responses),
+        _tools(),
+        enable_planning=False,
+        enable_compression=enable_compression,
+        context_token_budget=60,
+        trace_writer=writer,
+    )
+    result = agent.run("echo many times then finish", max_steps=20)
+    writer.close()
+    return result
+
+
+def _message_signature(entries):
+    return [
+        (
+            entry["payload"]["role"],
+            entry["payload"]["kind"],
+            entry["payload"].get("content", entry["payload"].get("content_sha256")),
+        )
+        for entry in message_entries(entries)
+    ]
+
+
+def test_compression_leaves_the_original_entry_sequence_bit_identical(tmp_path):
+    on_path = tmp_path / "on.jsonl"
+    off_path = tmp_path / "off.jsonl"
+
+    _compaction_run(on_path, enable_compression=True)
+    _compaction_run(off_path, enable_compression=False)
+
+    on_entries = load_session_entries(on_path)
+    off_entries = load_session_entries(off_path)
+    compactions = [entry for entry in on_entries if entry["event"] == "compaction"]
+
+    # 唯一的差异只能是 compaction 条目本身。
+    assert compactions
+    assert not [entry for entry in off_entries if entry["event"] == "compaction"]
+    assert _message_signature(on_entries) == _message_signature(off_entries)
+
+
+def test_compaction_entry_points_at_surviving_message_entries(tmp_path):
+    trace_path = tmp_path / "session.jsonl"
+    _compaction_run(trace_path, enable_compression=True)
+
+    entries = load_session_entries(trace_path)
+    message_ids = {entry["id"] for entry in message_entries(entries)}
+    compaction = next(entry for entry in entries if entry["event"] == "compaction")["payload"]
+
+    assert compaction["first_kept_entry_id"] in message_ids
+    assert compaction["folded_entry_ids"]
+    # 被折叠的条目**一条不删**：每个 id 都还能在会话日志里找到。
+    assert set(compaction["folded_entry_ids"]) <= message_ids
+    assert (
+        compaction["folded_message_count"] + compaction["kept_message_count"]
+        >= compaction["original_message_count"]
+    )
+
+
+def test_rebuild_context_can_replay_with_and_without_compaction(tmp_path):
+    trace_path = tmp_path / "session.jsonl"
+    _compaction_run(trace_path, enable_compression=True)
+    entries = load_session_entries(trace_path)
+
+    compacted = rebuild_context(entries, apply_compaction=True)
+    full = rebuild_context(entries, apply_compaction=False)
+
+    assert len(full) > len(compacted)
+    assert len(full) == len(message_entries(entries))
+    # 同一份会话日志既能复现真正发出去的窗口，也能复现「假装从没压缩过」的全量历史。
+    assert full[-1] == compacted[-1]
