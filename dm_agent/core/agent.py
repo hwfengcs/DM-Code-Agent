@@ -39,6 +39,7 @@ from .persistence import (
     warn_on_config_mismatch,
 )
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
+from .prompting import activate_skills, build_user_prompt
 from .reflexion import EpisodicMemory, Reflector
 from .replan import FailureContext, ReplanCoordinator
 from .response_parser import normalize_action, parse_agent_response
@@ -496,7 +497,7 @@ class ReactAgent:
                     print(f"[warn] 计划生成失败：{e}，将使用常规模式执行")
 
             # 添加新任务到对话历史
-            task_prompt: str = self._build_user_prompt(task, steps, plan)
+            task_prompt: str = build_user_prompt(task, steps, plan)
             self.conversation_history.append({"role": "user", "content": task_prompt})
 
         for step_num in range(resume_from + 1, limit + 1):
@@ -796,7 +797,7 @@ class ReactAgent:
         return finish_result("Reached step limit without completion.")
 
     def _apply_skills_for_task(self, task: str) -> list[str]:
-        """根据任务自动选择并激活相关技能。"""
+        """根据任务自动选择技能，并把增量合并进本轮的 prompt 与工具表。"""
         # 调用点（_run_once）已用 `if self.skill_manager:` 守卫，此处的 None 分支不可达；
         # 取局部变量是为了让类型检查器完成收窄，同时避免管理器缺失时抛 AttributeError。
         manager = self.skill_manager
@@ -807,73 +808,12 @@ class ReactAgent:
         self.system_prompt = self._base_system_prompt
         self.tools = dict(self._base_tools)
 
-        # 自动选择
-        selected = manager.select_skills_for_task(task)
-        if not selected:
-            manager.deactivate_all()
-            return []
-
-        # 激活选中技能
-        manager.activate_skills(selected)
-
-        # 追加技能 prompt
-        prompt_addition = manager.get_active_prompt_additions()
-        if prompt_addition:
-            self.system_prompt += prompt_addition
-
-        # 合并技能工具
-        skill_tools = manager.get_active_tools()
-        for tool in skill_tools:
+        activation = activate_skills(manager, task)
+        if activation.prompt_addition:
+            self.system_prompt += activation.prompt_addition
+        for tool in activation.tools:
             self.tools[tool.name] = tool
-
-        # 打印激活信息
-        display_names = []
-        for name in selected:
-            skill = manager.skills.get(name)
-            if skill:
-                display_names.append(skill.get_metadata().display_name)
-        if display_names:
-            print(f"\n[skills] 已激活技能：{', '.join(display_names)}")
-        return selected
-
-    def _build_user_prompt(
-        self, task: str, steps: list[Step], plan: list[PlanStep] | None = None
-    ) -> str:
-        """
-        构建用户提示词
-
-        Args:
-            task (str): 当前任务描述
-            steps (List[Step]): 已执行的步骤列表
-            plan (List[PlanStep], optional): 执行计划
-
-        Returns:
-            prompt (str): 构建好的用户提示词字符串
-        """
-        lines: list[str] = [f"任务：{task.strip()}"]
-
-        # 如果有计划，添加到提示中
-        if plan:
-            lines.append("\n执行计划：")
-            for plan_step in plan:
-                status = "[done]" if plan_step.completed else "[todo]"
-                lines.append(
-                    f"{status} 步骤 {plan_step.step_number}: {plan_step.action} - {plan_step.reason}"
-                )
-
-        if steps:
-            lines.append("\n之前的步骤：")
-            for index, step in enumerate(steps, start=1):
-                lines.append(f"步骤 {index} 思考：{step.thought}")
-                lines.append(f"步骤 {index} 动作：{step.action}")
-                lines.append(
-                    f"步骤 {index} 输入：{json.dumps(step.action_input, ensure_ascii=False)}"
-                )
-                lines.append(f"步骤 {index} 观察：{step.observation}")
-        lines.append(
-            '\n用 JSON 对象回应：{"thought": string, "action": string, "action_input": object|string}。'
-        )
-        return "\n".join(lines)
+        return activation.selected
 
     def _config_snapshot(self, *, max_steps: int | None = None) -> dict[str, Any]:
         """当前生效的配置快照：既用于落盘，也用于 resume 时的一致性比对。"""

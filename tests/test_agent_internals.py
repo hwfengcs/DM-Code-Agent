@@ -10,6 +10,7 @@ import json
 
 from dm_agent.core.agent import ReactAgent, Step
 from dm_agent.core.context_window import should_log_memory_status
+from dm_agent.core.prompting import build_user_prompt
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
 
@@ -315,7 +316,6 @@ def test_memory_status_log_throttle_branches():
 
 
 def test_build_user_prompt_renders_plan_and_previous_steps():
-    agent = _agent([])
     steps = [
         Step(
             thought="inspect the file",
@@ -325,7 +325,7 @@ def test_build_user_prompt_renders_plan_and_previous_steps():
         )
     ]
 
-    prompt = agent._build_user_prompt("排查回归", steps, None)
+    prompt = build_user_prompt("排查回归", steps, None)
 
     assert "任务：排查回归" in prompt
     assert "之前的步骤：" in prompt
