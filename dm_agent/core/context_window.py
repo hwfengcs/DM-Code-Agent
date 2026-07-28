@@ -64,11 +64,13 @@ class ContextWindow:
         self.trace_writer = trace_writer
         self._last_logged_memory_items = 0
         self._last_logged_saved_messages = 0
+        self._last_recorded_compaction: Compaction | None = None
 
     def reset(self) -> None:
         """每个 run 重新开始节流计数。"""
         self._last_logged_memory_items = 0
         self._last_logged_saved_messages = 0
+        self._last_recorded_compaction = None
 
     def build_messages(
         self,
@@ -79,34 +81,78 @@ class ContextWindow:
     ) -> list[dict[str, str]]:
         """返回本步要发给 LLM 的消息；必要时先把旧上下文折叠成本地记忆。
 
-        折叠只影响**这一次请求的消息列表**：``history`` 与会话日志里的原始条目
-        都原样保留，折叠事实作为一条 ``compaction`` 条目单独落盘。
+        ``history`` 与会话日志里的原始条目始终原样保留。新候选只有在 token 净收益
+        严格为正时才提交并落一条 ``compaction``；之后沿用这份折叠，直到出现新的
+        正收益候选。负收益候选的记忆与节奏副作用会完整回滚。
         """
         messages = [{"role": "system", "content": system_prompt}, *history]
         compressor = self.compressor
-        if not (self.enabled and compressor and compressor.should_compress(history)):
+        if not (self.enabled and compressor):
             return messages
 
-        trigger = compressor.last_trigger
-        trigger_tokens = compressor.last_estimated_tokens
-        compaction = compressor.plan_compaction(history)
-        compressed_history = apply_compaction(history, compaction)
-        messages = [{"role": "system", "content": system_prompt}, *compressed_history]
+        if compressor.should_compress(history):
+            # ``plan_compaction`` 会写 memory、推进 cadence、更新 LLM 摘要计数；先快照，
+            # 净收益不成立时恢复，保证“没折叠”也真的没有留下隐式状态变化。
+            state_before_candidate = compressor.snapshot_candidate_state()
+            trigger = compressor.last_trigger
+            trigger_tokens = compressor.last_estimated_tokens
+            try:
+                candidate = compressor.plan_compaction(history)
+                candidate_history = apply_compaction(history, candidate)
+                candidate_is_beneficial = estimate_messages_tokens(
+                    candidate_history
+                ) < estimate_messages_tokens(history)
+            except Exception:
+                compressor.restore_candidate_state(state_before_candidate)
+                raise
+            if candidate_is_beneficial:
+                compressor.accept_beneficial_compaction(candidate)
+                self._record_compaction_entry(
+                    candidate,
+                    history=history,
+                    compressed_history=candidate_history,
+                    context=context,
+                )
+                self._record_budget_events(
+                    candidate_history,
+                    context=context,
+                    trigger=trigger,
+                    trigger_tokens=trigger_tokens,
+                    accepted=True,
+                )
+                self._record_compression_stats(history, candidate_history, context=context)
+                return [{"role": "system", "content": system_prompt}, *candidate_history]
+            compressor.restore_candidate_state(state_before_candidate)
 
-        self._record_compaction_entry(
-            compaction,
-            history=history,
-            compressed_history=compressed_history,
-            context=context,
-        )
-        self._record_budget_events(
-            compressed_history,
-            context=context,
-            trigger=trigger,
-            trigger_tokens=trigger_tokens,
-        )
-        self._record_compression_stats(history, compressed_history, context=context)
-        return messages
+        sticky = compressor.last_beneficial_compaction
+        if sticky is None:
+            if compressor.last_trigger:
+                self._record_budget_events(
+                    history,
+                    context=context,
+                    trigger=compressor.last_trigger,
+                    trigger_tokens=compressor.last_estimated_tokens,
+                    accepted=False,
+                )
+            return messages
+        sticky_history = apply_compaction(history, sticky)
+        context.metadata["memory_items"] = compressor.memory_count
+        if sticky != self._last_recorded_compaction:
+            self._record_compaction_entry(
+                sticky,
+                history=history,
+                compressed_history=sticky_history,
+                context=context,
+            )
+        if compressor.last_trigger:
+            self._record_budget_events(
+                sticky_history,
+                context=context,
+                trigger=compressor.last_trigger,
+                trigger_tokens=compressor.last_estimated_tokens,
+                accepted=False,
+            )
+        return [{"role": "system", "content": system_prompt}, *sticky_history]
 
     def _record_compaction_entry(
         self,
@@ -138,6 +184,7 @@ class ContextWindow:
             first_kept_index=compaction.first_kept_index,
             folded_indexes=compaction.folded_indexes,
         )
+        self._last_recorded_compaction = compaction
 
     def _record_budget_events(
         self,
@@ -146,19 +193,22 @@ class ContextWindow:
         context: RunContext,
         trigger: str,
         trigger_tokens: int,
+        accepted: bool,
     ) -> None:
-        """记录 token 预算相关的两类事件：被预算逼着压缩、压缩后仍然超预算。"""
+        """记录 token 预算触发、负收益拒绝，以及最终窗口仍然超预算。"""
         compressor = self.compressor
         if compressor is None:
             return
         if trigger == "token_budget":
-            context.metadata["budget_compression_count"] += 1
+            phase = "forced_compress" if accepted else "compress_rejected_no_savings"
+            if accepted:
+                context.metadata["budget_compression_count"] += 1
             if self.trace_writer:
                 self.trace_writer.record(
                     "context_budget",
                     {
                         "step_number": context.step_number,
-                        "phase": "forced_compress",
+                        "phase": phase,
                         "estimated_tokens": trigger_tokens,
                         "budget": compressor.token_budget,
                     },

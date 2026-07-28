@@ -1,4 +1,51 @@
+import pytest
+
+from dm_agent.core.context_window import ContextWindow
+from dm_agent.core.run_state import RunContext
 from dm_agent.memory import ContextCompressor, Mem0StyleMemory
+from dm_agent.memory.context_budget import estimate_messages_tokens
+from dm_agent.memory.context_compressor import Compaction, apply_compaction
+
+
+class _CompactionRecorder:
+    def __init__(self):
+        self.compactions = []
+        self.events = []
+
+    def __bool__(self):
+        return True
+
+    def record_compaction(self, payload, *, first_kept_index, folded_indexes):
+        self.compactions.append(
+            {
+                "payload": dict(payload),
+                "first_kept_index": first_kept_index,
+                "folded_indexes": tuple(folded_indexes),
+            }
+        )
+
+    def record(self, event, payload):
+        self.events.append({"event": event, "payload": dict(payload)})
+
+
+def _window_metadata():
+    return {
+        "compressed_messages": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "memory_compression_count": 0,
+        "memory_log_count": 0,
+        "budget_compression_count": 0,
+    }
+
+
+def _growing_history(message_count, *, payload_chars=100):
+    history = []
+    for index in range(message_count):
+        role = "user" if index % 2 == 0 else "assistant"
+        prefix = "Task: inspect app.py " if index == 0 else f"turn {index} app.py completed "
+        history.append({"role": role, "content": prefix + "x" * payload_chars})
+    return history
 
 
 def test_mem0_style_memory_adds_deduplicates_and_searches_by_scope():
@@ -142,6 +189,174 @@ def test_context_compressor_reset_clears_local_memory():
 
     assert compressor.memory_count == 0
     assert compressor.turn_count == 0
+
+
+def test_beneficial_compaction_state_roundtrips_resets_and_accepts_legacy_state():
+    compaction = Compaction(
+        first_kept_index=3,
+        folded_indexes=(0, 1, 2),
+        summary="<agent_memory>keep app.py</agent_memory>",
+        trigger="cadence",
+        estimated_tokens=120,
+        memory_items=2,
+    )
+    compressor = ContextCompressor()
+    compressor.memory.add("persist app.py")
+    compressor.accept_beneficial_compaction(compaction)
+
+    injected_memory = Mem0StyleMemory()
+    restored = ContextCompressor(memory=injected_memory)
+    restored.restore_state(compressor.export_state())
+
+    assert restored.memory is injected_memory
+    assert restored.memory_count == 1
+    assert restored.last_beneficial_compaction == compaction
+
+    legacy_state = compressor.export_state()
+    legacy_state.pop("last_beneficial_compaction")
+    restored.restore_state(legacy_state)
+    assert restored.last_beneficial_compaction is None
+
+    compressor.reset()
+    assert compressor.last_beneficial_compaction is None
+
+
+def test_token_budget_rejection_is_traced_without_counting_an_accepted_compression():
+    compressor = ContextCompressor(compress_every=100, keep_recent=1, token_budget=10)
+    recorder = _CompactionRecorder()
+    window = ContextWindow(
+        compressor=compressor,
+        enabled=True,
+        memory_hygiene=False,
+        llm_compression=False,
+        trace_writer=recorder,
+    )
+    context = RunContext(step_number=1, metadata=_window_metadata())
+    history = _growing_history(3, payload_chars=20)
+
+    sent = window.build_messages("system", history, context=context)
+
+    phases = [event["payload"]["phase"] for event in recorder.events]
+    assert sent[1:] == history
+    assert phases == ["compress_rejected_no_savings", "post_compress_still_over"]
+    assert context.metadata["budget_compression_count"] == 0
+    assert recorder.compactions == []
+
+
+def test_context_window_rejects_negative_candidates_then_accepts_and_reuses_sticky():
+    compressor = ContextCompressor(compress_every=4, keep_recent=8, token_budget=0)
+    recorder = _CompactionRecorder()
+    window = ContextWindow(
+        compressor=compressor,
+        enabled=True,
+        memory_hygiene=False,
+        llm_compression=False,
+        trace_writer=recorder,
+    )
+    context = RunContext(step_number=1, metadata=_window_metadata())
+
+    for message_count in (17, 19, 21, 23):
+        history = _growing_history(message_count)
+        sent = window.build_messages("system", history, context=context)
+        assert sent[1:] == history
+        assert compressor.last_beneficial_compaction is None
+        assert compressor.memory_count == 0
+        assert compressor.export_state()["compression_count"] == 0
+        assert recorder.compactions == []
+
+    history = _growing_history(25)
+    sent = window.build_messages("system", history, context=context)
+    sticky = compressor.last_beneficial_compaction
+    assert sticky is not None
+    assert sent[1:] == apply_compaction(history, sticky)
+    assert estimate_messages_tokens(sent[1:]) < estimate_messages_tokens(history)
+    assert len(recorder.compactions) == 1
+
+    grown_history = _growing_history(27)
+    sticky_sent = window.build_messages("system", grown_history, context=context)
+    assert sticky_sent[1:] == apply_compaction(grown_history, sticky)
+    assert sticky_sent[-2:] == grown_history[-2:]
+    assert len(recorder.compactions) == 1
+
+
+def test_context_window_rejects_zero_saving_and_rolls_back_llm_summary_state(monkeypatch):
+    class TrackingMemory(Mem0StyleMemory):
+        def __init__(self):
+            super().__init__()
+            self.render_count = 0
+
+        def render(self, query, **kwargs):
+            self.render_count += 1
+            return super().render(query, **kwargs)
+
+    class SummaryClient:
+        def respond(self, messages, **extra):
+            return "summary"
+
+    memory = TrackingMemory()
+    compressor = ContextCompressor(
+        SummaryClient(),
+        compress_every=1,
+        keep_recent=1,
+        memory=memory,
+        token_budget=0,
+        use_llm_summary=True,
+    )
+    history = _growing_history(5, payload_chars=20)
+    empty = Compaction(first_kept_index=0, folded_indexes=(), summary="")
+
+    def zero_saving(_history):
+        compressor._compression_count += 1
+        compressor.llm_summary_count += 1
+        compressor.memory.add("temporary memory")
+        memory.render_count += 1
+        return empty
+
+    monkeypatch.setattr(compressor, "plan_compaction", zero_saving)
+    window = ContextWindow(
+        compressor=compressor,
+        enabled=True,
+        memory_hygiene=False,
+        llm_compression=True,
+    )
+
+    sent = window.build_messages(
+        "system", history, context=RunContext(step_number=1, metadata=_window_metadata())
+    )
+
+    assert sent[1:] == history
+    assert compressor.memory_count == 0
+    assert compressor.export_state()["compression_count"] == 0
+    assert compressor.llm_summary_count == 0
+    assert compressor.last_beneficial_compaction is None
+    assert compressor.memory is memory
+    assert memory.render_count == 0
+
+
+def test_context_window_rolls_back_candidate_state_when_planning_raises(monkeypatch):
+    compressor = ContextCompressor(compress_every=1, keep_recent=1, token_budget=0)
+    history = _growing_history(5, payload_chars=20)
+
+    def exploding_plan(_history):
+        compressor._compression_count += 1
+        compressor.memory.add("temporary memory")
+        raise RuntimeError("custom memory failed")
+
+    monkeypatch.setattr(compressor, "plan_compaction", exploding_plan)
+    window = ContextWindow(
+        compressor=compressor,
+        enabled=True,
+        memory_hygiene=False,
+        llm_compression=False,
+    )
+
+    with pytest.raises(RuntimeError, match="custom memory failed"):
+        window.build_messages(
+            "system", history, context=RunContext(step_number=1, metadata=_window_metadata())
+        )
+
+    assert compressor.memory_count == 0
+    assert compressor.export_state()["compression_count"] == 0
 
 
 def test_context_compressor_token_budget_triggers_before_cadence():

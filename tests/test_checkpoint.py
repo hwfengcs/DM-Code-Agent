@@ -14,8 +14,10 @@ from dm_agent.core.checkpoint import (
     save_checkpoint,
 )
 from dm_agent.core.run_state import RunContext
+from dm_agent.memory import ContextCompressor
+from dm_agent.memory.context_compressor import Compaction, apply_compaction
 from dm_agent.tools.base import Tool
-from dm_agent.tracing import TraceWriter, load_trace_events
+from dm_agent.tracing import TraceWriter, load_trace_events, rebuild_context
 
 
 class FakeRespondClient:
@@ -234,6 +236,55 @@ def test_resume_restores_compressor_memory(tmp_path):
 
     assert resumed_agent.compressor is not None
     assert resumed_agent.compressor.memory_count == saved_items
+
+
+def test_resume_restores_sticky_compaction_and_reuses_it_for_the_next_request(tmp_path):
+    trace_path = tmp_path / "sticky-trace.jsonl"
+    history = [
+        {
+            "role": "user" if index % 2 == 0 else "assistant",
+            "content": f"message {index} app.py " + "x" * 100,
+        }
+        for index in range(18)
+    ]
+    sticky = Compaction(
+        first_kept_index=4,
+        folded_indexes=(0, 1, 2, 3),
+        summary="<agent_memory>remember app.py</agent_memory>",
+        trigger="cadence",
+        estimated_tokens=500,
+        memory_items=1,
+    )
+    compressor = ContextCompressor()
+    compressor.accept_beneficial_compaction(sticky)
+    checkpoint = RunCheckpoint(
+        task="resume sticky context",
+        step_count=0,
+        conversation_history=history,
+        compressor_state=compressor.export_state(),
+    )
+    checkpoint_path = tmp_path / "sticky.json"
+    save_checkpoint(checkpoint_path, checkpoint)
+    loaded = load_checkpoint(checkpoint_path)
+    client = FakeRespondClient([_action("finish", "done")])
+    writer = TraceWriter(trace_path, capture_llm_io=True)
+    agent = ReactAgent(
+        client,
+        _tools(),
+        enable_planning=False,
+        enable_compression=True,
+        trace_writer=writer,
+    )
+
+    agent.run(loaded.task, max_steps=2, resume_state=loaded)
+    writer.close()
+
+    assert agent.compressor is not None
+    assert agent.compressor.last_beneficial_compaction == sticky
+    assert client.requests[0][1:] == apply_compaction(history, sticky)
+    events = load_trace_events(trace_path)
+    compaction = next(event for event in events if event["event"] == "compaction")
+    assert rebuild_context(events, until_entry_id=compaction["id"]) == client.requests[0][1:]
 
 
 def test_run_rejects_resume_with_reflexion(tmp_path):

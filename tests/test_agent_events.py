@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from dm_agent.core import EventBus, ReactAgent
+from dm_agent.memory.context_compressor import Compaction
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
 
@@ -272,6 +273,38 @@ def test_on_run_end_retry_reruns_with_clean_history():
     assert result["metadata"]["trial"] == 2
     second_attempt_messages = client.requests[2][0]
     assert not any("观察" in message["content"] for message in second_attempt_messages)
+
+
+def test_on_run_end_retry_discards_sticky_compaction_from_failed_attempt():
+    bus = EventBus()
+    client = FakeRespondClient([_action("finish", "first"), _action("finish", "second")])
+    agent = ReactAgent(
+        client,
+        [Tool("echo", "Echo", lambda arguments: "ok")],
+        enable_planning=False,
+        enable_compression=True,
+        event_bus=bus,
+    )
+
+    def retry_with_failed_sticky(event):
+        if event.attempt != 1:
+            return None
+        assert agent.compressor is not None
+        agent.compressor.accept_beneficial_compaction(
+            Compaction(
+                first_kept_index=1,
+                folded_indexes=(0,),
+                summary="<agent_memory>failed-attempt-only</agent_memory>",
+            )
+        )
+        return {"retry": True}
+
+    bus.on("on_run_end", retry_with_failed_sticky, name="retry_with_failed_sticky")
+
+    result = agent.run("retry without stale sticky", max_steps=1)
+
+    assert result["final_answer"] == "second"
+    assert not any("failed-attempt-only" in message["content"] for message in client.requests[1][0])
 
 
 def test_run_hook_exception_is_isolated_and_traced(tmp_path):

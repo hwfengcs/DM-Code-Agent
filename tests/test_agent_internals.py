@@ -261,8 +261,14 @@ def test_memory_hygiene_invalidation_is_traced(tmp_path):
     agent = ReactAgent(
         FakeRespondClient(
             [
-                _action("echo", {"text": "pytest returncode: 1 AssertionError in retry.py"}),
-                _action("echo", {"text": "retry.py tests completed successfully returncode: 0"}),
+                _action(
+                    "echo",
+                    {"text": "pytest returncode: 1 AssertionError in retry.py " + "x" * 800},
+                ),
+                _action(
+                    "echo",
+                    {"text": "retry.py tests completed successfully returncode: 0 " + "y" * 800},
+                ),
                 _action("echo", {"text": "wrap up"}),
                 _action("finish", {"answer": "done"}),
             ]

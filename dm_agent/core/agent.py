@@ -285,10 +285,15 @@ class ReactAgent:
             raise ValueError("checkpoint/resume 暂不支持与 on_run_end 重试同时使用。")
 
         initial_history = [dict(message) for message in self.conversation_history]
+        initial_sticky_compaction = (
+            self.compressor.last_beneficial_compaction if self.compressor else None
+        )
         attempt = 1
         while True:
             if attempt > 1:
                 self.conversation_history = [dict(message) for message in initial_history]
+                if self.compressor:
+                    self.compressor.last_beneficial_compaction = initial_sticky_compaction
             result = self._run_once(
                 task,
                 max_steps=max_steps,

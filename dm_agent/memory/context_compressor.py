@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -387,10 +388,11 @@ class Mem0StyleMemory:
             ],
         }
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Mem0StyleMemory:
-        memory = cls(max_items=int(data.get("max_items", 80)))
-        memory.superseded_count = int(data.get("superseded_count", 0))
+    def restore_from_dict(self, data: dict[str, Any]) -> None:
+        """在当前实例上恢复内容，保留调用方注入的子类与对象身份。"""
+        self.max_items = int(data.get("max_items", 80))
+        self.superseded_count = int(data.get("superseded_count", 0))
+        self._items.clear()
         for raw in data.get("items", []):
             item = MemoryItem(
                 id=str(raw.get("id", "")),
@@ -404,7 +406,12 @@ class Mem0StyleMemory:
                 access_count=int(raw.get("access_count", 0)),
             )
             if item.id:
-                memory._items[item.id] = item
+                self._items[item.id] = item
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Mem0StyleMemory:
+        memory = cls(max_items=int(data.get("max_items", 80)))
+        memory.restore_from_dict(data)
         return memory
 
 
@@ -424,6 +431,53 @@ class Compaction:
     trigger: str = ""
     estimated_tokens: int = 0
     memory_items: int = 0
+
+
+@dataclass(frozen=True)
+class _CompressionCandidateState:
+    """一次候选折叠前的运行时快照；只用于失败回滚，不写入 checkpoint。"""
+
+    memory_state: dict[str, Any]
+    turn_count: int
+    compression_count: int
+    last_compressed_turn_count: int
+    llm_summary_count: int
+    llm_summary_error_count: int
+    last_beneficial_compaction: Compaction | None
+
+
+def _compaction_to_dict(compaction: Compaction | None) -> dict[str, Any] | None:
+    """把可复用折叠转成 checkpoint 友好的纯数据。"""
+    if compaction is None:
+        return None
+    return {
+        "first_kept_index": compaction.first_kept_index,
+        "folded_indexes": list(compaction.folded_indexes),
+        "summary": compaction.summary,
+        "trigger": compaction.trigger,
+        "estimated_tokens": compaction.estimated_tokens,
+        "memory_items": compaction.memory_items,
+    }
+
+
+def _compaction_from_dict(raw: Any) -> Compaction | None:
+    """从 checkpoint 恢复可复用折叠；老状态没有该字段时返回 ``None``。"""
+    if not isinstance(raw, Mapping):
+        return None
+    folded_raw = raw.get("folded_indexes")
+    if not isinstance(folded_raw, (list, tuple)):
+        folded_raw = ()
+    try:
+        return Compaction(
+            first_kept_index=max(0, int(raw.get("first_kept_index", 0))),
+            folded_indexes=tuple(max(0, int(index)) for index in folded_raw),
+            summary=str(raw.get("summary", "")),
+            trigger=str(raw.get("trigger", "")),
+            estimated_tokens=max(0, int(raw.get("estimated_tokens", 0))),
+            memory_items=max(0, int(raw.get("memory_items", 0))),
+        )
+    except (TypeError, ValueError):
+        return None
 
 
 def apply_compaction(history: list[dict[str, str]], compaction: Compaction) -> list[dict[str, str]]:
@@ -491,6 +545,9 @@ class ContextCompressor:
         self.turn_count = 0
         self._compression_count = 0
         self._last_compressed_turn_count = 0
+        # 只保存已经证明 token 净收益为正的折叠。这里存逻辑历史下标，不存任何
+        # 会话文件的 entry id，因此同一状态可以安全扇出到多个 session sink。
+        self.last_beneficial_compaction: Compaction | None = None
 
     @property
     def memory_count(self) -> int:
@@ -501,6 +558,34 @@ class ContextCompressor:
         self.turn_count = 0
         self._compression_count = 0
         self._last_compressed_turn_count = 0
+        self.last_beneficial_compaction = None
+
+    def accept_beneficial_compaction(self, compaction: Compaction) -> None:
+        """记住一次已通过 token 净收益检查的折叠，供后续请求粘性复用。"""
+        self.last_beneficial_compaction = compaction
+
+    def snapshot_candidate_state(self) -> _CompressionCandidateState:
+        """保存候选折叠可能改写的状态，同时保留调用方注入的 memory 实例身份。"""
+        return _CompressionCandidateState(
+            memory_state=deepcopy(self.memory.__dict__),
+            turn_count=self.turn_count,
+            compression_count=self._compression_count,
+            last_compressed_turn_count=self._last_compressed_turn_count,
+            llm_summary_count=self.llm_summary_count,
+            llm_summary_error_count=self.llm_summary_error_count,
+            last_beneficial_compaction=self.last_beneficial_compaction,
+        )
+
+    def restore_candidate_state(self, state: _CompressionCandidateState) -> None:
+        """回滚一次未通过净收益检查的候选折叠。"""
+        self.memory.__dict__.clear()
+        self.memory.__dict__.update(deepcopy(state.memory_state))
+        self.turn_count = state.turn_count
+        self._compression_count = state.compression_count
+        self._last_compressed_turn_count = state.last_compressed_turn_count
+        self.llm_summary_count = state.llm_summary_count
+        self.llm_summary_error_count = state.llm_summary_error_count
+        self.last_beneficial_compaction = state.last_beneficial_compaction
 
     def should_compress(self, history: list[dict[str, str]]) -> bool:
         user_messages = [msg for msg in history if msg.get("role") == "user"]
@@ -636,15 +721,19 @@ class ContextCompressor:
             "last_compressed_turn_count": self._last_compressed_turn_count,
             "llm_summary_count": self.llm_summary_count,
             "llm_summary_error_count": self.llm_summary_error_count,
+            "last_beneficial_compaction": _compaction_to_dict(self.last_beneficial_compaction),
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
-        self.memory = Mem0StyleMemory.from_dict(state.get("memory") or {})
+        self.memory.restore_from_dict(state.get("memory") or {})
         self.turn_count = int(state.get("turn_count", 0))
         self._compression_count = int(state.get("compression_count", 0))
         self._last_compressed_turn_count = int(state.get("last_compressed_turn_count", 0))
         self.llm_summary_count = int(state.get("llm_summary_count", 0))
         self.llm_summary_error_count = int(state.get("llm_summary_error_count", 0))
+        self.last_beneficial_compaction = _compaction_from_dict(
+            state.get("last_beneficial_compaction")
+        )
 
 
 def _compact(text: str, *, limit: int) -> str:
