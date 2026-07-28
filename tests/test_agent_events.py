@@ -187,3 +187,118 @@ def test_before_tool_call_can_modify_arguments_in_place_without_revalidation():
 
     assert received == [{"value": "rewritten"}]
     assert result["steps"][0]["action_input"] == {"value": "rewritten"}
+
+
+def test_before_finish_block_rejects_completion_and_agent_continues():
+    bus = EventBus()
+    seen = []
+
+    def reject_first(event):
+        seen.append((event.action, event.completion_text))
+        if len(seen) == 1:
+            return {"block": True, "reason": "门禁否决：还没跑测试"}
+        return None
+
+    bus.on("before_finish", reject_first, name="reject_first")
+    client = FakeRespondClient([_action("finish", "first"), _action("finish", "second")])
+    agent = ReactAgent(
+        client,
+        [Tool("echo", "Echo", lambda arguments: "unused")],
+        enable_planning=False,
+        enable_compression=False,
+        event_bus=bus,
+    )
+
+    result = agent.run("finish twice", max_steps=2)
+
+    assert [action for action, _text in seen] == ["finish", "finish"]
+    assert result["steps"][0]["observation"] == "门禁否决：还没跑测试"
+    assert result["final_answer"] == "second"
+    assert result["metadata"]["status"] == "success"
+
+
+def test_on_run_start_suffix_is_appended_to_system_prompt_each_attempt():
+    bus = EventBus()
+    attempts = []
+
+    def inject(event):
+        attempts.append(event.attempt)
+        event.metadata["demo_capability_enabled"] = True
+        return f"<hint attempt={event.attempt}>"
+
+    bus.on("on_run_start", inject, name="inject")
+    client = FakeRespondClient([_action("finish", "done")])
+    agent = ReactAgent(
+        client,
+        [Tool("echo", "Echo", lambda arguments: "unused")],
+        enable_planning=False,
+        enable_compression=False,
+        event_bus=bus,
+    )
+
+    result = agent.run("finish", max_steps=1)
+
+    assert attempts == [1]
+    assert result["metadata"]["demo_capability_enabled"] is True
+    assert "<hint attempt=1>" in client.requests[0][0][0]["content"]
+
+
+def test_on_run_end_retry_reruns_with_clean_history():
+    bus = EventBus()
+    history_sizes = []
+
+    def retry_once(event):
+        history_sizes.append(len(event.result["steps"]))
+        return {"retry": True} if event.attempt == 1 else None
+
+    bus.on("on_run_end", retry_once, name="retry_once")
+    client = FakeRespondClient(
+        [_action("echo", {}), _action("echo", {}), _action("finish", "second attempt")]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("echo", "Echo", lambda arguments: "ok")],
+        max_steps=1,
+        enable_planning=False,
+        enable_compression=False,
+        event_bus=bus,
+    )
+
+    result = agent.run("retry me", max_steps=2)
+
+    # 第一轮用光 2 步，第二轮从干净历史重新开始，只用了 1 步。
+    assert history_sizes == [2, 1]
+    assert result["final_answer"] == "second attempt"
+    assert result["metadata"]["trial"] == 2
+    second_attempt_messages = client.requests[2][0]
+    assert not any("观察" in message["content"] for message in second_attempt_messages)
+
+
+def test_run_hook_exception_is_isolated_and_traced(tmp_path):
+    trace_path = tmp_path / "run-hooks.jsonl"
+    bus = EventBus()
+
+    def exploding_run_end(event):
+        raise RuntimeError("run hook boom")
+
+    bus.on("on_run_end", exploding_run_end, name="exploding_run_end")
+    client = FakeRespondClient([_action("finish", "done")])
+    writer = TraceWriter(trace_path)
+    agent = ReactAgent(
+        client,
+        [Tool("echo", "Echo", lambda arguments: "unused")],
+        enable_planning=False,
+        enable_compression=False,
+        trace_writer=writer,
+        event_bus=bus,
+    )
+
+    result = agent.run("finish", max_steps=1)
+    writer.close()
+
+    hook_errors = [
+        event for event in load_trace_events(trace_path) if event["event"] == "hook_error"
+    ]
+    assert result["metadata"]["status"] == "success"
+    assert len(hook_errors) == 1
+    assert hook_errors[0]["payload"]["hook"] == "on_run_end"

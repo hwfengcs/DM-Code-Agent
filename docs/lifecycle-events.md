@@ -65,6 +65,29 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 内部捕获异常并转成否决——事件总线的异常隔离会跳过失败的处理器，那等价于「放行」，
 与 Critic「审查失败即否决」的语义相反，所以这类守卫必须自己兜底。
 
+### `on_run_start`
+
+处理器收到 `RunStartEvent`，包含 `task`、`attempt`（第几次尝试，从 1 开始）、`run_id`、
+`prompt_suffix` 和本次 run 的 `metadata`。触发时机是 `metadata` 骨架建好之后、trace
+`start_run` 与技能激活之前，所以处理器可以：
+
+- 就地改写 `metadata`（例如声明「本能力已启用」，让报告和 trace 如实反映）；
+- 返回一段字符串作为追加到 system prompt 末尾的内容，返回 `None` 表示不追加。
+  多个处理器串联，后一个看到前一个的结果。
+
+### `on_run_end`
+
+处理器收到 `RunEndEvent`，包含 `task`、`attempt`、`run_id`、完整的 `result` 和它的
+`metadata`。可在这里做计时、成本统计，或改写 `result["metadata"]`。
+
+返回 `{"retry": True}` 会让内核**丢弃本次尝试并重跑一轮**：对话历史恢复到 `run()`
+调用前的快照，`attempt` 加一，下一轮的 `on_run_start` 可以借 `prompt_suffix` 把上一轮
+的经验带进去。第一个要求重试的处理器生效。内置的 Reflexion 多 trial
+（`--enable-reflexion`）就是这么实现的。
+
+> `--checkpoint` / `--resume` 与 `on_run_end` 重试互斥：断点续跑记录的是单轮的线性
+> 状态，重跑会让它失去意义，因此同时使用会直接抛 `ValueError`。
+
 ## 异常隔离与 trace
 
 单个处理器抛异常或返回非法类型时，事件总线会跳过该结果并继续执行后续处理器，Agent run

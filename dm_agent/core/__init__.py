@@ -10,7 +10,10 @@ from .events import (
     BeforeToolCallEvent,
     EventBus,
     HookFailure,
+    RunEndEvent,
+    RunStartEvent,
 )
+from .observation import is_failure_observation
 from .planner import AdaptiveReplanPolicy, ReplanDecision, ReplanSignal
 from .reflexion import EpisodicMemory, Lesson, Reflector
 from .self_consistency import SelfConsistencyCandidate, SelfConsistencyRunner
@@ -33,7 +36,10 @@ __all__ = [
     "Reflector",
     "ReplanDecision",
     "ReplanSignal",
+    "RunEndEvent",
+    "RunStartEvent",
     "SelfConsistencyCandidate",
     "SelfConsistencyRunner",
     "Step",
+    "is_failure_observation",
 ]

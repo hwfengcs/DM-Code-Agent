@@ -27,6 +27,8 @@ from .events import (
     EventBus,
     HookFailure,
     LLMRequestClient,
+    RunEndEvent,
+    RunStartEvent,
 )
 from .guards import WRITE_ACTIONS, ReadBeforeEditGuard
 from .observation import is_failure_observation
@@ -296,16 +298,60 @@ class ReactAgent:
         resume_state: RunCheckpoint | None = None,
     ) -> dict[str, Any]:
         """Execute a task, optionally retrying failed trials with Reflexion."""
-        if not self.enable_reflexion:
-            return self._run_once(
+        if self.enable_reflexion:
+            if checkpoint_path is not None or resume_state is not None:
+                raise ValueError("checkpoint/resume 暂不支持与 Reflexion 多 trial 同时使用。")
+            return self._run_with_reflexion(task, max_steps=max_steps)
+        return self._run_attempts(
+            task,
+            max_steps=max_steps,
+            checkpoint_path=checkpoint_path,
+            resume_state=resume_state,
+        )
+
+    def _run_attempts(
+        self,
+        task: str,
+        *,
+        max_steps: int | None = None,
+        checkpoint_path: Path | None = None,
+        resume_state: RunCheckpoint | None = None,
+    ) -> dict[str, Any]:
+        """跑一次任务，并让 ``on_run_end`` 处理器决定是否重试。
+
+        重试时对话历史恢复到本方法调用前的快照，因此每次尝试都是干净的一轮；
+        ``on_run_start`` 处理器可以借 ``prompt_suffix`` 把上一轮的经验带进来。
+        """
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("任务必须是非空字符串。")
+        if (
+            checkpoint_path is not None or resume_state is not None
+        ) and self.event_bus.has_handlers("on_run_end"):
+            raise ValueError("checkpoint/resume 暂不支持与 on_run_end 重试同时使用。")
+
+        initial_history = [dict(message) for message in self.conversation_history]
+        attempt = 1
+        while True:
+            if attempt > 1:
+                self.conversation_history = [dict(message) for message in initial_history]
+            result = self._run_once(
                 task,
                 max_steps=max_steps,
-                checkpoint_path=checkpoint_path,
-                resume_state=resume_state,
+                attempt=attempt,
+                checkpoint_path=checkpoint_path if attempt == 1 else None,
+                resume_state=resume_state if attempt == 1 else None,
             )
-        if checkpoint_path is not None or resume_state is not None:
-            raise ValueError("checkpoint/resume 暂不支持与 Reflexion 多 trial 同时使用。")
-        return self._run_with_reflexion(task, max_steps=max_steps)
+            end_event = RunEndEvent(
+                task=task,
+                attempt=attempt,
+                run_id=self._event_run_id,
+                result=result,
+                metadata=result.get("metadata", {}),
+            )
+            decision = self.event_bus.emit_run_end(end_event, on_error=self._record_hook_error)
+            if decision is None or not decision.get("retry"):
+                return result
+            attempt += 1
 
     def _run_with_reflexion(
         self,
@@ -337,7 +383,7 @@ class ReactAgent:
             result = self._run_once(
                 task,
                 max_steps=max_steps,
-                trial_number=trial,
+                attempt=trial,
                 max_trials=trial_limit,
                 reflexion_prompt=lesson_prompt,
             )
@@ -432,7 +478,7 @@ class ReactAgent:
         task: str,
         *,
         max_steps: int | None = None,
-        trial_number: int = 1,
+        attempt: int = 1,
         max_trials: int = 1,
         reflexion_prompt: str = "",
         checkpoint_path: Path | None = None,
@@ -464,9 +510,9 @@ class ReactAgent:
         if not isinstance(task, str) or not task.strip():
             raise ValueError("任务必须是非空字符串。")
 
-        if self.enable_reflexion or reflexion_prompt:
-            self.system_prompt = self._base_system_prompt
-            self.tools = dict(self._base_tools)
+        # 每次尝试都从基础 prompt/工具重新出发，避免上一次 run（技能、prompt 追加）的残留。
+        self.system_prompt = self._base_system_prompt
+        self.tools = dict(self._base_tools)
 
         started_at = time.perf_counter()
         steps: list[Step] = []
@@ -535,13 +581,21 @@ class ReactAgent:
             "repeated_failure_policy_applied_count": 0,
             "terminal_action_alias_count": 0,
             "terminal_action_aliases": [],
-            "trial": trial_number,
+            "trial": attempt,
             "max_trials": max_trials,
             "reflexion_lesson_count": len(self.reflexion_memory),
         }
         self._event_run_id = run_token
         self._event_step_number = 0
         self._event_metadata = metadata
+        start_event = RunStartEvent(
+            task=task,
+            attempt=attempt,
+            run_id=run_token,
+            prompt_suffix=reflexion_prompt,
+            metadata=metadata,
+        )
+        prompt_suffix = self.event_bus.emit_run_start(start_event, on_error=self._record_hook_error)
         if self.trace_writer:
             self.trace_writer.start_run(
                 task,
@@ -554,16 +608,16 @@ class ReactAgent:
                     "context_token_budget": self.context_token_budget,
                     "edit_guard_enabled": self.enable_edit_guard,
                     "skills_enabled": bool(self.skill_manager),
-                    "reflexion_enabled": self.enable_reflexion,
-                    "critic_enabled": self.critic is not None,
+                    "reflexion_enabled": metadata["reflexion_enabled"],
+                    "critic_enabled": metadata["critic_enabled"],
                     "adaptive_replanning_enabled": self.enable_adaptive_replanning,
                     "max_replans": self.max_replans,
                     "repeated_failure_policy_experiment_enabled": (
                         self.enable_repeated_failure_policy_experiment
                     ),
-                    "trial": trial_number,
-                    "max_trials": max_trials,
-                    "reflexion_lesson_count": len(self.reflexion_memory),
+                    "trial": metadata["trial"],
+                    "max_trials": metadata["max_trials"],
+                    "reflexion_lesson_count": metadata["reflexion_lesson_count"],
                     "tools": [
                         {"name": tool.name, "description": tool.description}
                         for tool in self.tools_list
@@ -593,8 +647,8 @@ class ReactAgent:
             metadata["activated_skills"] = self._apply_skills_for_task(task)
             if self.trace_writer:
                 self.trace_writer.record_skills(metadata["activated_skills"])
-        if reflexion_prompt:
-            self.system_prompt += "\n\n" + reflexion_prompt
+        if prompt_suffix:
+            self.system_prompt += "\n\n" + prompt_suffix
 
         # 第一步：生成计划（如果启用）；resume 时改为恢复既有状态
         plan: list[PlanStep] = []

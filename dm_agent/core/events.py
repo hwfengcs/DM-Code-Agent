@@ -11,6 +11,8 @@ EventName = Literal[
     "after_tool_result",
     "before_llm_request",
     "before_finish",
+    "on_run_start",
+    "on_run_end",
 ]
 HookErrorHandler = Callable[["HookFailure"], None]
 
@@ -71,6 +73,39 @@ class BeforeFinishEvent:
     metadata: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
+@dataclass
+class RunStartEvent:
+    """一次尝试（attempt）真正开始执行前的事件。
+
+    在 ``metadata`` 骨架建好、trace ``start_run`` 之前触发，因此处理器既能改写
+    本次 run 的 metadata（例如声明自己已启用），也能返回一段字符串作为追加到
+    system prompt 末尾的内容（返回 ``None`` 表示不追加）。多个处理器串联，后一个
+    看到前一个留下的结果。
+    """
+
+    task: str
+    attempt: int
+    run_id: str
+    prompt_suffix: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict, repr=False)
+
+
+@dataclass
+class RunEndEvent:
+    """一次尝试结束、结果返回给调用方之前的事件。
+
+    处理器返回 ``{"retry": True}`` 可要求内核丢弃本次尝试的对话历史并重跑一次
+    （对话历史会恢复到 ``run()`` 调用前的快照）。第一个要求重试的处理器生效。
+    返回 ``None`` 表示接受本次结果。
+    """
+
+    task: str
+    attempt: int
+    run_id: str
+    result: dict[str, Any]
+    metadata: dict[str, Any] = field(default_factory=dict, repr=False)
+
+
 @dataclass(frozen=True)
 class HookFailure:
     """单个处理器失败的可审计描述。"""
@@ -121,6 +156,8 @@ class EventBus:
             "after_tool_result",
             "before_llm_request",
             "before_finish",
+            "on_run_start",
+            "on_run_end",
         }
     )
 
@@ -216,6 +253,49 @@ class EventBus:
             if bool(result.get("block")):
                 reason = str(result.get("reason") or "Completion rejected by lifecycle handler.")
                 return {"block": True, "reason": reason}
+        return None
+
+    def emit_run_start(
+        self,
+        event: RunStartEvent,
+        *,
+        on_error: HookErrorHandler | None = None,
+    ) -> str:
+        """串联生成 system prompt 追加内容，返回最终结果。"""
+        for position, handler in enumerate(self._handlers["on_run_start"], start=1):
+            previous = event.prompt_suffix
+            succeeded, result = self._call("on_run_start", handler, position, event, on_error)
+            if not succeeded:
+                event.prompt_suffix = previous
+                continue
+            candidate = event.prompt_suffix if result is None else result
+            if not isinstance(candidate, str):
+                event.prompt_suffix = previous
+                self._report_invalid_result(
+                    "on_run_start", handler, position, event, candidate, on_error
+                )
+                continue
+            event.prompt_suffix = candidate
+        return event.prompt_suffix
+
+    def emit_run_end(
+        self,
+        event: RunEndEvent,
+        *,
+        on_error: HookErrorHandler | None = None,
+    ) -> dict[str, Any] | None:
+        """执行 run 收尾链；遇到第一个 ``retry=True`` 时停止并要求重试。"""
+        for position, handler in enumerate(self._handlers["on_run_end"], start=1):
+            succeeded, result = self._call("on_run_end", handler, position, event, on_error)
+            if not succeeded or result is None:
+                continue
+            if not isinstance(result, Mapping):
+                self._report_invalid_result(
+                    "on_run_end", handler, position, event, result, on_error
+                )
+                continue
+            if bool(result.get("retry")):
+                return {"retry": True}
         return None
 
     def emit_before_llm_request(

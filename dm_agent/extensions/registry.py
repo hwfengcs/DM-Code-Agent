@@ -21,6 +21,8 @@ _SUPPORTED_EVENTS = frozenset(
         "after_tool_result",
         "before_llm_request",
         "before_finish",
+        "on_run_start",
+        "on_run_end",
     }
 )
 
