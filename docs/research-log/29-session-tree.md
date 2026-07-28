@@ -191,8 +191,8 @@ checkpoint 状态条目只写本地完整档，完整 LLM I/O 仍需显式 `--tr
 
 ## Open questions / next bets
 
-- **压缩粘性**：见上文，改造后有了 `compaction` 条目，粘性压缩可以做成
-  「沿用最后一条 compaction 的 `first_kept_entry_id`」，且能用同一份日志离线评估收益。
+- **压缩粘性**：第 9 步已完成离线量化并落地“净收益护栏 + 只沿用正收益折叠”，
+  数据、反例与 checkpoint 状态设计见 [30-compaction-economics.md](30-compaction-economics.md)。
 - **fork 后的分支管理**：目前 fork 只产出新文件，没有 `/tree` 式的分支导航与
   「切走的分支自动生成摘要」。等 fork 的实际用法沉淀后再定。
 - **会话日志体积**：`message` 条目与 `tool_call` 条目内容有重叠（user 消息是 observation
