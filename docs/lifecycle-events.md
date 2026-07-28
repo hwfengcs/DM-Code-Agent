@@ -117,6 +117,7 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 |---|---|---|---|
 | Critic 完成门禁 | `--enable-critic` | `before_finish` | `dm_agent/extensions/capabilities/critic_gate.py` |
 | 工具熔断 | `--enable-circuit-breaker` | `before_tool_call` + `after_tool_result` | `dm_agent/extensions/capabilities/circuit_breaker_gate.py` |
+| Reflexion 多 trial | `--enable-reflexion` | `on_run_start` + `on_run_end` | `dm_agent/extensions/capabilities/reflexion_loop.py` |
 
 `CapabilityContext` 只暴露 `event_bus`、`client_for`（按 phase 包装的 LLM 客户端工厂）
 和 `trace_writer`，不会把 `ReactAgent` 交给能力实现。也可以在构造 Agent 时直接传入

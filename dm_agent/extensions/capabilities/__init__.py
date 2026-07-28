@@ -8,5 +8,6 @@ from __future__ import annotations
 
 from .circuit_breaker_gate import CircuitBreakerGate
 from .critic_gate import CriticGate
+from .reflexion_loop import ReflexionLoop
 
-__all__ = ["CircuitBreakerGate", "CriticGate"]
+__all__ = ["CircuitBreakerGate", "CriticGate", "ReflexionLoop"]

@@ -229,17 +229,15 @@ class ReactAgent:
         self._last_parse_repaired = False
         self.enable_reflexion = enable_reflexion
         self.max_trials = max_trials
+        # 经验记忆是需要随 checkpoint 存取、随 --reflexion-memory-file 落盘的状态，
+        # 因此留在 Agent 上；ReflexionLoop 与它共享同一个实例。
         # 显式判 None：空 EpisodicMemory 是 falsy，`or` 会丢弃注入的实例
         # （如 --reflexion-memory-file 加载出的空记忆）。
         self.reflexion_memory = (
             reflexion_memory if reflexion_memory is not None else EpisodicMemory()
         )
-        if reflector is not None:
-            reflector.client = client_for("reflexion")
-        self.reflector = reflector or (
-            Reflector(client_for("reflexion")) if enable_reflexion else None
-        )
-        # critic 的 client 由 CriticGate 在 install 时接到 phase 包装客户端上。
+        # reflector / critic 的 client 由对应能力在 install 时接到 phase 包装客户端上。
+        self.reflector = reflector
         self.critic = critic
         self.enable_adaptive_replanning = enable_adaptive_replanning
         self.replan_policy = replan_policy or AdaptiveReplanPolicy()
@@ -257,6 +255,8 @@ class ReactAgent:
         )
         for capability in self.capabilities:
             capability.install(capability_context)
+            # ReflexionLoop 在 install 时可能补建了默认 Reflector，同步回来保持可观察。
+            self.reflector = getattr(capability, "reflector", None) or self.reflector
 
         self.event_bus.on(
             "before_tool_call",
@@ -275,7 +275,11 @@ class ReactAgent:
         过渡策略：``--enable-critic`` 等 CLI 开关及其对应的构造参数语义完全不变，
         只是内部改为「安装对应的内置扩展」。
         """
-        from dm_agent.extensions.capabilities import CircuitBreakerGate, CriticGate
+        from dm_agent.extensions.capabilities import (
+            CircuitBreakerGate,
+            CriticGate,
+            ReflexionLoop,
+        )
 
         builtin: list[AgentCapability] = []
         if self.enable_circuit_breaker:
@@ -287,6 +291,14 @@ class ReactAgent:
             )
         if self.critic is not None:
             builtin.append(CriticGate(self.critic))
+        if self.enable_reflexion:
+            builtin.append(
+                ReflexionLoop(
+                    memory=self.reflexion_memory,
+                    max_trials=self.max_trials,
+                    reflector=self.reflector,
+                )
+            )
         return builtin
 
     def run(
@@ -297,30 +309,11 @@ class ReactAgent:
         checkpoint_path: Path | None = None,
         resume_state: RunCheckpoint | None = None,
     ) -> dict[str, Any]:
-        """Execute a task, optionally retrying failed trials with Reflexion."""
-        if self.enable_reflexion:
-            if checkpoint_path is not None or resume_state is not None:
-                raise ValueError("checkpoint/resume 暂不支持与 Reflexion 多 trial 同时使用。")
-            return self._run_with_reflexion(task, max_steps=max_steps)
-        return self._run_attempts(
-            task,
-            max_steps=max_steps,
-            checkpoint_path=checkpoint_path,
-            resume_state=resume_state,
-        )
-
-    def _run_attempts(
-        self,
-        task: str,
-        *,
-        max_steps: int | None = None,
-        checkpoint_path: Path | None = None,
-        resume_state: RunCheckpoint | None = None,
-    ) -> dict[str, Any]:
         """跑一次任务，并让 ``on_run_end`` 处理器决定是否重试。
 
-        重试时对话历史恢复到本方法调用前的快照，因此每次尝试都是干净的一轮；
-        ``on_run_start`` 处理器可以借 ``prompt_suffix`` 把上一轮的经验带进来。
+        重试时对话历史恢复到调用前的快照，因此每次尝试都是干净的一轮；
+        ``on_run_start`` 处理器可以借 ``prompt_suffix`` 把上一轮的经验带进来
+        （内置 Reflexion 多 trial 就是这么实现的）。
         """
         if not isinstance(task, str) or not task.strip():
             raise ValueError("任务必须是非空字符串。")
@@ -353,122 +346,6 @@ class ReactAgent:
                 return result
             attempt += 1
 
-    def _run_with_reflexion(
-        self,
-        task: str,
-        *,
-        max_steps: int | None = None,
-    ) -> dict[str, Any]:
-        if not isinstance(task, str) or not task.strip():
-            raise ValueError("任务必须是非空字符串。")
-
-        trial_limit = self.max_trials
-        initial_history = [dict(message) for message in self.conversation_history]
-        trial_summaries: list[dict[str, Any]] = []
-        last_result: dict[str, Any] | None = None
-
-        for trial in range(1, trial_limit + 1):
-            self.conversation_history = [dict(message) for message in initial_history]
-            lesson_prompt = self.reflexion_memory.render_for_prompt()
-            if self.trace_writer:
-                self.trace_writer.record(
-                    "trial_start",
-                    {
-                        "trial": trial,
-                        "max_trials": trial_limit,
-                        "lesson_count": len(self.reflexion_memory),
-                    },
-                )
-
-            result = self._run_once(
-                task,
-                max_steps=max_steps,
-                attempt=trial,
-                max_trials=trial_limit,
-                reflexion_prompt=lesson_prompt,
-            )
-            metadata = result.get("metadata", {})
-            summary = self._trial_summary(result, trial)
-            trial_summaries.append(summary)
-            metadata["trials"] = list(trial_summaries)
-            metadata["trial_count"] = trial
-            metadata["reflexion_lesson_count"] = len(self.reflexion_memory)
-            last_result = result
-
-            if self.trace_writer:
-                self.trace_writer.record("trial_end", summary)
-
-            if metadata.get("status") == "success":
-                return result
-            if trial >= trial_limit:
-                return result
-
-            lesson = self._reflect_after_failed_trial(task, result, trial)
-            self.reflexion_memory.add(
-                lesson,
-                source="agent_failure",
-                metadata={
-                    "trial": trial,
-                    "status": metadata.get("status"),
-                    "failure_reason": metadata.get("failure_reason", ""),
-                },
-            )
-            metadata["reflexion_lesson_count"] = len(self.reflexion_memory)
-            if self.trace_writer:
-                self.trace_writer.record(
-                    "reflexion",
-                    {
-                        "trial": trial,
-                        "lesson": lesson,
-                        "lesson_count": len(self.reflexion_memory),
-                    },
-                )
-
-        assert last_result is not None
-        return last_result
-
-    def _reflect_after_failed_trial(
-        self,
-        task: str,
-        result: dict[str, Any],
-        trial: int,
-        *,
-        failure_feedback: str | None = None,
-    ) -> str:
-        metadata = result.get("metadata", {})
-        if self.reflector is None:
-            return self._fallback_lesson(metadata)
-        try:
-            return self.reflector.reflect(
-                task=task,
-                final_answer=str(result.get("final_answer", "")),
-                metadata=metadata,
-                steps=result.get("steps", []),
-                failure_feedback=failure_feedback,
-            )
-        except Exception as exc:
-            metadata["reflexion_error"] = f"trial {trial}: {exc}"
-            return self._fallback_lesson(metadata)
-
-    @staticmethod
-    def _fallback_lesson(metadata: dict[str, Any]) -> str:
-        reason = metadata.get("failure_reason") or metadata.get("status") or "unknown failure"
-        return (
-            f"Previous trial failed with {reason}. Inspect the concrete failure signal first, "
-            "then make a smaller targeted change before finishing."
-        )
-
-    @staticmethod
-    def _trial_summary(result: dict[str, Any], trial: int) -> dict[str, Any]:
-        metadata = result.get("metadata", {})
-        return {
-            "trial": trial,
-            "status": metadata.get("status"),
-            "failure_reason": metadata.get("failure_reason", ""),
-            "steps": len(result.get("steps", [])),
-            "final_answer_chars": len(str(result.get("final_answer", ""))),
-        }
-
     def _record_hook_error(self, failure: HookFailure) -> None:
         if self.trace_writer:
             self.trace_writer.record("hook_error", failure.to_trace_payload())
@@ -479,8 +356,6 @@ class ReactAgent:
         *,
         max_steps: int | None = None,
         attempt: int = 1,
-        max_trials: int = 1,
-        reflexion_prompt: str = "",
         checkpoint_path: Path | None = None,
         resume_state: RunCheckpoint | None = None,
     ) -> dict[str, Any]:
@@ -558,7 +433,7 @@ class ReactAgent:
             "llm_retry_count": 0,
             "backup_count": 0,
             "backup_dir": "",
-            "reflexion_enabled": self.enable_reflexion,
+            "reflexion_enabled": False,
             "critic_enabled": self.critic is not None,
             "critic_review_count": 0,
             "critic_pass_count": 0,
@@ -581,8 +456,10 @@ class ReactAgent:
             "repeated_failure_policy_applied_count": 0,
             "terminal_action_alias_count": 0,
             "terminal_action_aliases": [],
+            # trial / max_trials / reflexion_* 的中性默认值；
+            # 装了 Reflexion 能力时由它在 on_run_start 里改写。
             "trial": attempt,
-            "max_trials": max_trials,
+            "max_trials": 1,
             "reflexion_lesson_count": len(self.reflexion_memory),
         }
         self._event_run_id = run_token
@@ -592,7 +469,6 @@ class ReactAgent:
             task=task,
             attempt=attempt,
             run_id=run_token,
-            prompt_suffix=reflexion_prompt,
             metadata=metadata,
         )
         prompt_suffix = self.event_bus.emit_run_start(start_event, on_error=self._record_hook_error)
