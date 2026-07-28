@@ -13,6 +13,7 @@ from dm_agent.core.checkpoint import (
     load_checkpoint,
     save_checkpoint,
 )
+from dm_agent.core.run_state import RunContext
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
 
@@ -350,7 +351,8 @@ def test_backup_ignores_non_object_arguments():
         enable_compression=False,
     )
     metadata = {"backup_count": 0, "backup_dir": ""}
+    context = RunContext(run_id="run-id", step_number=1, metadata=metadata)
 
-    agent._backup_before_write("not a dict", metadata, 1, "run-id")
+    agent._persistence.backup_before_write("not a dict", context)
 
     assert metadata == {"backup_count": 0, "backup_dir": ""}

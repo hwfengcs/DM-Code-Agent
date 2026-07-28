@@ -16,7 +16,7 @@ from dm_agent.prompts import build_code_agent_prompt
 from dm_agent.tools.base import Tool
 
 from .capabilities import AgentCapability, CapabilityContext
-from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
+from .checkpoint import RunCheckpoint
 from .completion import CompletionGate, build_completion_summary, format_final_answer
 from .critic import CriticAgent
 from .events import (
@@ -30,6 +30,16 @@ from .events import (
 )
 from .guards import WRITE_ACTIONS, ReadBeforeEditGuard
 from .observation import ObservationBounder, is_failure_observation
+from .persistence import (
+    RunPersistence,
+    agent_config_snapshot,
+    json_safe_metadata,
+    metadata_from_checkpoint,
+    plan_from_checkpoint,
+    plan_to_checkpoint,
+    steps_from_checkpoint,
+    warn_on_config_mismatch,
+)
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
 from .response_parser import normalize_action, parse_agent_response
@@ -180,6 +190,7 @@ class ReactAgent:
         self._observation_bounder = ObservationBounder(
             max_chars=self.max_observation_chars, trace_writer=trace_writer
         )
+        self._persistence = RunPersistence(trace_writer=trace_writer)
         # read-before-edit 守卫：edit_file 前必须读过目标文件，且写后需重读。
         self.enable_edit_guard = enable_edit_guard
         self._edit_guard = ReadBeforeEditGuard(enabled=enable_edit_guard, trace_writer=trace_writer)
@@ -798,7 +809,7 @@ class ReactAgent:
                     observation = str(block["reason"])
                 else:
                     if action in WRITE_ACTIONS:
-                        self._backup_before_write(action_input, metadata, step_num, run_token)
+                        self._persistence.backup_before_write(action_input, self._run_context)
                     tool_succeeded = False
                     try:
                         raw_observation = str(tool.execute(action_input))
@@ -1011,6 +1022,19 @@ class ReactAgent:
             return True
         return memory_items - last_logged_memory_items >= cls.MEMORY_STATUS_ITEM_DELTA
 
+    def _config_snapshot(self, *, max_steps: int | None = None) -> dict[str, Any]:
+        """当前生效的配置快照：既用于落盘，也用于 resume 时的一致性比对。"""
+        return agent_config_snapshot(
+            temperature=self.temperature,
+            model=getattr(self.client, "model", ""),
+            enable_planning=self.enable_planning,
+            enable_compression=self.enable_compression,
+            enable_edit_guard=self.enable_edit_guard,
+            max_observation_chars=self.max_observation_chars,
+            context_token_budget=self.context_token_budget,
+            max_steps=max_steps,
+        )
+
     def _restore_from_checkpoint(
         self,
         resume_state: RunCheckpoint,
@@ -1020,55 +1044,18 @@ class ReactAgent:
         """从 checkpoint 恢复对话/步骤/计划/记忆，返回 (plan, 已消耗步数)。"""
         resume_from = max(0, int(resume_state.step_count))
         self.conversation_history = [dict(message) for message in resume_state.conversation_history]
-        for raw_step in resume_state.steps:
-            steps.append(
-                Step(
-                    thought=str(raw_step.get("thought", "")),
-                    action=str(raw_step.get("action", "")),
-                    action_input=raw_step.get("action_input"),
-                    observation=str(raw_step.get("observation", "")),
-                    raw=str(raw_step.get("raw", "")),
-                )
-            )
-        restored_metadata = dict(resume_state.metadata)
-        restored_metadata["status"] = "running"
-        restored_metadata.pop("duration_seconds", None)
-        metadata.update(restored_metadata)
-        metadata["resumed_from_step"] = resume_from
+        steps.extend(steps_from_checkpoint(resume_state.steps))
+        metadata.update(metadata_from_checkpoint(resume_state.metadata, resume_from=resume_from))
 
-        plan: list[PlanStep] = [
-            PlanStep(
-                step_number=int(item.get("step_number", index + 1)),
-                action=str(item.get("action", "")),
-                reason=str(item.get("reason", "")),
-                completed=bool(item.get("completed", False)),
-                result=item.get("result"),
-            )
-            for index, item in enumerate(resume_state.plan)
-        ]
+        plan = plan_from_checkpoint(resume_state.plan)
         if plan and self.planner:
             self.planner.current_plan = plan
         if resume_state.compressor_state and self.compressor:
             self.compressor.restore_state(resume_state.compressor_state)
         if resume_state.reflexion_memory:
             self.reflexion_memory = EpisodicMemory.from_dict(resume_state.reflexion_memory)
-        self._warn_on_config_mismatch(resume_state.agent_config)
+        warn_on_config_mismatch(resume_state.agent_config, self._config_snapshot())
         return plan, resume_from
-
-    def _warn_on_config_mismatch(self, saved_config: dict[str, Any]) -> None:
-        current = {
-            "temperature": self.temperature,
-            "model": getattr(self.client, "model", ""),
-            "enable_planning": self.enable_planning,
-            "enable_compression": self.enable_compression,
-            "enable_edit_guard": self.enable_edit_guard,
-            "max_observation_chars": self.max_observation_chars,
-            "context_token_budget": self.context_token_budget,
-        }
-        for key, value in current.items():
-            saved = saved_config.get(key)
-            if saved is not None and saved != value:
-                print(f"[warn] resume 配置不一致：{key} checkpoint={saved} 当前={value}")
 
     def _save_checkpoint_snapshot(
         self,
@@ -1081,72 +1068,22 @@ class ReactAgent:
         plan: list[PlanStep],
         limit: int,
     ) -> None:
+        """把当前 run 的可恢复状态组装成快照并落盘。"""
         checkpoint = RunCheckpoint(
             task=task,
             step_count=step_count,
             conversation_history=[dict(message) for message in self.conversation_history],
             steps=[dict(step.__dict__) for step in steps],
-            metadata=json.loads(json.dumps(metadata, ensure_ascii=False, default=str)),
-            plan=[
-                {
-                    "step_number": step.step_number,
-                    "action": step.action,
-                    "reason": step.reason,
-                    "completed": step.completed,
-                    "result": step.result,
-                }
-                for step in plan
-            ],
+            metadata=json_safe_metadata(metadata),
+            plan=plan_to_checkpoint(plan),
             compressor_state=self.compressor.export_state() if self.compressor else None,
             reflexion_memory=(
                 self.reflexion_memory.to_dict() if len(self.reflexion_memory) else None
             ),
-            agent_config={
-                "max_steps": limit,
-                "temperature": self.temperature,
-                "model": getattr(self.client, "model", ""),
-                "enable_planning": self.enable_planning,
-                "enable_compression": self.enable_compression,
-                "enable_edit_guard": self.enable_edit_guard,
-                "max_observation_chars": self.max_observation_chars,
-                "context_token_budget": self.context_token_budget,
-            },
+            agent_config=self._config_snapshot(max_steps=limit),
             cwd=str(Path.cwd()),
         )
-        try:
-            save_checkpoint(path, checkpoint)
-        except OSError as exc:
-            print(f"[warn] checkpoint 保存失败：{exc}")
-            return
-        if self.trace_writer:
-            self.trace_writer.record(
-                "checkpoint_saved",
-                {"step_number": step_count, "path": str(path)},
-            )
-
-    def _backup_before_write(
-        self, action_input: Any, metadata: dict[str, Any], step_num: int, run_token: str
-    ) -> None:
-        """写入类工具执行前备份原文件（尽力而为，失败不影响任务）。"""
-        if not isinstance(action_input, dict):
-            return
-        path = action_input.get("path")
-        if not isinstance(path, str) or not path:
-            return
-        backup_path = backup_file(path, run_id=run_token, step=step_num)
-        if backup_path is None:
-            return
-        metadata["backup_count"] += 1
-        metadata["backup_dir"] = str(backup_path.parent)
-        if self.trace_writer:
-            self.trace_writer.record(
-                "file_backup",
-                {
-                    "step_number": step_num,
-                    "path": path,
-                    "backup_path": str(backup_path),
-                },
-            )
+        self._persistence.save(path, checkpoint)
 
     @staticmethod
     def _is_failure_observation(observation: str) -> bool:
