@@ -14,6 +14,7 @@ from dm_agent.core.checkpoint import (
     save_checkpoint,
 )
 from dm_agent.tools.base import Tool
+from dm_agent.tracing import TraceWriter, load_trace_events
 
 
 class FakeRespondClient:
@@ -209,3 +210,147 @@ def test_run_rejects_resume_with_reflexion(tmp_path):
     )
     with pytest.raises(ValueError):
         agent.run("task", checkpoint_path=tmp_path / "cp.json")
+
+
+def test_resume_restores_plan_and_reflexion_memory():
+    checkpoint = RunCheckpoint(
+        task="resume with plan",
+        step_count=1,
+        conversation_history=[{"role": "user", "content": "任务：resume with plan"}],
+        steps=[
+            {
+                "thought": "t",
+                "action": "echo",
+                "action_input": {"text": "one"},
+                "observation": "echo:one",
+            }
+        ],
+        plan=[
+            {
+                "step_number": 1,
+                "action": "echo",
+                "reason": "first",
+                "completed": True,
+                "result": "echo:one",
+            },
+            {"step_number": 2, "action": "task_complete", "reason": "finish"},
+        ],
+        reflexion_memory={
+            "max_lessons": 5,
+            "lessons": [{"text": "prefer the smallest fix", "source": "agent_failure"}],
+        },
+    )
+    agent = ReactAgent(
+        FakeRespondClient([_action("finish", "resumed with a restored plan")]),
+        _tools(),
+        enable_planning=True,
+        enable_compression=False,
+    )
+
+    result = agent.run(checkpoint.task, max_steps=4, resume_state=checkpoint)
+
+    assert result["metadata"]["status"] == "success"
+    assert agent.planner is not None
+    # 计划连同完成状态一起回到 planner，resume 后不会重跑已完成的步骤。
+    assert [step.action for step in agent.planner.current_plan] == ["echo", "task_complete"]
+    assert agent.planner.current_plan[0].completed is True
+    assert len(agent.reflexion_memory) == 1
+    assert agent.reflexion_memory.lessons[0].text == "prefer the smallest fix"
+
+
+def test_resume_warns_on_config_mismatch(capsys):
+    checkpoint = RunCheckpoint(
+        task="resume with a different config",
+        step_count=0,
+        agent_config={
+            "temperature": 0.9,
+            "model": "other-model",
+            "enable_planning": True,
+        },
+    )
+    agent = ReactAgent(
+        FakeRespondClient([_action("finish", "resumed anyway")]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+        temperature=0.0,
+    )
+
+    agent.run(checkpoint.task, max_steps=2, resume_state=checkpoint)
+
+    out = capsys.readouterr().out
+    assert "[warn] resume 配置不一致：temperature checkpoint=0.9 当前=0.0" in out
+    assert "[warn] resume 配置不一致：model checkpoint=other-model 当前=fake-model" in out
+    assert "[warn] resume 配置不一致：enable_planning checkpoint=True 当前=False" in out
+
+
+def test_checkpoint_save_failure_warns_and_keeps_running(tmp_path, capsys):
+    # 父路径是普通文件，落盘时 mkdir 必然抛 OSError（跨平台一致）。
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory", encoding="utf-8")
+    agent = ReactAgent(
+        FakeRespondClient([_action("finish", "finished despite a failed checkpoint")]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    result = agent.run(
+        "survive checkpoint failure", max_steps=1, checkpoint_path=blocker / "cp.json"
+    )
+
+    assert result["metadata"]["status"] == "success"
+    assert "[warn] checkpoint 保存失败" in capsys.readouterr().out
+
+
+def test_checkpoint_save_is_recorded_in_trace(tmp_path):
+    trace_path = tmp_path / "checkpoint.jsonl"
+    writer = TraceWriter(trace_path)
+    agent = ReactAgent(
+        FakeRespondClient([_action("finish", "done")]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+        trace_writer=writer,
+    )
+
+    agent.run("record the checkpoint", max_steps=1, checkpoint_path=tmp_path / "cp.json")
+    writer.close()
+
+    saved = [
+        event for event in load_trace_events(trace_path) if event["event"] == "checkpoint_saved"
+    ]
+    assert saved
+    assert saved[0]["payload"]["step_number"] == 0
+
+
+def test_backup_is_skipped_when_write_arguments_have_no_path(tmp_path):
+    tools = [
+        Tool("create_file", "Create", lambda arguments: f"created:{arguments.get('path', '')}"),
+        Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done")),
+    ]
+    agent = ReactAgent(
+        FakeRespondClient([_action("create_file", {"content": "x"}), _action("finish", "done")]),
+        tools,
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    result = agent.run("write without a path", max_steps=3)
+
+    assert result["metadata"]["backup_count"] == 0
+    assert result["metadata"]["backup_dir"] == ""
+
+
+def test_backup_ignores_non_object_arguments():
+    agent = ReactAgent(
+        FakeRespondClient([]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+    )
+    metadata = {"backup_count": 0, "backup_dir": ""}
+
+    agent._backup_before_write("not a dict", metadata, 1, "run-id")
+
+    assert metadata == {"backup_count": 0, "backup_dir": ""}

@@ -108,3 +108,49 @@ def test_react_agent_critic_blocks_bad_completion_and_accepts_retry(tmp_path):
     assert result["steps"][0]["observation"].startswith("Critic rejected completion.")
     event_names = [event["event"] for event in load_trace_events(trace_path)]
     assert "critic_review" in event_names
+
+
+def test_critic_blocks_task_complete_tool_and_accepts_retry():
+    def review(passed: bool, summary: str) -> str:
+        return json.dumps(
+            {
+                "passed": passed,
+                "score": 0.95 if passed else 0.2,
+                "reasons": [] if passed else ["the tool output is not a real completion"],
+                "suggested_fixes": [] if passed else ["do the actual work first"],
+                "summary": summary,
+            }
+        )
+
+    def act(message: str) -> str:
+        return json.dumps(
+            {
+                "thought": "I believe the task is done.",
+                "action": "task_complete",
+                "action_input": {"message": message},
+            }
+        )
+
+    client = FakeRespondClient(
+        [
+            act("bad"),
+            review(False, "The first attempt is incomplete."),
+            act("good"),
+            review(True, "Looks correct."),
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done"))],
+        enable_planning=False,
+        enable_compression=False,
+        critic=CriticAgent(client),
+    )
+
+    result = agent.run("finish through the task_complete tool")
+
+    assert result["final_answer"] == "good"
+    assert result["metadata"]["status"] == "success"
+    assert result["metadata"]["critic_fail_count"] == 1
+    assert result["metadata"]["critic_pass_count"] == 1
+    assert result["steps"][0]["observation"].startswith("Critic rejected completion.")
