@@ -31,7 +31,10 @@ agent = ReactAgent(client, tools, event_bus=bus)
 
 处理器收到 `AfterToolResultEvent`，可返回新的 observation。返回 `None` 表示不改写。
 每次有效改写都会写回 `event.observation`，所以下一个处理器看到的是上一处理器的结果。
-最终结果仍会经过 Agent 的 observation 长度限制，然后进入 step、历史、trace 和恢复判断。
+最终结果直接进入 step、历史、trace 和恢复判断。
+
+Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏，**先于**本事件
+执行：处理器拿到的已经是截断后的文本，也就是最终会写进对话历史的那一份。
 
 事件还包含 `tool_succeeded`：它表示 runner 是否正常返回，不代表返回文本一定是业务成功。
 
@@ -90,6 +93,7 @@ agent = ReactAgent(client, tools, event_bus=bus)
 | 能力 | CLI 开关 | 挂载事件 | 实现位置 |
 |---|---|---|---|
 | Critic 完成门禁 | `--enable-critic` | `before_finish` | `dm_agent/extensions/capabilities/critic_gate.py` |
+| 工具熔断 | `--enable-circuit-breaker` | `before_tool_call` + `after_tool_result` | `dm_agent/extensions/capabilities/circuit_breaker_gate.py` |
 
 `CapabilityContext` 只暴露 `event_bus`、`client_for`（按 phase 包装的 LLM 客户端工厂）
 和 `trace_writer`，不会把 `ReactAgent` 交给能力实现。也可以在构造 Agent 时直接传入

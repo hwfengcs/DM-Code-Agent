@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from .circuit_breaker_gate import CircuitBreakerGate
 from .critic_gate import CriticGate
 
-__all__ = ["CriticGate"]
+__all__ = ["CircuitBreakerGate", "CriticGate"]

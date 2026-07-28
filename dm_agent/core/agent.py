@@ -19,7 +19,6 @@ from dm_agent.tools.base import Tool
 
 from .capabilities import AgentCapability, CapabilityContext
 from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
-from .circuit_breaker import STATE_OPEN, ToolCircuitBreaker
 from .critic import CriticAgent
 from .events import (
     AfterToolResultEvent,
@@ -30,6 +29,7 @@ from .events import (
     LLMRequestClient,
 )
 from .guards import WRITE_ACTIONS, ReadBeforeEditGuard
+from .observation import is_failure_observation
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .reflexion import EpisodicMemory, Reflector
 
@@ -217,14 +217,8 @@ class ReactAgent:
         self._edit_guard = ReadBeforeEditGuard(enabled=enable_edit_guard, trace_writer=trace_writer)
         # 工具熔断器（默认关）：同一 action+error 连续失败达到阈值后临时禁用。
         self.enable_circuit_breaker = enable_circuit_breaker
-        self._circuit_breaker = (
-            ToolCircuitBreaker(
-                threshold=circuit_breaker_threshold,
-                cooldown_steps=circuit_breaker_cooldown,
-            )
-            if enable_circuit_breaker
-            else None
-        )
+        self.circuit_breaker_threshold = circuit_breaker_threshold
+        self.circuit_breaker_cooldown = circuit_breaker_cooldown
 
         # 技能管理器
         self.skill_manager = skill_manager
@@ -279,9 +273,16 @@ class ReactAgent:
         过渡策略：``--enable-critic`` 等 CLI 开关及其对应的构造参数语义完全不变，
         只是内部改为「安装对应的内置扩展」。
         """
-        from dm_agent.extensions.capabilities import CriticGate
+        from dm_agent.extensions.capabilities import CircuitBreakerGate, CriticGate
 
         builtin: list[AgentCapability] = []
+        if self.enable_circuit_breaker:
+            builtin.append(
+                CircuitBreakerGate(
+                    threshold=self.circuit_breaker_threshold,
+                    cooldown_steps=self.circuit_breaker_cooldown,
+                )
+            )
         if self.critic is not None:
             builtin.append(CriticGate(self.critic))
         return builtin
@@ -937,103 +938,66 @@ class ReactAgent:
                 arguments_ready = False
 
             if arguments_ready:
-                breaker_message = (
-                    self._circuit_breaker.intercept(action, step_num)
-                    if self._circuit_breaker is not None and action != "task_complete"
-                    else None
+                before_event = BeforeToolCallEvent(
+                    tool_name=action,
+                    arguments=cast(dict[str, Any], action_input),
+                    step_number=step_num,
+                    run_id=run_token,
+                    metadata=metadata,
                 )
-                if breaker_message is not None:
-                    guard_blocked = True  # 熔断拦截同样不计入计划完成
-                    metadata["circuit_breaker_block_count"] += 1
-                    observation = breaker_message
-                    if self.trace_writer:
-                        self.trace_writer.record(
-                            "circuit_breaker",
-                            {
-                                "step_number": step_num,
-                                "action": action,
-                                "phase": "blocked",
-                            },
-                        )
+                block = self.event_bus.emit_before_tool_call(
+                    before_event, on_error=self._record_hook_error
+                )
+                action_input = before_event.arguments
+                if block is not None:
+                    guard_blocked = True  # 被拦下的调用不计入计划完成
+                    observation = str(block["reason"])
                 else:
-                    before_event = BeforeToolCallEvent(
-                        tool_name=action,
-                        arguments=cast(dict[str, Any], action_input),
-                        step_number=step_num,
-                        run_id=run_token,
-                        metadata=metadata,
-                    )
-                    block = self.event_bus.emit_before_tool_call(
-                        before_event, on_error=self._record_hook_error
-                    )
-                    action_input = before_event.arguments
-                    if block is not None:
-                        guard_blocked = True
-                        observation = str(block["reason"])
+                    if action in WRITE_ACTIONS:
+                        self._backup_before_write(action_input, metadata, step_num, run_token)
+                    tool_succeeded = False
+                    try:
+                        raw_observation = str(tool.execute(action_input))
+                    except Exception as exc:
+                        metadata["tool_error_count"] += 1
+                        metadata["failure_reason"] = str(exc)
+                        raw_observation = f"Tool execution failed: {exc}"
+                        error_kind = "tool_error"
                     else:
-                        if action in WRITE_ACTIONS:
-                            self._backup_before_write(action_input, metadata, step_num, run_token)
-                        tool_succeeded = False
-                        try:
-                            raw_observation = str(tool.execute(action_input))
-                        except Exception as exc:
-                            metadata["tool_error_count"] += 1
-                            metadata["failure_reason"] = str(exc)
-                            raw_observation = f"Tool execution failed: {exc}"
-                            error_kind = "tool_error"
-                        else:
-                            tool_succeeded = True
+                        tool_succeeded = True
 
-                        after_event = AfterToolResultEvent(
-                            tool_name=action,
-                            arguments=action_input,
-                            observation=raw_observation,
-                            step_number=step_num,
-                            run_id=run_token,
-                            tool_succeeded=tool_succeeded,
-                            metadata=metadata,
-                        )
-                        rewritten_observation = self.event_bus.emit_after_tool_result(
-                            after_event, on_error=self._record_hook_error
-                        )
-                        observation = self._bound_observation(
-                            rewritten_observation,
+                    # 观察截断是内核护栏，先于 after_tool_result 链执行：处理器看到的
+                    # 就是最终写进 step、对话历史与 trace 的那份文本。
+                    after_event = AfterToolResultEvent(
+                        tool_name=action,
+                        arguments=action_input,
+                        observation=self._bound_observation(
+                            raw_observation,
                             action=action,
                             action_input=action_input,
                             metadata=metadata,
                             step_num=step_num,
+                        ),
+                        step_number=step_num,
+                        run_id=run_token,
+                        tool_succeeded=tool_succeeded,
+                        metadata=metadata,
+                    )
+                    observation = self.event_bus.emit_after_tool_result(
+                        after_event, on_error=self._record_hook_error
+                    )
+                    if action == "task_complete" and tool_succeeded:
+                        accepted, observation = self._gate_completion(
+                            task=task,
+                            completion_text=str(observation),
+                            steps=steps,
+                            metadata=metadata,
+                            step_num=step_num,
+                            action=action,
+                            run_id=run_token,
                         )
-                        if self._circuit_breaker is not None and action != "task_complete":
-                            state = self._circuit_breaker.record(
-                                action,
-                                error_kind or "",
-                                failed=self._is_failure_observation(observation),
-                                step=step_num,
-                            )
-                            metadata["circuit_breaker_trip_count"] = (
-                                self._circuit_breaker.total_trips
-                            )
-                            if state == STATE_OPEN and self.trace_writer:
-                                self.trace_writer.record(
-                                    "circuit_breaker",
-                                    {
-                                        "step_number": step_num,
-                                        "action": action,
-                                        "phase": "opened",
-                                    },
-                                )
-                        if action == "task_complete" and tool_succeeded:
-                            accepted, observation = self._gate_completion(
-                                task=task,
-                                completion_text=str(observation),
-                                steps=steps,
-                                metadata=metadata,
-                                step_num=step_num,
-                                action=action,
-                                run_id=run_token,
-                            )
-                            if not accepted:
-                                error_kind = "critic_rejected"
+                        if not accepted:
+                            error_kind = "critic_rejected"
 
             step = Step(
                 thought=thought,
@@ -1487,22 +1451,8 @@ class ReactAgent:
 
     @staticmethod
     def _is_failure_observation(observation: str) -> bool:
-        failure_markers = [
-            "Tool execution failed",
-            "Unknown tool",
-            "Tool arguments",
-            "parse failed",
-            "Critic rejected",
-            "Critic review failed",
-            "returncode: 1",
-            "error",
-            "Error",
-            "Traceback",
-            "失败",
-            "错误",
-            "不存在",
-        ]
-        return any(marker in observation for marker in failure_markers)
+        """委托到 ``core.observation``，让内核外的能力复用同一份失败判定。"""
+        return is_failure_observation(observation)
 
     def _try_replan(
         self,
