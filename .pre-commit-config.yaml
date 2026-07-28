@@ -1,0 +1,32 @@
+minimum_pre_commit_version: "4.0.0"
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check
+        entry: uv run --frozen --extra dev python -m ruff check .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: black
+        name: black check
+        entry: uv run --frozen --extra dev python -m black --check .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: mypy
+        name: mypy check
+        entry: uv run --frozen --extra dev python -m mypy dm_agent
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest
+        name: pytest
+        entry: uv run --frozen --extra dev python -m pytest
+        language: system
+        pass_filenames: false
+        always_run: true

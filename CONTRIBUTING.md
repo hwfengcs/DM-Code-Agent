@@ -37,6 +37,26 @@ Ubuntu and Windows for Python 3.10 / 3.11 / 3.12. **If you change dependencies i
 `pyproject.toml`, re-run `uv lock` and commit the updated `uv.lock`** — CI fails on
 `uv lock --check` otherwise.
 
+## 提交前钩子
+
+开发依赖安装完成后，为当前 clone 安装 hook：
+
+```bash
+uv run --frozen --extra dev pre-commit install
+```
+
+每次 commit 前会按顺序运行与 CI 相同的 Ruff、Black、mypy 与全量 pytest 命令。提交前也可
+手动跑完整 hook，并检查所有已跟踪文件：
+
+```bash
+uv run --frozen --extra dev pre-commit run --all-files
+```
+
+若只需临时跳过一个明确无关的 hook，可用它的 id，例如 Bash 下
+`SKIP=pytest git commit ...`，PowerShell 下先执行 `$env:SKIP="pytest"`。`git commit
+--no-verify` 会跳过整套检查，只应在已用同一组命令手工验证且确有必要时使用；随后应清理
+PowerShell 环境变量：`Remove-Item Env:SKIP`。
+
 ## Pull request guidelines
 
 - Keep changes focused and easy to review.
@@ -138,4 +158,3 @@ If your contribution is significant enough to warrant a write-up — for example
 algorithm, a non-trivial ablation, or a negative result — add a Markdown entry under
 `docs/research-log/NN-slug.md` and link it from `docs/research-log/README.md`. Keep the
 format described in that README.
-
