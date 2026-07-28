@@ -1,7 +1,7 @@
 import json
 
 from dm_agent.core.critic import CriticAgent
-from dm_agent.core.self_consistency import SelfConsistencyRunner
+from dm_agent.extensions.capabilities.self_consistency import SelfConsistencyRunner
 
 
 class FakeRespondClient:

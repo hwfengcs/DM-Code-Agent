@@ -1,4 +1,14 @@
-"""Self-consistency runner for choosing the best of several independent runs."""
+"""Self-consistency runner for choosing the best of several independent runs.
+
+它与其他内置能力不同：**不挂任何生命周期钩子**，也没有接进 ``dm-agent`` CLI。
+它在 Agent 之外把同一个任务跑若干遍再选一个候选，因此只是一个可复用的编排器。
+搬到 ``dm_agent/extensions/capabilities/`` 是为了让内核 ``dm_agent/core/`` 只留
+ReAct 主循环所需的东西；对外的 ``dm_agent.SelfConsistencyRunner`` /
+``dm_agent.core.SelfConsistencyRunner`` 导入路径保持可用。
+
+现状照旧：只有 benchmark 侧使用 self-consistency（``dm-agent-bench
+--self-consistency-runs N``，那边有自己的一套选择逻辑），本次迁移不改变这一点。
+"""
 
 from __future__ import annotations
 
@@ -6,9 +16,10 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .critic import CriticAgent, CriticReview
+if TYPE_CHECKING:
+    from dm_agent.core.critic import CriticAgent, CriticReview
 
 TrialRunner = Callable[[int, str], dict[str, Any]]
 VisibleTest = Callable[[dict[str, Any]], float | int | bool]

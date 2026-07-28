@@ -119,6 +119,12 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 | 工具熔断 | `--enable-circuit-breaker` | `before_tool_call` + `after_tool_result` | `dm_agent/extensions/capabilities/circuit_breaker_gate.py` |
 | Reflexion 多 trial | `--enable-reflexion` | `on_run_start` + `on_run_end` | `dm_agent/extensions/capabilities/reflexion_loop.py` |
 
+同目录下还有 `self_consistency.py`。它是个例外：**不挂任何钩子**，也没有接进
+`dm-agent` CLI，只是一个在 Agent 之外把同一任务跑多遍再选候选的编排器（目前只有
+`dm-agent-bench --self-consistency-runs N` 用到 self-consistency）。放在这里是为了让
+`dm_agent/core/` 只留 ReAct 主循环需要的东西；`dm_agent.SelfConsistencyRunner` 与
+`dm_agent.core.SelfConsistencyRunner` 两条旧导入路径保持可用。
+
 `CapabilityContext` 只暴露 `event_bus`、`client_for`（按 phase 包装的 LLM 客户端工厂）
 和 `trace_writer`，不会把 `ReactAgent` 交给能力实现。也可以在构造 Agent 时直接传入
 `capabilities=[...]` 安装自定义能力：

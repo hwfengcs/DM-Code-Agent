@@ -9,5 +9,17 @@ from __future__ import annotations
 from .circuit_breaker_gate import CircuitBreakerGate
 from .critic_gate import CriticGate
 from .reflexion_loop import ReflexionLoop
+from .self_consistency import (
+    SelfConsistencyCandidate,
+    SelfConsistencyResult,
+    SelfConsistencyRunner,
+)
 
-__all__ = ["CircuitBreakerGate", "CriticGate", "ReflexionLoop"]
+__all__ = [
+    "CircuitBreakerGate",
+    "CriticGate",
+    "ReflexionLoop",
+    "SelfConsistencyCandidate",
+    "SelfConsistencyResult",
+    "SelfConsistencyRunner",
+]
