@@ -2,6 +2,7 @@ import json
 
 from dm_agent.core.agent import ReactAgent
 from dm_agent.core.critic import CriticAgent
+from dm_agent.core.response_parser import json_candidates
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
 
@@ -48,6 +49,17 @@ def test_critic_agent_parses_structured_review():
     prompt = client.requests[0][0][1]["content"]
     assert "passed" in prompt
     assert "score" in prompt
+
+
+def test_critic_empty_json_fence_uses_shared_candidate_semantics():
+    raw = "```json\n\n```"
+    client = FakeRespondClient([raw])
+
+    review = CriticAgent(client).review(task="reject empty review", final_answer="done")
+
+    assert "" in json_candidates(raw)
+    assert review.passed is False
+    assert review.score == 0.0
 
 
 def test_react_agent_critic_blocks_bad_completion_and_accepts_retry(tmp_path):

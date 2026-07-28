@@ -9,6 +9,8 @@ from typing import Any
 
 from dm_agent.clients.base_client import BaseLLMClient
 
+from .response_parser import json_candidates, load_json_object
+
 
 @dataclass(frozen=True)
 class CriticReview:
@@ -158,8 +160,8 @@ class CriticAgent:
         if not candidate:
             return None
 
-        for snippet in _json_candidates(candidate):
-            parsed = _parse_json(snippet)
+        for snippet in json_candidates(candidate):
+            parsed = load_json_object(snippet)
             if parsed is not None:
                 return parsed
         return None
@@ -231,55 +233,3 @@ def _json_safe(value: Any, *, max_chars: int) -> Any:
         return value
     except TypeError:
         return str(value)[:max_chars]
-
-
-def _json_candidates(candidate: str) -> list[str]:
-    candidates = [candidate]
-
-    fence_match = _extract_fence(candidate)
-    if fence_match:
-        candidates.append(fence_match)
-
-    start = candidate.find("{")
-    end = candidate.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidates.append(candidate[start : end + 1])
-
-    repaired_candidates = []
-    for item in candidates:
-        repaired = _repair_json_text(item)
-        if repaired != item:
-            repaired_candidates.append(repaired)
-
-    return candidates + repaired_candidates
-
-
-def _parse_json(text: str) -> Any:
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        try:
-            import ast
-
-            parsed = ast.literal_eval(text)
-        except (ValueError, SyntaxError):
-            return None
-        return parsed
-
-
-def _extract_fence(candidate: str) -> str:
-    import re
-
-    fence_match = re.search(r"```(?:json)?\s*(.*?)```", candidate, re.DOTALL | re.IGNORECASE)
-    if fence_match:
-        return fence_match.group(1).strip()
-    return ""
-
-
-def _repair_json_text(text: str) -> str:
-    import re
-
-    text = text.strip()
-    text = text.replace("“", '"').replace("”", '"').replace("’", "'")
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return text
