@@ -27,7 +27,9 @@ class RunContext:
     """一次 run 期间在内核与协作者之间共享的环境信息。
 
     生命周期钩子、观察截断、写前备份与 checkpoint 都要读同一组
-    ``(run_id, step_number, metadata)``。
+    ``(run_id, step_number, metadata)``；``history_entry_ids`` 与
+    ``ReactAgent.conversation_history`` 逐位对应，是「第几条消息 = 会话日志里的哪条
+    entry」这个映射的唯一来源（压缩条目的 ``first_kept_entry_id`` 就取自这里）。
 
     **必须原地改，不要整体替换**：``LLMRequestClient`` 在构造期就绑定了
     ``as_event_context``，换成新实例会让它继续读旧对象。
@@ -36,12 +38,14 @@ class RunContext:
     run_id: str = ""
     step_number: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    history_entry_ids: list[str] = field(default_factory=list)
 
     def begin(self, *, run_id: str, metadata: dict[str, Any]) -> None:
         """进入新一轮 run，原地重置共享环境。"""
         self.run_id = run_id
         self.step_number = 0
         self.metadata = metadata
+        self.history_entry_ids.clear()
 
     def as_event_context(self) -> tuple[str, int, dict[str, Any]]:
         """``LLMRequestClient`` 需要的上下文取值回调。"""

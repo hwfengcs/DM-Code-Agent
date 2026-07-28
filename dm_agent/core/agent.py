@@ -307,9 +307,47 @@ class ReactAgent:
         if self.trace_writer:
             self.trace_writer.record("hook_error", failure.to_trace_payload())
 
+    def _append_history(self, role: str, content: str, *, kind: str) -> None:
+        """把一条消息追加进对话历史，同时在会话日志里落一条 ``message`` 条目。
+
+        ``conversation_history`` 与 ``RunContext.history_entry_ids`` 必须逐位对应——
+        压缩条目的 ``first_kept_entry_id`` 靠这个映射把「第几条消息」翻译成 entry id。
+        没有 trace_writer 时补一个空 id 占位，保证下标始终对齐。
+        """
+        self.conversation_history.append({"role": role, "content": content})
+        entry_id = ""
+        if self.trace_writer:
+            entry_id = self.trace_writer.record_message(
+                role=role,
+                content=content,
+                step_number=self._run_context.step_number,
+                kind=kind,
+            )
+        self._run_context.history_entry_ids.append(entry_id)
+
+    def _adopt_existing_history(self, *, kind: str) -> None:
+        """让会话日志补齐「这一轮开始前就在历史里」的消息。
+
+        ``conversation_history`` 可能在 ``_run_once`` 之前就非空（交互式多轮、
+        reflexion 重试恢复的快照、resume 恢复的历史）。会话日志要能独立复现上下文，
+        所以把这些消息补记成 ``message`` 条目，顺带把 ``history_entry_ids``
+        对齐回 ``len(conversation_history)``。历史为空时这是个空操作。
+        """
+        pending = self.conversation_history[len(self._run_context.history_entry_ids) :]
+        for message in pending:
+            entry_id = ""
+            if self.trace_writer:
+                entry_id = self.trace_writer.record_message(
+                    role=str(message.get("role", "")),
+                    content=str(message.get("content", "")),
+                    step_number=self._run_context.step_number,
+                    kind=kind,
+                )
+            self._run_context.history_entry_ids.append(entry_id)
+
     def _note_observation(self, observation: str) -> None:
         """把一条观察作为 user 消息投递回对话历史。"""
-        self.conversation_history.append({"role": "user", "content": f"观察：{observation}"})
+        self._append_history("user", f"观察：{observation}", kind="observation")
 
     def _publish_step(self, step: Step, step_num: int) -> None:
         """一步收尾：实时回调 + trace 落步。"""
@@ -429,6 +467,7 @@ class ReactAgent:
         resume_from = 0
         if resume_state is not None:
             plan, resume_from = self._restore_from_checkpoint(resume_state, steps, metadata)
+            self._adopt_existing_history(kind="resumed")
             if self.trace_writer:
                 self.trace_writer.record(
                     "run_resumed",
@@ -436,6 +475,7 @@ class ReactAgent:
                 )
             print(f"[resume] 已恢复 checkpoint，从第 {resume_from + 1} 步继续执行")
         else:
+            self._adopt_existing_history(kind="carried")
             if self.enable_planning and self.planner:
                 try:
                     plan = self.planner.plan(task)
@@ -452,7 +492,7 @@ class ReactAgent:
 
             # 添加新任务到对话历史
             task_prompt: str = build_user_prompt(task, steps, plan)
-            self.conversation_history.append({"role": "user", "content": task_prompt})
+            self._append_history("user", task_prompt, kind="task")
 
         for step_num in range(resume_from + 1, limit + 1):
             self._run_context.step_number = step_num
@@ -493,7 +533,7 @@ class ReactAgent:
                 )
 
             # 将 AI 响应添加到历史记录
-            self.conversation_history.append({"role": "assistant", "content": raw})
+            self._append_history("assistant", raw, kind="model_response")
             try:
                 parsed_response = parse_agent_response(raw)
             except ValueError as exc:
@@ -575,9 +615,7 @@ class ReactAgent:
                     metadata["failure_reason"] = ""
                     metadata["duration_seconds"] = time.perf_counter() - started_at
                     # 添加完成标记到历史记录
-                    self.conversation_history.append(
-                        {"role": "user", "content": f"任务完成：{final}"}
-                    )
+                    self._append_history("user", f"任务完成：{final}", kind="completion")
                 else:
                     self._note_observation(observation)
 
@@ -689,7 +727,7 @@ class ReactAgent:
 
             # 将工具执行结果添加到历史记录
             tool_info = f"执行工具 {action}，输入：{json.dumps(action_input, ensure_ascii=False)}\n观察：{observation}"
-            self.conversation_history.append({"role": "user", "content": tool_info})
+            self._append_history("user", tool_info, kind="tool_result")
 
             # 调用回调函数实时输出步骤
             self._publish_step(step, step_num)
@@ -837,7 +875,7 @@ class ReactAgent:
             default_budget=self.DEFAULT_REPLAN_BUDGET,
         )
         if outcome.history_note:
-            self.conversation_history.append({"role": "user", "content": outcome.history_note})
+            self._append_history("user", outcome.history_note, kind="replan_note")
         return outcome.plan
 
     def reset_conversation(self) -> None:
@@ -846,6 +884,7 @@ class ReactAgent:
         清空所有对话历史记录，为新任务做准备。
         """
         self.conversation_history = []
+        self._run_context.history_entry_ids.clear()
         if self.compressor:
             self.compressor.reset()
 

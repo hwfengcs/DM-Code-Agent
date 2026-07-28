@@ -1,7 +1,8 @@
-"""JSONL trace writer used to audit and replay agent runs."""
+"""JSONL session/trace writer used to audit, resume, and replay agent runs."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -15,27 +16,44 @@ from typing import Any, TextIO
 
 from dm_agent.memory.context_budget import estimate_tokens_from_chars
 
+from .session import new_entry_id, normalize_entries
+
+# 2.0: 每条 entry 带 id/parent_id，会话日志成为可导航的树；新增 message /
+# compaction / checkpoint / fork 四类条目。老字段（event/payload）一个没动，
+# 1.x 的文件仍然可读（读侧按序补 id），下游分析工具行为不变。
 # 1.2: 新增 hook_error 增量事件；不改变既有 envelope 与字段语义。
 # 1.1: additive events (observation_truncated, context_budget, edit_guard, ...)
 # and the llm_call estimated_prompt_tokens field. Older traces stay parseable.
-TRACE_SCHEMA_VERSION = "1.2"
+TRACE_SCHEMA_VERSION = "2.0"
 SENSITIVE_ENV_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 
 
 class TraceWriter:
-    """Append-only JSONL trace writer.
+    """Append-only JSONL session writer.
 
     The default mode records enough structure to audit an agent run without storing full
     prompts or raw model responses. Set ``capture_llm_io=True`` only for private debugging.
+
+    每条 entry 都有 ``id``（``<run_id 前 8 位>-<四位序号>``）与 ``parent_id``（上一条的
+    id）。``fork_parent_id`` 让分叉出来的会话第一条指回源会话的分叉点，从而把多份
+    JSONL 串成一棵树。
     """
 
-    def __init__(self, path: str | Path, *, capture_llm_io: bool = False) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        capture_llm_io: bool = False,
+        fork_parent_id: str = "",
+    ) -> None:
         self.path = Path(path)
         self.capture_llm_io = capture_llm_io
         self.run_id = uuid.uuid4().hex
         self._handle: TextIO | None = None
         self._started = False
         self._ended = False
+        self._seq = 0
+        self._last_entry_id = fork_parent_id
 
     def __enter__(self) -> TraceWriter:
         self.open()
@@ -205,25 +223,68 @@ class TraceWriter:
         payload.update(review)
         self.record("critic_review", payload)
 
-    def record(self, event: str, payload: dict[str, Any]) -> None:
+    def record_message(self, *, role: str, content: str, step_number: int, kind: str) -> str:
+        """记录一条进入对话历史的消息，返回它的 entry id。
+
+        保真档沿用既有口径：模型原始输出（``assistant``）默认只留长度与摘要指纹，
+        ``capture_llm_io=True`` 时才落全文；其余角色记全文——它们的内容本来就是
+        ``tool_call`` / ``step`` 条目里默认全量记录的观察结果的包装。
+        """
+        payload: dict[str, Any] = {
+            "step_number": step_number,
+            "role": role,
+            "kind": kind,
+            "content_chars": len(content),
+        }
+        if role == "assistant" and not self.capture_llm_io:
+            payload["content_sha256"] = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+        else:
+            payload["content"] = content
+        return self.record("message", payload)
+
+    def record_compaction(self, payload: dict[str, Any]) -> str:
+        """记录一次非破坏式折叠：原始消息条目一条不删，只记下这次跳过了哪些。"""
+        return self.record("compaction", payload)
+
+    def record_checkpoint_state(self, *, step_number: int, state: dict[str, Any]) -> str:
+        """把可恢复状态作为一条条目追加进会话日志（不脱敏，见 record 的说明）。"""
+        return self.record(
+            "checkpoint",
+            {"step_number": step_number, "state": state},
+            sanitize=False,
+        )
+
+    def record(self, event: str, payload: dict[str, Any], *, sanitize: bool = True) -> str:
+        """追加一条会话条目，返回它的 entry id。
+
+        ``sanitize=False`` 只给 ``checkpoint`` 条目用：脱敏会把 ``$HOME`` 改写成
+        ``~``、把疑似密钥替换掉，写进可恢复状态会污染续跑的上下文。
+        """
         self.open()
         assert self._handle is not None
+        self._seq += 1
+        entry_id = new_entry_id(self.run_id, self._seq)
         envelope = {
+            "id": entry_id,
+            "parent_id": self._last_entry_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "run_id": self.run_id,
             "event": event,
-            "payload": _sanitize(payload),
+            "payload": _sanitize(payload) if sanitize else payload,
         }
         self._handle.write(json.dumps(envelope, ensure_ascii=False, sort_keys=True) + "\n")
         self._handle.flush()
+        self._last_entry_id = entry_id
+        return entry_id
 
 
 def load_trace_events(path: str | Path) -> list[dict[str, Any]]:
+    """读取会话日志（或 1.x 的老 trace），缺失的 id/parent_id 在读侧补齐。"""
     events: list[dict[str, Any]] = []
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         if line.strip():
             events.append(json.loads(line))
-    return events
+    return normalize_entries(events)
 
 
 def _sanitize(value: Any) -> Any:
