@@ -6,6 +6,13 @@
 
 哪些状态值得存进 checkpoint 由 agent 决定（它才拥有这些状态）；
 怎么存、存不下来怎么办由这里决定。
+
+落盘有两种形态，按扩展名分流：
+
+- ``*.jsonl`` —— append-only 的**会话日志**，每步追加一条 ``checkpoint`` 条目。
+  于是 checkpoint 退化成「记住某个 entry id」，``--resume-at`` 可以挑更早的条目，
+  ``dm-agent-trace fork`` 可以从任意条目分叉。
+- 其余后缀 —— 原来的单文件 JSON 快照，原子覆盖写，语义完全不变。
 """
 
 from __future__ import annotations
@@ -14,6 +21,9 @@ import json
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
+
+from dm_agent.tracing.session import latest_checkpoint_entry, load_session_entries
+from dm_agent.tracing.writer import TraceWriter
 
 from .checkpoint import RunCheckpoint, backup_file, save_checkpoint
 from .planner import PlanStep
@@ -30,6 +40,14 @@ COMPARED_CONFIG_KEYS = (
     "context_token_budget",
 )
 
+# 会话日志形态的 checkpoint 文件后缀。
+SESSION_SUFFIX = ".jsonl"
+
+
+def is_session_checkpoint(path: str | Path) -> bool:
+    """``*.jsonl`` 走会话日志形态，其余走单文件快照。"""
+    return Path(path).suffix.lower() == SESSION_SUFFIX
+
 
 class RunPersistence:
     """写前备份与 checkpoint 落盘的执行者。
@@ -39,6 +57,9 @@ class RunPersistence:
 
     def __init__(self, *, trace_writer: Any | None = None) -> None:
         self.trace_writer = trace_writer
+        # 会话日志形态的 checkpoint 需要跨步保持 entry id 链，所以 writer 实例常驻；
+        # 文件句柄不常驻——每次写完就 close，避免长跑时占着句柄。
+        self._session_writer: TraceWriter | None = None
 
     def backup_before_write(self, action_input: Any, context: RunContext) -> None:
         """写入类工具执行前备份原文件（尽力而为，失败不影响任务）。"""
@@ -64,9 +85,16 @@ class RunPersistence:
             )
 
     def save(self, path: Path, checkpoint: RunCheckpoint) -> None:
-        """原子落盘一份快照；磁盘出问题时告警并继续执行。"""
+        """落盘一份可恢复状态；磁盘出问题时告警并继续执行。
+
+        ``*.jsonl`` 追加一条 ``checkpoint`` 会话条目（append-only，历史快照全部留着，
+        于是 ``--resume-at`` 能挑更早的条目）；其余后缀走原子覆盖写的单文件快照。
+        """
         try:
-            save_checkpoint(path, checkpoint)
+            if is_session_checkpoint(path):
+                self._append_session_checkpoint(path, checkpoint)
+            else:
+                save_checkpoint(path, checkpoint)
         except OSError as exc:
             print(f"[warn] checkpoint 保存失败：{exc}")
             return
@@ -75,6 +103,70 @@ class RunPersistence:
                 "checkpoint_saved",
                 {"step_number": checkpoint.step_count, "path": str(path)},
             )
+
+    def _append_session_checkpoint(self, path: Path, checkpoint: RunCheckpoint) -> None:
+        if self._session_writer is None:
+            self._session_writer = TraceWriter(path)
+        writer = self._session_writer
+        try:
+            writer.record_checkpoint_state(
+                step_number=checkpoint.step_count,
+                state=checkpoint.to_dict(),
+            )
+        finally:
+            writer.close()
+
+
+def load_resume_state(path: str | Path, *, at: str | None = None) -> RunCheckpoint:
+    """加载 ``--resume`` 的起点，自动识别单文件快照与会话日志两种形态。
+
+    Args:
+        path: 老快照（整个文件是一个 JSON 对象）或会话日志（JSONL）
+        at: 只对会话日志有效——从该 entry **或之前**最近的一条 checkpoint 条目恢复
+
+    Raises:
+        ValueError: 文件不存在、格式不识别、或会话日志里没有可用的 checkpoint 条目
+    """
+    source = Path(path)
+    if not source.is_file():
+        raise ValueError(f"Checkpoint file not found: {source}")
+    try:
+        text = source.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"Checkpoint file is unreadable: {exc}") from exc
+
+    snapshot = _as_json_object(text)
+    if snapshot is not None:
+        if at:
+            raise ValueError("--resume-at 只适用于 JSONL 会话日志，单文件快照没有条目 id。")
+        return RunCheckpoint.from_dict(snapshot)
+
+    try:
+        entries = load_session_entries(source)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Checkpoint file is neither a JSON snapshot nor session JSONL: {exc}"
+        ) from exc
+    entry = latest_checkpoint_entry(entries, until_entry_id=at)
+    if entry is None:
+        scope = f"at or before {at}" if at else "in this session"
+        raise ValueError(
+            f"No resumable checkpoint entry {scope}. "
+            "会话日志需要用 --checkpoint *.jsonl 跑过才会有 checkpoint 条目。"
+        )
+    state = (entry.get("payload") or {}).get("state")
+    if not isinstance(state, dict):
+        raise ValueError(f"Checkpoint entry {entry.get('id')} carries no resumable state.")
+    return RunCheckpoint.from_dict(state)
+
+
+def _as_json_object(text: str) -> dict[str, Any] | None:
+    """整个文件恰好是一个 JSON 对象时返回它，否则返回 None（按会话日志处理）。"""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def agent_config_snapshot(

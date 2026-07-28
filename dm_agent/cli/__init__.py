@@ -22,7 +22,8 @@ from typing import Any
 from dotenv import load_dotenv
 
 from dm_agent import PROVIDER_DEFAULTS
-from dm_agent.core.checkpoint import RunCheckpoint, load_checkpoint
+from dm_agent.core.checkpoint import RunCheckpoint
+from dm_agent.core.persistence import load_resume_state
 from dm_agent.extensions import (
     ExtensionDiscoveryError,
     ProjectTrustDecision,
@@ -219,7 +220,7 @@ def main(argv: Any = None) -> int:
     resume_state: RunCheckpoint | None = None
     if args.resume:
         try:
-            resume_state = load_checkpoint(args.resume)
+            resume_state = load_resume_state(args.resume, at=args.resume_at or None)
         except ValueError as e:
             print(UI.paint("[ERR] checkpoint 加载失败", Fore.RED, bright=True), file=sys.stderr)
             print(str(e), file=sys.stderr)

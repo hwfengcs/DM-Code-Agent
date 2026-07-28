@@ -29,6 +29,14 @@ def validate_feature_args(args: argparse.Namespace) -> str:
         getattr(args, "checkpoint", None) or getattr(args, "resume", None)
     ):
         return "--checkpoint/--resume 暂不支持与 --enable-reflexion 同时使用。"
+    if getattr(args, "resume_at", "") and not getattr(args, "resume", None):
+        return "--resume-at 需要与 --resume 一起使用。"
+    checkpoint_path = getattr(args, "checkpoint", None)
+    trace_path = getattr(args, "trace", None)
+    if checkpoint_path and trace_path and Path(checkpoint_path) == Path(trace_path):
+        # checkpoint 里有完整对话（含模型原始输出），trace 默认是可分享的脱敏档。
+        # 指向同一个文件会让脱敏档被完整历史悄悄污染，直接拒绝。
+        return "--trace 与 --checkpoint 不能指向同一个文件（前者默认脱敏，后者含完整对话）。"
     if (
         args.enable_repeated_failure_policy_experiment
         and not args.enable_adaptive_replanning
@@ -213,12 +221,22 @@ def parse_args(argv: Any) -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        help="每步结束后把 run 状态原子写入该 JSON 文件，用于崩溃后 --resume 续跑。",
+        help=(
+            "每步结束后落一份 run 状态，用于崩溃后 --resume 续跑。"
+            "*.jsonl 写成 append-only 会话日志（保留每一步的历史快照，可配合 "
+            "--resume-at 与 dm-agent-trace fork）；其他后缀写成单文件 JSON 快照。"
+        ),
     )
     parser.add_argument(
         "--resume",
         type=Path,
         help="从 --checkpoint 生成的文件恢复运行；任务参数可省略（取 checkpoint 内任务）。",
+    )
+    parser.add_argument(
+        "--resume-at",
+        default="",
+        metavar="ENTRY_ID",
+        help="仅对 JSONL 会话日志有效：从该条目（或之前最近的 checkpoint 条目）恢复；支持唯一前缀。",
     )
     parser.add_argument(
         "--reflexion-memory-file",

@@ -110,7 +110,8 @@ ignore = [
 # 分层契约（TID251）。依赖必须单向向下，CLI 是最外层的组装者，不是被复用的库：
 #   clients ← 不依赖任何其他 dm_agent 子包
 #   tools   ← 只依赖 clients
-#   core    ← 依赖 clients / tools / memory / prompts，禁止依赖 cli
+#   tracing ← 只依赖 tools / memory（是个下沉的记录汇，不回头依赖 core）
+#   core    ← 依赖 clients / tools / memory / prompts / tracing，禁止依赖 cli
 #   cli     ← 可以依赖任何层
 "dm_agent.cli".msg = "core / tools / clients / memory / evals / benchmarks / tracing 层不得依赖 CLI 层；CLI 是最外层组装者。需要共享的逻辑请下移到对应的层。"
 # 防止顶级 main 模块回归：它曾经通过 py-modules = ["main"] 被装进 site-packages 顶层，

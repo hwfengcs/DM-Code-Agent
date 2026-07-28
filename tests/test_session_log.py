@@ -330,3 +330,102 @@ def test_rebuild_context_can_replay_with_and_without_compaction(tmp_path):
     assert len(full) == len(message_entries(entries))
     # 同一份会话日志既能复现真正发出去的窗口，也能复现「假装从没压缩过」的全量历史。
     assert full[-1] == compacted[-1]
+
+
+# --- 7.1 checkpoint 退化成「记住某个 entry id」 ----------------------------
+
+
+def _stalled_run(checkpoint_path, *, max_steps=3):
+    """跑到步数上限就停下的一轮，用来制造可续跑的 checkpoint。"""
+    agent = ReactAgent(
+        FakeRespondClient(
+            [_action("echo", {"text": f"turn {index}"}) for index in range(max_steps)]
+        ),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+    )
+    return agent.run(
+        "echo until the step limit", max_steps=max_steps, checkpoint_path=checkpoint_path
+    )
+
+
+def test_session_checkpoint_appends_one_entry_per_step(tmp_path):
+    checkpoint_path = tmp_path / "run.jsonl"
+
+    result = _stalled_run(checkpoint_path)
+
+    assert result["metadata"]["status"] == "max_steps_exceeded"
+    entries = load_session_entries(checkpoint_path)
+    checkpoints = [entry for entry in entries if entry["event"] == "checkpoint"]
+    # 每步开头一条 + 步数耗尽的终态一条，append-only 全部留着。
+    assert [entry["payload"]["step_number"] for entry in checkpoints] == [0, 1, 2, 3]
+    assert all(entry["payload"]["state"]["task"] for entry in checkpoints)
+
+
+def test_resume_from_a_session_checkpoint_continues_the_run(tmp_path):
+    from dm_agent.core.persistence import load_resume_state
+
+    checkpoint_path = tmp_path / "run.jsonl"
+    _stalled_run(checkpoint_path)
+
+    resume_state = load_resume_state(checkpoint_path)
+    agent = ReactAgent(
+        FakeRespondClient([_action("finish", {"answer": "resumed and finished"})]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+    )
+    result = agent.run(resume_state.task, max_steps=6, resume_state=resume_state)
+
+    assert resume_state.step_count == 3
+    assert result["metadata"]["status"] == "success"
+    assert result["final_answer"] == "resumed and finished"
+    assert result["metadata"]["resumed_from_step"] == 3
+
+
+def test_resume_at_selects_an_earlier_checkpoint_entry(tmp_path):
+    from dm_agent.core.persistence import load_resume_state
+
+    checkpoint_path = tmp_path / "run.jsonl"
+    _stalled_run(checkpoint_path)
+    entries = load_session_entries(checkpoint_path)
+    checkpoints = [entry for entry in entries if entry["event"] == "checkpoint"]
+
+    picked = load_resume_state(checkpoint_path, at=checkpoints[1]["id"])
+
+    assert picked.step_count == 1
+    # 不指定 --resume-at 时取最后一条，语义与老快照一致。
+    assert load_resume_state(checkpoint_path).step_count == 3
+
+
+def test_resume_still_reads_the_legacy_json_snapshot(tmp_path):
+    from dm_agent.core.persistence import load_resume_state
+
+    checkpoint_path = tmp_path / "cp.json"
+    _stalled_run(checkpoint_path)
+
+    resume_state = load_resume_state(checkpoint_path)
+
+    assert checkpoint_path.read_text(encoding="utf-8").lstrip().startswith("{")
+    assert resume_state.step_count == 3
+    with pytest.raises(ValueError, match="--resume-at"):
+        load_resume_state(checkpoint_path, at="abcd-0001")
+
+
+def test_resume_reports_a_session_without_checkpoint_entries(tmp_path):
+    from dm_agent.core.persistence import load_resume_state
+
+    trace_path = tmp_path / "session.jsonl"
+    _run_agent(trace_path, [_action("finish", {"answer": "done"})], enable_compression=False)
+
+    with pytest.raises(ValueError, match="No resumable checkpoint entry"):
+        load_resume_state(trace_path)
+
+
+def test_trace_and_checkpoint_may_not_share_one_file():
+    from dm_agent.cli.args import parse_args, validate_feature_args
+
+    args = parse_args(["task", "--trace", "same.jsonl", "--checkpoint", "same.jsonl"])
+
+    assert "不能指向同一个文件" in validate_feature_args(args)
