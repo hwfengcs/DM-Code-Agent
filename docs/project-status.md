@@ -17,6 +17,9 @@ SWE-bench Lite Tier-1 baseline（DeepSeek，固定 50 题子集）是
 
 ## v.s. 同类项目（当前公开口径）
 
+> 这张表在 `README.md` / `README_EN.md` 首页也有一份，两处同源——改动请同步，
+> 尤其是 SWE-bench Lite 那一行的 ⚠️ 与「非官方口径」说明，**不许在首页悄悄去掉**。
+
 | 维度 | DM-Code-Agent | Aider | OpenHands | SWE-agent | smolagents |
 | --- | --- | --- | --- | --- | --- |
 | 本地优先（无沙箱依赖） | ✅ | ✅ | docker | docker | ✅ |
