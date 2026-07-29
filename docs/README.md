@@ -39,6 +39,7 @@
 
 ## 架构图附件
 
-`architecture.drawio` / `architecture.drawio.png` / `architecture-cn.png` 保留作为附件。
+`architecture.drawio` / `architecture.drawio.png` / `architecture-cn.png` 保留作为附件；
+`project-overview-simple.drawio` / `project-overview-simple.png` 是面向非开发者的通俗总览图。
 **文字版 [architecture.md](architecture.md) 是权威来源**——二进制图 AI 读不了、人也没法 diff，
 架构改了图不一定会跟着更新。两者不一致时以文字版为准。

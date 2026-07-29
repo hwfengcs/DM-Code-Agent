@@ -1,7 +1,8 @@
 # 架构
 
-**这份文字版是架构的权威来源。** `docs/architecture.drawio` 与两张 png 保留作为附件，
-但二进制图 AI 读不了、人也没法 diff，改了架构不一定会有人更新图。两者冲突时以本文为准。
+**这份文字版是架构的权威来源。** `docs/architecture.drawio` 与几张 png（含面向非开发者的
+`project-overview-simple.png`）保留作为附件，但二进制图 AI 读不了、人也没法 diff，改了架构
+不一定会有人更新图。两者冲突时以本文为准。
 
 ## 一句话
 
