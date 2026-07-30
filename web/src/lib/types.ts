@@ -139,6 +139,23 @@ export interface ForkResponse {
   resumable_step_number: number | null
 }
 
+export type RunStatus = 'running' | 'completed' | 'incomplete' | 'failed' | 'cancelled'
+
+export interface RunRecord {
+  run_id: string
+  task: string
+  session: string
+  status: RunStatus
+  /** 会话日志 run_end 里 agent 自己判定的状态；退出码 0 ≠ agent 做完了。 */
+  agent_status: string
+  started_at: number
+  finished_at: number | null
+  exit_code: number | null
+  cancelled: boolean
+  error: string
+  pid: number
+}
+
 export interface CapabilityInfo {
   flag: string
   key: string

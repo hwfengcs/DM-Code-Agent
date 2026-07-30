@@ -17,9 +17,10 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from .runs import RunRegistry
 from .settings import ServerSettings
 
-__all__ = ["get_settings", "require_token", "require_writable"]
+__all__ = ["get_registry", "get_settings", "require_token", "require_writable"]
 
 # auto_error=False：没有 Authorization 头时返回 None 而不是直接 403，
 # 好让下面的处理器回退去看查询参数里的 token。
@@ -59,3 +60,11 @@ def require_writable(settings: Annotated[ServerSettings, Depends(get_settings)])
             status_code=status.HTTP_403_FORBIDDEN,
             detail="服务以 --read-only 启动，该操作不可用。",
         )
+
+
+def get_registry(request: Request) -> RunRegistry:
+    """从应用状态取运行注册表。``create_app`` 在构造时挂上去。"""
+    registry = getattr(request.app.state, "registry", None)
+    if not isinstance(registry, RunRegistry):  # pragma: no cover - 装配错误才会发生
+        raise RuntimeError("应用未正确装配 RunRegistry。")
+    return registry

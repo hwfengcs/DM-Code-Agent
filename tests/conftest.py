@@ -23,6 +23,36 @@ if TYPE_CHECKING:
 
 TEST_TOKEN = "test-token-do-not-reuse"
 
+# 各 provider 的 API key 环境变量。
+API_KEY_ENV_VARS = (
+    "DEEPSEEK_API_KEY",
+    "OPENAI_API_KEY",
+    "CLAUDE_API_KEY",
+    "GEMINI_API_KEY",
+)
+
+# 占位 key。必须**非空**：Windows 上 ``os.environ[k] = ""`` 等价于删除变量，
+# 而 dotenv 只是「不覆盖已存在的值」，所以空串反而会让 .env 里的真 key 被填回来。
+DUMMY_API_KEY = "test-key-not-real-do-not-use"
+
+
+@pytest.fixture(autouse=True)
+def block_real_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """让任何测试（含它 spawn 的子进程）都拿不到真实 API key。
+
+    项目宪法要求「测试与 eval 无 API key 也能跑」。这条 fixture 把它变成机器保证，
+    而不是靠人记得——写 Web 控制台的运行测试时，最初那版靠「没配 key 所以会快速失败」
+    来跑生命周期，结果真的用开发者的 key 打了一次请求：
+
+    ``load_dotenv()`` 内部的 ``find_dotenv()`` 是从**调用方模块所在目录**
+    （``dm_agent/cli/``）向上查找的，所以子进程即使 cwd 在 tmp_path，也照样会捡到
+    仓库根的 ``.env``。
+
+    需要真实 key 的集成测试请显式 ``monkeypatch.setenv`` 覆盖回去，让意图留在代码里。
+    """
+    for name in API_KEY_ENV_VARS:
+        monkeypatch.setenv(name, DUMMY_API_KEY)
+
 
 def linked_entries(
     run_id: str,

@@ -10,7 +10,9 @@ import type {
   EntriesResponse,
   ForkResponse,
   MetaResponse,
+  RunRecord,
   SessionAnalysis,
+  SessionEntry,
   SessionListResponse,
   SessionSummary,
 } from './types'
@@ -129,6 +131,83 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, at, output: output || null }),
     }),
+
+  createRun: (body: { task: string; provider: string; model: string; options: RunOptions }) =>
+    request<RunRecord>('/runs', { method: 'POST', body: JSON.stringify(body) }),
+  runs: () => request<{ runs: RunRecord[] }>('/runs'),
+  run: (runId: string) => request<RunRecord>(`/runs/${encodeURIComponent(runId)}`),
+  cancelRun: (runId: string) =>
+    request<RunRecord & { stopped: boolean }>(`/runs/${encodeURIComponent(runId)}`, {
+      method: 'DELETE',
+    }),
+}
+
+export type RunOptions = Record<string, boolean | number>
+
+/** SSE 事件的判别联合。`entry` 的 data 就是一条会话条目原文。 */
+export type StreamEvent =
+  | { kind: 'status'; record: RunRecord }
+  | { kind: 'entry'; entry: SessionEntry; lineIndex: number }
+  | { kind: 'malformed'; lineIndex: number }
+  | { kind: 'done'; record: RunRecord }
+  | { kind: 'error'; message: string }
+
+/**
+ * 订阅一次运行的实时条目流。
+ *
+ * 用 ``EventSource`` 而不是手写 fetch 流：断线自动重连 + 自动带上 ``Last-Event-ID``
+ * 都是浏览器免费给的，后端已按行号发 ``id:``，续传因此开箱可用。
+ *
+ * 代价是 EventSource 不能自定义请求头，所以 token 只能走查询参数——后端的
+ * ``require_token`` 为此保留了 ``?token=`` 回退。
+ */
+export function subscribeToRun(
+  runId: string,
+  onEvent: (event: StreamEvent) => void,
+): () => void {
+  const token = getToken()
+  const query = token ? `?token=${encodeURIComponent(token)}` : ''
+  const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/stream${query}`)
+
+  const parse = <T,>(raw: string): T | null => {
+    try {
+      return JSON.parse(raw) as T
+    } catch {
+      return null
+    }
+  }
+
+  source.addEventListener('status', (event) => {
+    const record = parse<RunRecord>((event as MessageEvent<string>).data)
+    if (record) onEvent({ kind: 'status', record })
+  })
+
+  source.addEventListener('entry', (event) => {
+    const message = event as MessageEvent<string>
+    const entry = parse<SessionEntry>(message.data)
+    if (entry) onEvent({ kind: 'entry', entry, lineIndex: Number(message.lastEventId) })
+  })
+
+  source.addEventListener('malformed', (event) => {
+    const message = event as MessageEvent<string>
+    onEvent({ kind: 'malformed', lineIndex: Number(message.lastEventId) })
+  })
+
+  source.addEventListener('done', (event) => {
+    const record = parse<RunRecord>((event as MessageEvent<string>).data)
+    if (record) onEvent({ kind: 'done', record })
+    // 运行结束后不需要重连；不关的话 EventSource 会一直重试。
+    source.close()
+  })
+
+  source.addEventListener('error', () => {
+    // EventSource 会自动重连，所以这里不当作终态——只在 UI 上提示一下。
+    if (source.readyState === EventSource.CLOSED) {
+      onEvent({ kind: 'error', message: '实时连接已断开。' })
+    }
+  })
+
+  return () => source.close()
 }
 
 /** 一次把整个会话的条目读完（后端按 1000 条一页）。 */

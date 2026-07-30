@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +22,8 @@ from starlette.types import Scope
 
 from dm_agent import __version__
 
-from .routes import meta, sessions
+from .routes import meta, runs, sessions
+from .runs import RunRegistry
 from .settings import ServerSettings
 
 __all__ = ["create_app", "default_static_dir"]
@@ -34,6 +37,15 @@ def default_static_dir() -> Path | None:
     """返回随包分发的前端产物目录；未构建时返回 None。"""
     candidate = Path(__file__).resolve().parent / "static"
     return candidate if (candidate / "index.html").is_file() else None
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """关停时把还在跑的子进程收掉，不留孤儿 agent 继续改你的工作区。"""
+    yield
+    registry = getattr(app.state, "registry", None)
+    if isinstance(registry, RunRegistry):
+        registry.stop_all()
 
 
 class SPAStaticFiles(StaticFiles):
@@ -74,8 +86,10 @@ def create_app(settings: ServerSettings) -> FastAPI:
         ),
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
+        lifespan=_lifespan,
     )
     app.state.settings = settings
+    app.state.registry = RunRegistry()
 
     app.add_middleware(
         CORSMiddleware,
@@ -87,6 +101,7 @@ def create_app(settings: ServerSettings) -> FastAPI:
 
     app.include_router(meta.router)
     app.include_router(sessions.router)
+    app.include_router(runs.router)
 
     static_dir = settings.static_dir or default_static_dir()
     if static_dir is not None and (static_dir / "index.html").is_file():

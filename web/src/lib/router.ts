@@ -11,6 +11,7 @@ export type Route =
   | { name: 'list' }
   | { name: 'run'; session: string }
   | { name: 'diff'; a: string; b: string }
+  | { name: 'new' }
 
 export function parseHash(hash: string): Route {
   const raw = hash.replace(/^#/, '')
@@ -25,6 +26,9 @@ export function parseHash(hash: string): Route {
   if (segments[0] === 'diff') {
     return { name: 'diff', a: params.get('a') ?? '', b: params.get('b') ?? '' }
   }
+  if (segments[0] === 'new') {
+    return { name: 'new' }
+  }
   return { name: 'list' }
 }
 
@@ -34,6 +38,8 @@ export function hrefFor(route: Route): string {
       return `#/run/${encodeURIComponent(route.session)}`
     case 'diff':
       return `#/diff?a=${encodeURIComponent(route.a)}&b=${encodeURIComponent(route.b)}`
+    case 'new':
+      return '#/new'
     default:
       return '#/'
   }

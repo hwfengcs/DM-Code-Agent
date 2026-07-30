@@ -29,17 +29,33 @@ export function HealthBadge({ health, showScore = true }: { health: TraceHealth;
   )
 }
 
-/** 运行状态。成功是中性色而不是绿色——「成功」本身不代表过程健康。 */
+/**
+ * 运行状态。
+ *
+ * `success` / `completed` 用中性色而不是绿色——**「成功」本身不代表过程健康**，
+ * 绿色留给 HealthBadge。`incomplete`（退出码 0 但 agent 没宣布完成，如步数耗尽）
+ * 必须显眼，否则它看起来会跟成功一样。
+ */
 export function StatusChip({ status }: { status: string }) {
   const style =
-    status === 'success'
+    status === 'success' || status === 'completed'
       ? 'border-scope-line bg-scope-raised text-scope-text'
-      : status === 'max_steps_exceeded'
-        ? 'border-signal-warn/40 bg-signal-warn/10 text-signal-warn'
-        : status
-          ? 'border-signal-risk/40 bg-signal-risk/10 text-signal-risk'
-          : 'border-scope-line bg-scope-raised text-scope-faint'
-  return <span className={`chip ${style}`}>{status || '未完成'}</span>
+      : status === 'running'
+        ? 'border-signal-info/40 bg-signal-info/10 text-signal-info'
+        : status === 'max_steps_exceeded' || status === 'incomplete' || status === 'cancelled'
+          ? 'border-signal-warn/40 bg-signal-warn/10 text-signal-warn'
+          : status
+            ? 'border-signal-risk/40 bg-signal-risk/10 text-signal-risk'
+            : 'border-scope-line bg-scope-raised text-scope-faint'
+  return <span className={`chip ${style}`}>{STATUS_LABEL[status] ?? status ?? '未完成'}</span>
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  running: '运行中',
+  completed: '已完成',
+  incomplete: '未做完',
+  failed: '失败',
+  cancelled: '已取消',
 }
 
 export function Panel({

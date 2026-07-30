@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, api, bootstrapToken, setToken } from './lib/api'
-import { useRoute } from './lib/router'
+import { hrefFor, useRoute } from './lib/router'
 import type { MetaResponse, SessionListResponse } from './lib/types'
 import { Button, ErrorBox, Spinner } from './components/ui'
 import { SessionList } from './views/SessionList'
 import { RunDetail } from './views/RunDetail'
 import { DiffView } from './views/DiffView'
+import { NewRun } from './views/NewRun'
 
 export function App() {
   const [route] = useRoute()
@@ -59,6 +60,7 @@ export function App() {
           />
         )}
         {route.name === 'diff' && <DiffView a={route.a} b={route.b} />}
+        {route.name === 'new' && <NewRun meta={meta} onFinished={() => void load()} />}
       </main>
     </div>
   )
@@ -105,6 +107,14 @@ function TopBar({
         <span className="hidden font-mono text-[11px] text-scope-faint sm:inline">
           {meta.server.workspace}
         </span>
+        {!meta.server.read_only && (
+          <a
+            href={hrefFor({ name: 'new' })}
+            className="focus-ring rounded border border-signal-info/50 bg-signal-info/10 px-2 py-1 font-mono text-[11px] text-signal-info"
+          >
+            + 新建运行
+          </a>
+        )}
         <Button onClick={onRefresh}>刷新</Button>
       </div>
     </header>
