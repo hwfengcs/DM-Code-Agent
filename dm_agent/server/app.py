@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import Scope
 
@@ -38,15 +39,25 @@ def default_static_dir() -> Path | None:
 class SPAStaticFiles(StaticFiles):
     """带 history-fallback 的静态文件服务。
 
-    前端用的是客户端路由，``/sessions/foo`` 这种深链在磁盘上并不存在对应文件。
-    原版 ``StaticFiles`` 会返回 404，这里改成回落到 ``index.html``，由前端自己解析路径。
+    前端主要用 hash 路由（``#/run/foo.jsonl``），静态托管下不依赖服务端重写；
+    但把路径式深链也回落到 ``index.html`` 更稳妥——用户手敲、旧链接、或将来换成
+    history 路由时都不会拿到一个 JSON 404。
+
+    两个坑都踩过，都由 ``tests/test_server_readonly.py`` 钉住：
+
+    1. ``StaticFiles.get_response`` 找不到文件时是 **raise** ``HTTPException(404)``，
+       不是返回一个 404 响应——判 ``response.status_code == 404`` 永远不生效。
+    2. 它抛的是 **starlette** 的 ``HTTPException``；FastAPI 那个同名类是它的子类，
+       ``except fastapi.HTTPException`` 抓不到父类。必须 except starlette 的版本。
     """
 
     async def get_response(self, path: str, scope: Scope) -> Response:
-        response = await super().get_response(path, scope)
-        if response.status_code == 404:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404 or path == "index.html":
+                raise
             return await super().get_response("index.html", scope)
-        return response
 
 
 def create_app(settings: ServerSettings) -> FastAPI:

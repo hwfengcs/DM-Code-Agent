@@ -240,10 +240,54 @@ def test_missing_session_is_404(client: TestClient) -> None:
     assert client.get("/api/sessions/summary", params={"name": "nope.jsonl"}).status_code == 404
 
 
-def test_root_without_frontend_build_is_self_explanatory(client: TestClient) -> None:
-    """前端还没构建时给一条能照着敲的提示，而不是 404。"""
-    body = client.get("/").json()
+def test_root_without_frontend_build_is_self_explanatory(
+    make_client: Callable[..., TestClient], tmp_path: Path
+) -> None:
+    """前端还没构建时给一条能照着敲的提示，而不是 404。
+
+    显式指向一个空目录，而不是让它去捡随包分发的 ``dm_agent/server/static``——
+    否则这条断言的结果会取决于本地有没有跑过 ``npm run build``。
+    """
+    empty = tmp_path / "no-frontend"
+    empty.mkdir()
+    body = make_client(static_dir=empty).get("/").json()
     assert "npm run build" in body["build"]
+
+
+def test_built_frontend_is_served_with_spa_fallback(
+    make_client: Callable[..., TestClient], tmp_path: Path
+) -> None:
+    """前端产物存在时：根路径给 index.html，路径式深链回落到 index.html，API 不被吃掉。
+
+    这条测试钉住一个真实踩过的坑：``StaticFiles.get_response`` 找不到文件时是
+    **raise HTTPException(404)**，不是返回 404 响应。所以回落逻辑必须 except，
+    判 ``response.status_code == 404`` 永远不会生效。
+    """
+    static = tmp_path / "static"
+    static.mkdir()
+    (static / "index.html").write_text("<!doctype html><div id=root></div>", encoding="utf-8")
+    (static / "assets").mkdir()
+    (static / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+
+    client = make_client(static_dir=static)
+
+    root = client.get("/")
+    assert root.status_code == 200
+    assert "id=root" in root.text
+
+    # 真实存在的资源照常返回自己。
+    asset = client.get("/assets/app.js")
+    assert asset.status_code == 200
+    assert "console.log" in asset.text
+
+    # 路径式深链回落到 index.html，而不是 JSON 404。
+    deep = client.get("/run/clean.jsonl")
+    assert deep.status_code == 200
+    assert "id=root" in deep.text
+
+    # 静态挂载在 / 兜底，但绝不能吃掉 /api/*。
+    assert client.get("/api/health").status_code == 200
+    assert client.get("/api/sessions").json()["aggregate"]["total"] == 2
 
 
 def test_make_client_accepts_read_only(make_client: Callable[..., TestClient]) -> None:

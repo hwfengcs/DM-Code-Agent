@@ -1,0 +1,56 @@
+/**
+ * 极简 hash 路由。
+ *
+ * 用 hash 而不是 history API 是有意的：静态托管（GitHub Pages）下没有服务端重写，
+ * `#/run/foo.jsonl` 这种深链才能直接分享出去而不 404。同一份构建既能给 uvicorn 用，
+ * 也能直接扔上 Pages。
+ */
+import { useCallback, useEffect, useState } from 'react'
+
+export type Route =
+  | { name: 'list' }
+  | { name: 'run'; session: string }
+  | { name: 'diff'; a: string; b: string }
+
+export function parseHash(hash: string): Route {
+  const raw = hash.replace(/^#/, '')
+  const [path, search = ''] = raw.split('?')
+  const params = new URLSearchParams(search)
+  const segments = (path ?? '').split('/').filter(Boolean)
+
+  if (segments[0] === 'run' && segments[1]) {
+    // 会话名可能含子目录，decode 之后按原样交给后端。
+    return { name: 'run', session: decodeURIComponent(segments.slice(1).join('/')) }
+  }
+  if (segments[0] === 'diff') {
+    return { name: 'diff', a: params.get('a') ?? '', b: params.get('b') ?? '' }
+  }
+  return { name: 'list' }
+}
+
+export function hrefFor(route: Route): string {
+  switch (route.name) {
+    case 'run':
+      return `#/run/${encodeURIComponent(route.session)}`
+    case 'diff':
+      return `#/diff?a=${encodeURIComponent(route.a)}&b=${encodeURIComponent(route.b)}`
+    default:
+      return '#/'
+  }
+}
+
+export function useRoute(): [Route, (route: Route) => void] {
+  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash))
+
+  useEffect(() => {
+    const onChange = () => setRoute(parseHash(window.location.hash))
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+
+  const navigate = useCallback((next: Route) => {
+    window.location.hash = hrefFor(next)
+  }, [])
+
+  return [route, navigate]
+}

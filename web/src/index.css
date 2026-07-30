@@ -1,0 +1,103 @@
+@import 'tailwindcss';
+
+/*
+ * 设计语言：示波器 / 审计台，不是聊天窗。
+ *
+ * 三条规则贯穿全站：
+ *   1. 深色底 + 低饱和面板，让「信号」（健康度、失败、验证缺口）成为唯一的亮色；
+ *   2. 一切 payload、id、路径用等宽字体——这些是要被逐字核对的证据，不是散文；
+ *   3. 颜色只编码语义（good / warning / risky / 失败 / 重规划），不做装饰。
+ */
+@theme {
+  --color-scope-bg: #080b0e;
+  --color-scope-panel: #0f151b;
+  --color-scope-raised: #151d25;
+  --color-scope-line: #1e2b36;
+  --color-scope-line-soft: #16212a;
+
+  --color-scope-text: #ccd9e2;
+  --color-scope-dim: #7e93a3;
+  --color-scope-faint: #4e5f6d;
+
+  /* 语义色。good/warning/risky 直接对应 tracing 的 trace_health.grade。 */
+  --color-signal-good: #3ddc97;
+  --color-signal-warn: #f5a623;
+  --color-signal-risk: #ff5f56;
+  --color-signal-info: #4cc9f0;
+  --color-signal-plan: #a78bfa;
+
+  --font-mono:
+    'JetBrains Mono', 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  --font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-scope-bg);
+    color: var(--color-scope-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 扫描线底纹。极低对比度，只在大片空白处隐约可见，强化「仪器」的观感。 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(76, 201, 240, 0.018) 0px,
+      rgba(76, 201, 240, 0.018) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-scope-line);
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-scope-faint);
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-scope-line bg-scope-panel;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] leading-none;
+  }
+
+  .kbd {
+    @apply rounded border border-scope-line bg-scope-raised px-1.5 py-0.5 font-mono text-[11px] text-scope-dim;
+  }
+
+  /* 表格式标签：左侧固定宽度的小写标签 + 右侧等宽值。全站的元信息都用这个。 */
+  .meta-label {
+    @apply font-mono text-[11px] tracking-wide text-scope-faint uppercase;
+  }
+
+  .focus-ring {
+    @apply focus-visible:ring-1 focus-visible:ring-signal-info focus-visible:outline-none;
+  }
+}

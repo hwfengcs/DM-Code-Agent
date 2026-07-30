@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 from pathlib import Path
 
@@ -73,7 +74,24 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_output_encoding() -> None:
+    """让横幅里的中文在重定向到文件/管道时也不乱码。
+
+    Windows 上 stdout 重定向后默认用系统 ANSI 代码页（简中环境是 cp936），
+    横幅里的中文会变成一片问号。这里显式切到 UTF-8，并保留 ``errors="replace"``
+    兜底——编码问题绝不能让服务起不来。
+
+    刻意不复用 ``dm_agent.cli.ui.configure_console_encoding``：server 层不得依赖 cli
+    （见 ``tests/test_server_layering.py``），而且那个函数只设 errors、不设 encoding。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(Exception):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _configure_output_encoding()
     args = build_parser().parse_args(argv if argv is not None else sys.argv[1:])
 
     if args.no_token and not is_loopback_host(args.host):
@@ -128,13 +146,23 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _print_banner(settings: ServerSettings) -> None:
+    """打印启动信息。
+
+    ``flush=True`` 不是可选的：stdout 被重定向到管道或文件时是块缓冲的，而
+    ``uvicorn.run()`` 之后进程就一直不退出，缓冲区永远不会被刷出去——用户最需要的
+    那条带 token 的地址就此消失（uvicorn 自己的日志走 stderr，所以看起来只是
+    「横幅没了」，很难联想到缓冲）。
+    """
     mode = "只读展厅" if settings.read_only else "完整工作台"
     auth = "token 已启用" if settings.auth_required else "！未启用 token"
-    print("DM-Code-Agent Web Console")
-    print(f"  模式      {mode}")
-    print(f"  鉴权      {auth}")
-    print(f"  workspace {settings.workspace}")
-    print(f"  sessions  {settings.sessions_dir}")
-    print(f"  打开      {settings.public_url()}")
+    lines = [
+        "DM-Code-Agent Web Console",
+        f"  模式      {mode}",
+        f"  鉴权      {auth}",
+        f"  workspace {settings.workspace}",
+        f"  sessions  {settings.sessions_dir}",
+        f"  打开      {settings.public_url()}",
+    ]
     if not settings.read_only:
-        print("  提示      非只读模式下，agent 会在上面的 workspace 里真实读写文件。")
+        lines.append("  提示      非只读模式下，agent 会在上面的 workspace 里真实读写文件。")
+    print("\n".join(lines), flush=True)
