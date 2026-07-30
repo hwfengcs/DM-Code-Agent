@@ -1,8 +1,8 @@
 # CLI 参考
 
-## 六个入口
+## 七个入口
 
-`pyproject.toml` 的 `[project.scripts]` 定义了六个命令：
+`pyproject.toml` 的 `[project.scripts]` 定义了七个命令：
 
 | 命令 | 实现 | 用途 |
 | --- | --- | --- |
@@ -12,8 +12,10 @@
 | `dm-agent-eval` | `dm_agent.evals.cli:main` | 确定性 eval（无需 API key） |
 | `dm-agent-economics` | `dm_agent.benchmarks.economics:main` | 离线 token 成本核算 |
 | `dm-agent-manifest-diff` | `dm_agent.benchmarks.manifest_diff:main` | benchmark 任务集漂移检测 |
+| `dm-agent-web` | `dm_agent.server.cli:main` | Web 控制台（需 `[web]` extra），见 [Web 控制台](web.md) |
 
 根目录 `main.py` 是 `python main.py` 的兼容转发，不会作为顶级 `main` 模块安装。
+`python -m dm_agent.cli` 也可用（`dm_agent/cli/__main__.py`）。
 
 ## 配置优先级
 

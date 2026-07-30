@@ -52,6 +52,15 @@ dm-agent-trace analyze sessions/fix.jsonl
 python -m pytest && python -m dm_agent.evals.cli --variant full --task direct_finish
 ```
 
+想在浏览器里看：
+
+```bash
+dm-agent-web --read-only            # 只读展厅：审计会话，不需要 API key
+dm-agent-web                        # 完整工作台：发起任务 + 实时看每一步
+```
+
+终端会打印一条带 token 的地址，点开即可。详见 [Web 控制台](docs/web.md)。
+
 ---
 
 ## ⭐ 六个别处没有的东西
@@ -176,6 +185,7 @@ Issues:
 
 ```mermaid
 flowchart TD
+    WEB["<b>server</b> — Web 控制台（与 cli 同级）<br/>只读审计 API · SSE 实时流 · 子进程执行器"]
     CLI["<b>cli</b> — 最外层装配者<br/>dm-agent · -eval · -bench · -trace · -economics · -manifest-diff"]
     EXT["<b>extensions</b> — ExtensionAPI · 注册表 · 五级发现 · 项目信任模型<br/>内置能力：critic_gate / circuit_breaker / reflexion_loop / self_consistency"]
     CORE["<b>core</b> — agent.py 只做装配 + ReAct 主循环（928 行）<br/>context_window · response_parser · tool_invoker · completion<br/>replan · persistence · run_state · observation · prompting"]
@@ -183,6 +193,7 @@ flowchart TD
     TOOLS["<b>tools</b> — 17 个内置工具 + MCP 动态工具"]
     CLIENTS["<b>clients</b> — deepseek / openai / claude / gemini + 可注册自定义"]
 
+    WEB -. "spawn 子进程，不把 CLI 当库用" .-> CLI
     CLI --> EXT
     EXT -. "六个可拦截的生命周期钩子" .-> CORE
     CORE --> TRACING --> TOOLS --> CLIENTS
@@ -190,6 +201,8 @@ flowchart TD
 
 依赖**单向向下**（`clients → tools → tracing → core → extensions → cli`），
 由 ruff `TID251` 在 CI 强制——`core` 层想 import `cli` 会直接构建失败。
+`server` 与 `cli` 同级：它 spawn CLI 子进程，所以 Web 界面永远和命令行做同一件事，
+这条由 `tests/test_server_layering.py` 的 AST 断言守着。
 文字版权威说明见 [docs/architecture.md](docs/architecture.md)。
 
 ---
@@ -220,7 +233,8 @@ flowchart TD
 | 文档 | 什么时候读 |
 | --- | --- |
 | [快速开始](docs/getting-started.md) | 安装、配置、第一个任务、本地验证 |
-| [CLI 参考](docs/cli.md) | 六个入口、全部开关及默认值 |
+| [CLI 参考](docs/cli.md) | 七个入口、全部开关及默认值 |
+| [Web 控制台](docs/web.md) | 会话审计、实时运行、安全模型、静态托管 |
 | [架构](docs/architecture.md) | 分层、执行链、钩子位置、会话数据模型 |
 | [扩展开发](docs/extensions.md) | 不改内核加工具 / 守卫 / 供应商，含安全模型 |
 | [会话与 trace](docs/tracing.md) | 会话树、隐私分档、checkpoint、fork |

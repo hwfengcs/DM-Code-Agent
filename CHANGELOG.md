@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Web console (2026-07)
+
+A browser UI (`dm-agent-web`) serving two purposes with **one renderer**: a local
+workbench (start tasks, watch steps live, fork from any entry) and a read-only gallery
+(auditable session viewer needing no API key, hostable as static files). Live runs and
+historical traces are the same append-only JSONL entry stream, so "what you watch" and
+"what you audit afterwards" cannot diverge.
+
+#### Added
+- **`dm_agent/server/`** — a second outermost assembler, sibling to `dm_agent/cli/`:
+  read-only audit API, subprocess executor, SSE streaming. Optional `[web]` extra; the
+  core package stays free of web framework dependencies.
+- **Read-only endpoints** reusing `dm_agent.tracing` pure functions verbatim
+  (`summarize_events` / `analyze_events` / `diff_events` / `fork_session`), so the console
+  and `dm-agent-trace` always reach the same conclusions — pinned by a field-by-field
+  comparison test rather than by convention.
+- **`POST /api/runs`** spawns a `python -m dm_agent.cli` subprocess. Chosen over
+  in-process `ReactAgent` because the kernel has no cancellation interface (a hook raising
+  is documented as equivalent to allowing), and because it makes the web UI a *frontend to
+  the CLI* rather than a second assembly path that could drift.
+- **SSE live stream** tailing the session log itself (`TraceWriter` flushes per entry).
+  `id:` is the line number; append-only guarantees line numbers never shift, so the
+  browser's `Last-Event-ID` resumption works without server-side bookkeeping.
+- **`web/`** — React 19 + Vite + Tailwind v4 frontend, built into
+  `dm_agent/server/static/` and committed so `pip install dm-code-agent[web]` ships a
+  working UI without requiring Node. CI rebuilds and diffs the artifacts.
+- **`dm_agent/cli/__main__.py`** (3 lines), fixing the long-standing "`python -m
+  dm_agent.cli` silently does nothing" pitfall recorded in CLAUDE.md.
+
+#### Fixed
+- Run status no longer equates exit code 0 with success. `dm-agent` returns 0 for
+  `max_steps_exceeded` (not a CLI failure, just an unfinished agent), which the console
+  initially reported as `completed`. It now also reads the agent's own verdict from the
+  session log's `run_end`, adding an `incomplete` state. Caught by end-to-end manual
+  verification, not by the test suite — which is why the regression test exists now.
+- SPA deep links returned a JSON 404: `StaticFiles.get_response` *raises*
+  `HTTPException` rather than returning a 404 response, and raises **starlette's** class,
+  of which FastAPI's same-named class is a subclass — so `except fastapi.HTTPException`
+  never caught it.
+- The startup banner (carrying the only clickable token URL) vanished whenever stdout was
+  redirected: `print()` is block-buffered on a pipe and `uvicorn.run()` never returns.
+  Now flushed explicitly, and encoded as UTF-8 so Chinese text survives Windows
+  redirection instead of being mangled by cp936.
+
+#### Testing
+- 66 new cases across five files, all offline: layering invariants (AST-asserted, because
+  `dm_agent/server/**` must be exempt from `TID251` to allow `from .settings import`),
+  security model, argv whitelisting fed to the *real* CLI parser, SSE semantics
+  (partial lines, resumption, trailing entries after process exit), and run lifecycle.
+- **`tests/conftest.py` now forces a dummy API key on every test.** The project
+  constitution requires tests to run without keys; while writing the run-lifecycle tests
+  the first version relied on "no key configured, so the CLI fails fast" — and really
+  spent money. `load_dotenv()`'s `find_dotenv()` searches upward from the *calling
+  module's* directory (`dm_agent/cli/`), so a subprocess picks up the repo-root `.env`
+  regardless of its cwd; and on Windows `os.environ[k] = ""` deletes the variable, letting
+  dotenv refill the real key. This is now a machine guarantee instead of something to
+  remember.
+
 ### Architecture refactor (2026-07, eight steps)
 
 An eight-step restructuring benchmarked against
