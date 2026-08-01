@@ -49,6 +49,7 @@ these entries.
 | [28](28-evals-recovery-capability-and-gates.md) | Evals: recovery rate, capability breakdown, CI gates | post-v2 | implementation landed |
 | [29](29-session-tree.md) | Session tree, non-destructive compaction, fork | post-v2 | implementation landed |
 | [30](30-compaction-economics.md) | Compaction economics: benefit guard and positive sticky windows | post-v2 | implementation landed |
+| [31](31-web-conversation-mode.md) | Web console multi-turn chat: long-lived CLI subprocess over stdin | post-v2 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

@@ -38,7 +38,30 @@ API key 是例外：**只从环境变量读**（`DEEPSEEK_API_KEY` / `OPENAI_API
 | `--temperature` | `0.7` | 采样温度（`ReactAgent` 库默认 0.0） |
 | `--show-steps` | 关 | 实时打印中间步骤 |
 | `--interactive` | — | 进入交互式菜单（不给 task 时也会进） |
+| `--conversation-stdin` | — | 长驻会话模式：多轮任务从 stdin 逐行进来，共享同一个 agent 的上下文 |
 | `--report PATH` | — | 输出人类可读的 Markdown 运行报告 |
+
+### `--conversation-stdin`
+
+Web 控制台的多轮对话就跑在这个模式上，但它本身是个通用入口：一个进程、一个
+`ReactAgent`、顺序跑多轮，对话历史 / 本地记忆 / 折叠状态跨轮延续。
+
+```bash
+printf '%s\n' \
+  '{"task": "读一遍 README，说说这个项目在做什么"}' \
+  '{"task": "接着上一轮，把它的分层契约也讲清楚"}' \
+| dm-agent --conversation-stdin --trace sessions/chat.jsonl
+```
+
+* stdin 每行一个 JSON 对象：`{"task": "..."}` 跑一轮，`{"type": "reset"}` 清空历史。
+  用 JSON 而不是裸文本行，因为任务描述完全可能含换行。
+* **没有 stdout 协议**。每一轮的进展与结果都在 `--trace` 的会话日志里
+  （`run_start` / `run_end`），调用方跟读那个文件即可；stdout 保持人类可读日志。
+* 读到 EOF 正常退出。单轮失败只记一条 `run_error` 并继续等下一轮，不会杀掉整个会话。
+
+四条前置校验（不满足直接退出码 2）：必须配 `--trace`、不能带位置参数任务、
+不能与 `--resume` 同用、不能与 `--enable-reflexion` 同用（后者每次 trial 会把对话
+历史回滚到本轮开始前的快照，与跨轮累积正好相反）。
 
 ## 基础设施护栏（默认**开**）
 
