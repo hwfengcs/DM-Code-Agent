@@ -5,7 +5,7 @@
 **本地优先 · 全程可审计 · 内核只有一个 ReAct 循环**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-301%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-429%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
@@ -63,7 +63,7 @@ dm-agent-web                        # 完整工作台：发起任务 + 实时看
 
 ---
 
-## ⭐ 六个别处没有的东西
+## ⭐ 七个别处没有的东西
 
 ### 🌳 运行历史是一棵永不删除的树
 
@@ -85,6 +85,31 @@ dm-agent-trace analyze-dir sessions/             # 批量聚合统计
 `estimated_tokens_after < estimated_tokens_before` 才提交，**无收益的候选完整回滚**
 （memory、cadence、摘要状态全部还原）。已证明正收益的折叠会跨请求、跨 run 粘性复用，
 trace 里明写 `phase=sticky_reuse`，不把复用计成一次新压缩。
+
+### 🖥️ 浏览器里审计，只读展厅可以直接分享
+
+```bash
+dm-agent-web --read-only     # 只读展厅：免 API key，能审计不能发起运行
+dm-agent-web                 # 完整工作台：发起任务 + SSE 实时看每一步
+```
+
+五个视图各回答一个问题：**会话库**（哪些跑成功了，以及**哪些跑成功了但过程不健康**）、
+**运行详情**（每一步做了什么，选中条目看完整 payload）、**诊断**（失败在哪个阶段、
+有没有恢复、有没有跳过验证）、**折叠**（省了多少 token，以及被跳过的原文——它们一条都没删）、
+**行为 diff**（两次运行从第几步开始分道扬镳）。
+
+三条边界让它不会变成「第二个事实来源」：
+
+- **live run 与历史 trace 共用一套渲染器**——它们本来就是同一份 append-only JSONL。
+  不存在「实时看到的」和「事后审计到的」不一致。
+- **前端不算任何结论**。失败阶段、健康度、验证缺口全部由 `dm_agent.tracing` 算好送过来，
+  与 `dm-agent-trace analyze` 同源；`tests/test_server_readonly.py` 有一条断言逐字段比对
+  API 响应与直接调用纯函数的结果，防止 server 层自己算一遍导致漂移。
+- **发起运行 spawn 一个 CLI 子进程**（`python -m dm_agent.cli`），而不是在服务进程里
+  另装一套 `ReactAgent`。所以 Web 永远和命令行做同一件事。
+
+只读展厅用 hash 路由 + `base: './'`，把构建产物和会话 JSONL 一起丢到任何静态托管上就能跑，
+**不需要后端，也不需要 key**。详见 [Web 控制台](docs/web.md)。
 
 ### 🔌 加工具 / 守卫 / 模型供应商，一行内核代码都不用改
 
@@ -120,8 +145,9 @@ trace 里明写 `phase=sticky_reuse`，不把复用计成一次新压缩。
 
 | | |
 | --- | --- |
-| 单元测试 | **301 个用例**，8.7k 行测试代码（源码 21.7k 行） |
+| 单元测试 | **429 个用例**，10.8k 行测试代码（后端源码 23.4k 行 + 前端 3.6k 行） |
 | 确定性 eval | 14 个任务 × 4 个变体，scripted client 驱动，**零网络调用** |
+| 前端 | vitest 覆盖展示层纯函数；CI 重新构建并**逐字节比对**入库产物 |
 | CI 矩阵 | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12，**6 个组合** |
 | 质量门禁 | ruff（`E F I UP B SIM TID RUF`）+ black + mypy + `uv lock --check` + pre-commit |
 | 分层契约 | `clients → tools → tracing → core → extensions → cli`，由 ruff `TID251` 在 CI 强制 |
@@ -217,6 +243,7 @@ flowchart TD
 | Reflexion / Critic / Self-Consistency | ✅ v2（默认关） | ❌ | partial | ❌ | ❌ |
 | 扩展系统（不改内核加能力） | ✅ entry_points + 目录 + 显式文件 | ❌ | plugins | ❌ | ❌ |
 | 可拦截生命周期钩子 | ✅ 6 个事件 | ❌ | partial | ❌ | ❌ |
+| 可视化审计控制台 | ✅ 只读展厅免 key、可静态托管 | 聊天 GUI | ✅ 完整 Web UI | trajectory inspector | ❌ |
 | MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
 | 自带 maintenance benchmark | ✅ 6+ tasks | ❌ | ❌ | SWE-bench | ❌ |
 | 公开 SWE-bench Lite 分数 | ⚠️ Tier-1：0.0%（50/300 子集，非官方口径） | ❌ | ✅ | ✅ | ❌ |
@@ -228,7 +255,7 @@ flowchart TD
 
 ## 📚 文档
 
-从 **[docs/](docs/)** 开始，那里有完整导航。最常用的五份：
+从 **[docs/](docs/)** 开始，那里有完整导航。最常用的六份：
 
 | 文档 | 什么时候读 |
 | --- | --- |
