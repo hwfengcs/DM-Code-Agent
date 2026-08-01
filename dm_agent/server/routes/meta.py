@@ -155,7 +155,11 @@ def read_meta(
             "read_only": settings.read_only,
             "auth_required": settings.auth_required,
             # 工作目录要显示给用户——agent 会在这里读写文件，这是知情同意的一部分。
+            # 但**界面上只显示目录名**：把 C:\Users\...\project 这种整条路径怼在侧栏里
+            # 既难看又没信息量（本机单用户场景下用户当然知道自己在哪跑）。完整路径留在
+            # 这个字段里给 API 消费者与排障用，前端只读 workspace_name。
             "workspace": str(settings.workspace),
+            "workspace_name": settings.workspace.name or str(settings.workspace),
             "sessions_dir_name": settings.sessions_dir.name,
         },
         "providers": [

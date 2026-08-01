@@ -14,12 +14,15 @@
 from __future__ import annotations
 
 import json
+import shutil
+import time
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
+from dm_agent.server.runs import RunRegistry
 from dm_agent.server.security import get_settings, require_token, require_writable
 from dm_agent.server.settings import (
     ServerSettings,
@@ -42,6 +45,23 @@ MAX_ENTRY_LIMIT = 5000
 # 会话卡片缓存：路径 → (mtime_ns, size, card)。会话日志是 append-only 的，
 # mtime+size 一致就说明内容没变，可以直接复用上次的解析结果。
 _CARD_CACHE: dict[str, tuple[int, int, dict[str, Any]]] = {}
+
+# 删除的会话搬到这里，而不是 unlink。
+#
+# 这**不违背**「原始数据永不删除」那条项目宪法——那条说的是**会话内的条目**
+# （append-only、折叠只追加派生记录、原文一条不删）。用户显式清理一整个会话
+# **文件**是另一回事。搬进回收站是两者之间诚实的折中：列表里干净了，证据还在磁盘上，
+# 误删可以直接从文件夹里拖回来。
+TRASH_DIR_NAME = ".trash"
+
+# 单次批量删除的上限。防止一个请求把整个目录搬空之后才发现点错了。
+MAX_BULK_DELETE = 200
+
+
+class DeleteSessionsRequest(BaseModel):
+    """批量删除。逐个报结果，单个失败不会让整批 500。"""
+
+    names: list[str] = Field(min_length=1, max_length=MAX_BULK_DELETE)
 
 
 class ForkRequest(BaseModel):
@@ -113,7 +133,7 @@ def list_sessions(
     errors: list[dict[str, str]] = []
     if settings.sessions_dir.is_dir():
         for path in sorted(settings.sessions_dir.rglob("*.jsonl")):
-            if not path.is_file():
+            if not path.is_file() or _is_hidden(settings, path):
                 continue
             try:
                 cards.append(_session_card(settings, path))
@@ -132,6 +152,20 @@ def list_sessions(
             "by_health": _count(grades),
         },
     }
+
+
+def _is_hidden(settings: ServerSettings, path: Path) -> bool:
+    """回收站与任何点开头的子目录都不进列表。
+
+    ``.trash`` 里的东西按定义就是用户已经清理掉的；点开头的目录同样是约定俗成的
+    「不要显示我」。这条判断放在扫描处而不是删除处——手工往 sessions 里放的点目录
+    也应当被一视同仁地忽略。
+    """
+    try:
+        parts = path.resolve().relative_to(settings.sessions_dir).parts
+    except ValueError:  # pragma: no cover - rglob 的结果一定在目录内
+        return False
+    return any(part.startswith(".") for part in parts[:-1])
 
 
 @router.get("/entries", summary="读取会话条目（分页）")
@@ -219,6 +253,108 @@ def create_fork(
     result["source"] = relative_session_name(settings, Path(result["source"]))
     result["output"] = relative_session_name(settings, Path(result["output"]))
     return result
+
+
+@router.delete(
+    "",
+    summary="删除一个会话（移入回收站）",
+    dependencies=[Depends(require_writable)],
+)
+def delete_session(
+    request: Request,
+    settings: Annotated[ServerSettings, Depends(get_settings)],
+    name: Annotated[str, Query(description="会话名，相对 sessions 目录")],
+) -> dict[str, Any]:
+    """把会话文件搬进 ``sessions/.trash/``。
+
+    不是 ``unlink``：见 ``TRASH_DIR_NAME`` 上方那段关于「原始数据永不删除」边界的说明。
+    """
+    return _trash_one(request, settings, name)
+
+
+@router.post(
+    "/delete",
+    summary="批量删除会话（移入回收站）",
+    dependencies=[Depends(require_writable)],
+)
+def delete_sessions(
+    request: Request,
+    settings: Annotated[ServerSettings, Depends(get_settings)],
+    payload: DeleteSessionsRequest,
+) -> dict[str, Any]:
+    """逐个搬进回收站，**单个失败不影响其余**。
+
+    用 POST 而不是带 body 的 DELETE：后者在 HTTP 语义上是灰色地带，不少代理会直接
+    把 body 丢掉。
+    """
+    deleted: list[dict[str, Any]] = []
+    failed: list[dict[str, str]] = []
+    for name in payload.names:
+        try:
+            deleted.append(_trash_one(request, settings, name))
+        except HTTPException as exc:
+            failed.append({"name": name, "error": str(exc.detail)})
+    return {"deleted": deleted, "failed": failed}
+
+
+def _trash_one(request: Request, settings: ServerSettings, name: str) -> dict[str, Any]:
+    """解析 → 拒绝在写的 → 搬进回收站。三步都可能失败，各自翻译成合适的状态码。"""
+    try:
+        source = resolve_session_path(settings, name)
+    except SessionPathError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if _is_being_written(request, source):
+        # 删掉一个正在被 agent 追加的文件，只会让那个进程写进一个已经不在列表里的
+        # 幽灵文件（POSIX）或者直接失败（Windows 会锁）。两种都不是用户想要的。
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="这个会话正在被一个运行中的 agent 写入。请先停止它再删除。",
+        )
+
+    trash_dir = settings.sessions_dir / TRASH_DIR_NAME
+    try:
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        target = _unique_trash_path(trash_dir, source.name)
+        shutil.move(str(source), str(target))
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"移入回收站失败：{exc}",
+        ) from exc
+
+    _CARD_CACHE.pop(str(source), None)
+    return {"name": name, "trashed_as": f"{TRASH_DIR_NAME}/{target.name}"}
+
+
+def _unique_trash_path(trash_dir: Path, filename: str) -> Path:
+    """回收站里同名文件不能互相覆盖——删两次同名会话，两份都要留住。"""
+    candidate = trash_dir / filename
+    if not candidate.exists():
+        return candidate
+    stem, suffix = Path(filename).stem, Path(filename).suffix
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    for attempt in range(1, 1000):
+        marker = stamp if attempt == 1 else f"{stamp}-{attempt}"
+        candidate = trash_dir / f"{stem}.{marker}{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise OSError("回收站里同名文件太多了。")
+
+
+def _is_being_written(request: Request, path: Path) -> bool:
+    """这个文件是不是某个还活着的运行 / 对话的 trace 目标。
+
+    注册表是内存态，控制台重启后就空了——那种情况下子进程也已经成了孤儿，
+    拦不住也拦不了，所以这里只做「本进程知道的」这一层保护，够用且不假装。
+    """
+    registry = getattr(request.app.state, "registry", None)
+    if not isinstance(registry, RunRegistry):  # pragma: no cover - 装配错误才会发生
+        return False
+    resolved = path.resolve()
+    return any(
+        record.is_running and record.trace_path.resolve() == resolved for record in registry.list()
+    )
 
 
 def _resolve_new_session_path(settings: ServerSettings, name: str) -> Path:
