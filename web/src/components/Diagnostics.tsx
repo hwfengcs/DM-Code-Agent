@@ -3,27 +3,39 @@
  *
  * 这个面板存在的理由就一句话：**任务成功 ≠ 过程健康**，而后者是能被机器读出来的。
  * 所以「验证缺口」那张卡在成功的运行上也要显眼。
+ *
+ * 前端不重算任何结论——全部来自后端 `dm_agent.tracing.analysis`，这里只负责渲染。
  */
 import type { SessionAnalysis } from '../lib/types'
 import { describeIssue } from '../lib/entries'
-import { HealthBadge } from './ui'
+import { HealthBadge, HealthDetail } from './ui'
 
 export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
   const { recovery, verification, trace_health: health } = analysis
 
   return (
-    <div className="space-y-3 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <HealthBadge health={health} />
-        {analysis.signals.length === 0 && (
-          <span className="font-mono text-xs text-scope-dim">没有触发任何诊断信号</span>
-        )}
-        {analysis.signals.map((signal) => (
-          <span key={signal} className="chip border-scope-line bg-scope-raised text-scope-dim">
-            {describeIssue(signal)}
+    <div className="space-y-4 p-5">
+      {/* 健康度总览。扣分项直接平铺，不藏在 tooltip 里。 */}
+      <section className="card p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <HealthBadge health={health} />
+          <span className="text-caption text-ink-2">
+            评分 <span className="font-mono tabular-nums text-ink">{health.score.toFixed(2)}</span>
           </span>
-        ))}
-      </div>
+        </div>
+        <div className="mt-3 border-t border-line pt-3">
+          <HealthDetail health={health} />
+        </div>
+        {analysis.signals.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-line pt-3">
+            {analysis.signals.map((signal) => (
+              <span key={signal} className="chip border-line-strong bg-muted text-ink-2">
+                {describeIssue(signal)}
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
 
       <Card
         tone={verification.gap ? 'warn' : 'good'}
@@ -50,7 +62,7 @@ export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
           />
         )}
         {verification.gap && (
-          <p className="mt-2 text-[11px] text-scope-faint">
+          <p className="mt-3 border-t border-line pt-3 text-micro text-ink-2">
             运行成功但全程没有执行 run_tests / run_linter 一类的验证动作。结果可能是对的，
             但这次运行本身没有给出任何证据。
           </p>
@@ -82,7 +94,11 @@ export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
         <Line
           label="失败后是否重规划"
           value={recovery.replanned_after_failure ? '是' : '否'}
-          tone={recovery.failure_event_count > 0 && !recovery.replanned_after_failure ? 'warn' : undefined}
+          tone={
+            recovery.failure_event_count > 0 && !recovery.replanned_after_failure
+              ? 'warn'
+              : undefined
+          }
         />
       </Card>
 
@@ -90,9 +106,7 @@ export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
         tone={hasAnySignal(analysis.hallucination_signals) ? 'warn' : 'good'}
         title="幻觉信号"
         headline={
-          hasAnySignal(analysis.hallucination_signals)
-            ? '检测到可疑行为'
-            : '未检测到可疑行为'
+          hasAnySignal(analysis.hallucination_signals) ? '检测到可疑行为' : '未检测到可疑行为'
         }
       >
         {Object.entries(analysis.hallucination_signals).map(([key, value]) => (
@@ -108,20 +122,8 @@ export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
       {Object.keys(analysis.metadata_counters).length > 0 && (
         <Card tone="neutral" title="计数器" headline="运行期累计的错误与重规划计数">
           {Object.entries(analysis.metadata_counters).map(([key, value]) => (
-            <Line key={key} label={key} value={String(value)} />
+            <Line key={key} label={key} value={String(value)} mono />
           ))}
-        </Card>
-      )}
-
-      {health.issues.length > 0 && (
-        <Card tone="warn" title="健康度扣分项" headline={`共 ${health.issues.length} 项`}>
-          <ul className="space-y-1">
-            {health.issues.map((issue) => (
-              <li key={issue} className="font-mono text-[11px] text-scope-dim">
-                · {describeIssue(issue)}
-              </li>
-            ))}
-          </ul>
         </Card>
       )}
     </div>
@@ -139,20 +141,20 @@ function hasAnySignal(signals: Record<string, number>): boolean {
   return Object.values(signals).some((value) => typeof value === 'number' && value > 0)
 }
 
-const TONE_STYLE = {
-  good: 'border-signal-good/30',
-  warn: 'border-signal-warn/40',
-  risk: 'border-signal-risk/40',
-  info: 'border-signal-info/30',
-  neutral: 'border-scope-line',
+const TONE_DOT = {
+  good: 'bg-green',
+  warn: 'bg-orange',
+  risk: 'bg-red',
+  info: 'bg-blue',
+  neutral: 'bg-ink-4',
 } as const
 
 const TONE_TEXT = {
-  good: 'text-signal-good',
-  warn: 'text-signal-warn',
-  risk: 'text-signal-risk',
-  info: 'text-signal-info',
-  neutral: 'text-scope-text',
+  good: 'text-green-ink',
+  warn: 'text-orange-ink',
+  risk: 'text-red-ink',
+  info: 'text-blue-ink',
+  neutral: 'text-ink',
 } as const
 
 function Card({
@@ -163,16 +165,19 @@ function Card({
 }: {
   title: string
   headline: string
-  tone: keyof typeof TONE_STYLE
+  tone: keyof typeof TONE_DOT
   children: React.ReactNode
 }) {
   return (
-    <section className={`rounded-lg border bg-scope-panel ${TONE_STYLE[tone]}`}>
-      <header className="border-b border-scope-line-soft px-3 py-2">
-        <div className="meta-label">{title}</div>
-        <div className={`text-sm ${TONE_TEXT[tone]}`}>{headline}</div>
+    <section className="card">
+      <header className="border-b border-line px-5 py-3.5">
+        <div className="text-micro font-medium text-ink-3">{title}</div>
+        <div className="mt-0.5 flex items-center gap-2">
+          <span className={`inline-block size-2 shrink-0 rounded-full ${TONE_DOT[tone]}`} />
+          <span className={`text-body font-semibold ${TONE_TEXT[tone]}`}>{headline}</span>
+        </div>
       </header>
-      <div className="px-3 py-2">{children}</div>
+      <div className="px-5 py-3.5">{children}</div>
     </section>
   )
 }
@@ -181,16 +186,22 @@ function Line({
   label,
   value,
   tone,
+  mono = false,
 }: {
   label: string
   value: string
   tone?: 'warn'
+  mono?: boolean
 }) {
   return (
-    <div className="flex items-baseline gap-3 py-0.5">
-      <span className="meta-label w-32 shrink-0">{label}</span>
+    <div className="flex items-baseline gap-4 py-1">
+      <span className={`w-36 shrink-0 text-micro text-ink-3 ${mono ? 'font-mono' : ''}`}>
+        {label}
+      </span>
       <span
-        className={`min-w-0 flex-1 font-mono text-xs ${tone === 'warn' ? 'text-signal-warn' : 'text-scope-text'}`}
+        className={`min-w-0 flex-1 text-caption ${
+          tone === 'warn' ? 'font-medium text-orange-ink' : 'text-ink'
+        }`}
       >
         {value}
       </span>

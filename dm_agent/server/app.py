@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,6 +28,12 @@ from .runs import RunRegistry
 from .settings import ServerSettings
 
 __all__ = ["create_app", "default_static_dir"]
+
+# Python 的 mimetypes 表里没有 woff2，不补的话 StaticFiles 会把前端自带的 Geist
+# 字体按 application/octet-stream 发出去。浏览器加载 @font-face 时不强制校验 MIME，
+# 所以这不影响显示，但 RFC 8081 定义的就是 font/woff2——放在模块级注册一次，
+# 免得反向代理开了严格的 nosniff 策略时才发现。
+mimetypes.add_type("font/woff2", ".woff2")
 
 # Vite 开发服务器的默认来源。只放行 loopback：真正的鉴权靠 token，
 # CORS 在这里只是让 `npm run dev` 能直连后端，不承担安全职责。

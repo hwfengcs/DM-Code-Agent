@@ -1,36 +1,95 @@
 @import 'tailwindcss';
 
 /*
- * 设计语言：示波器 / 审计台，不是聊天窗。
+ * 设计语言：审计台，但是**网页产品**，不是终端仿真器。
  *
- * 三条规则贯穿全站：
- *   1. 深色底 + 低饱和面板，让「信号」（健康度、失败、验证缺口）成为唯一的亮色；
- *   2. 一切 payload、id、路径用等宽字体——这些是要被逐字核对的证据，不是散文；
- *   3. 颜色只编码语义（good / warning / risky / 失败 / 重规划），不做装饰。
+ * 上一版是「深色示波器」——深色底 + 扫描线 + 高饱和信号色，且全站用等宽字体做 UI 语言。
+ * 那套排版逻辑属于 TUI，所以它看起来不像网页。这一版换成 Codex 式的纯白大留白 +
+ * Apple 系统色，并立下三条规则：
+ *
+ *   1. **等宽字体只用于证据**——条目 id、run_id、路径、payload、时间戳、token 数、CLI flag。
+ *      UI 语言（按钮、导航、标签、表头、统计数字）一律 sans。这一条是这次重设计的核心。
+ *   2. 颜色只编码语义（good / warning / risky / 计划 / 折叠），不做装饰；
+ *      白底上的语义**文字**一律用加深变体，饱和原色只用于填充、边框和圆点。
+ *   3. 层次靠留白和一条极轻的边框建立，不靠色块堆叠。
  */
+
+/* Geist 覆盖拉丁字母、数字与符号；中文自动 fallback 到苹方 / 微软雅黑。
+   这是标准做法——中文字体动辄数 MB，不可能自托管。 */
+@font-face {
+  font-family: 'Geist';
+  src: url('../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
-  --color-scope-bg: #080b0e;
-  --color-scope-panel: #0f151b;
-  --color-scope-raised: #151d25;
-  --color-scope-line: #1e2b36;
-  --color-scope-line-soft: #16212a;
+  /* --- 中性色：Apple 官网那套极浅灰阶 ------------------------------------ */
+  --color-canvas: #ffffff;
+  --color-surface: #ffffff;
+  --color-subtle: #fbfbfd;
+  --color-muted: #f5f5f7;
+  --color-line: #e8e8ed;
+  --color-line-strong: #d2d2d7;
 
-  --color-scope-text: #ccd9e2;
-  --color-scope-dim: #7e93a3;
-  --color-scope-faint: #4e5f6d;
+  --color-ink: #1d1d1f;
+  --color-ink-2: #6e6e73;
+  --color-ink-3: #86868b;
+  --color-ink-4: #aeaeb2;
 
-  /* 语义色。good/warning/risky 直接对应 tracing 的 trace_health.grade。 */
-  --color-signal-good: #3ddc97;
-  --color-signal-warn: #f5a623;
-  --color-signal-risk: #ff5f56;
-  --color-signal-info: #4cc9f0;
-  --color-signal-plan: #a78bfa;
+  /* --- 语义色：Apple system colors ---------------------------------------
+     每组两个值：饱和原色用于填充 / 边框 / 圆点，`-ink` 加深变体用于**文字**。
+     直接把 #34c759 当白底文字色只有 2.2:1 对比度，加深变体全部 ≥4.6:1（过 WCAG AA）。 */
+  --color-blue: #0071e3;
+  --color-blue-ink: #0060c0;
+  --color-green: #34c759;
+  --color-green-ink: #248a3d;
+  --color-orange: #ff9500;
+  --color-orange-ink: #b25000;
+  --color-red: #ff3b30;
+  --color-red-ink: #d70015;
+  --color-indigo: #5856d6;
+  --color-indigo-ink: #3634a3;
 
-  --font-mono:
-    'JetBrains Mono', 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  /* --- 字体 --------------------------------------------------------------- */
   --font-sans:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
-    sans-serif;
+    'Geist', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+
+  /* --- 字号阶梯。上一版满屏 10-11px，这一版最小 12px 且只用于元信息。 ----- */
+  --text-display: 1.75rem;
+  --text-display--line-height: 1.2;
+  --text-display--letter-spacing: -0.02em;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.3;
+  --text-title--letter-spacing: -0.01em;
+  --text-heading: 1rem;
+  --text-heading--line-height: 1.4;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.55;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.5;
+  --text-micro: 0.75rem;
+  --text-micro--line-height: 1.45;
+
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-chip: 6px;
+
+  /* Apple 那种极轻的两层阴影：一层贴边描线，一层几乎看不见的投影。 */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 0 0 1px rgb(0 0 0 / 0.045);
+  --shadow-raised: 0 4px 16px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.045);
+  --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
 }
 
 @layer base {
@@ -41,63 +100,79 @@
   }
 
   body {
-    background-color: var(--color-scope-bg);
-    color: var(--color-scope-text);
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
     font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /* 扫描线底纹。极低对比度，只在大片空白处隐约可见，强化「仪器」的观感。 */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background-image: repeating-linear-gradient(
-      0deg,
-      rgba(76, 201, 240, 0.018) 0px,
-      rgba(76, 201, 240, 0.018) 1px,
-      transparent 1px,
-      transparent 3px
-    );
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-blue) 18%, transparent);
   }
 
+  /* 亮色细滚动条。审计页面滚动区很多，滚动条不该抢视线。 */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-scope-line);
-    border-radius: 5px;
+    background: var(--color-line-strong);
+    border: 3px solid var(--color-canvas);
+    border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-scope-faint);
+    background: var(--color-ink-4);
   }
 }
 
 @layer components {
-  .panel {
-    @apply rounded-lg border border-scope-line bg-scope-panel;
+  /* 卡片。层次靠一条极轻的边框 + 阴影，不靠灰底色块。 */
+  .card {
+    @apply rounded-card border border-line bg-surface shadow-card;
   }
 
+  /* 徽章。配方固定：色/10% 底 + 色/25% 边 + 加深变体文字。 */
   .chip {
-    @apply inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] leading-none;
+    @apply inline-flex items-center gap-1.5 rounded-chip border px-2 py-0.5 text-micro font-medium whitespace-nowrap;
   }
 
-  .kbd {
-    @apply rounded border border-scope-line bg-scope-raised px-1.5 py-0.5 font-mono text-[11px] text-scope-dim;
+  /* 元信息标签。上一版是 mono + uppercase + 11px，这版改回正常的 sans 小标题。 */
+  .label-meta {
+    @apply text-micro font-medium text-ink-3;
   }
 
-  /* 表格式标签：左侧固定宽度的小写标签 + 右侧等宽值。全站的元信息都用这个。 */
-  .meta-label {
-    @apply font-mono text-[11px] tracking-wide text-scope-faint uppercase;
+  /* 证据文本：任何需要被逐字核对的东西。等宽 + 表格数字对齐。 */
+  .evidence {
+    @apply font-mono text-caption tabular-nums;
   }
 
+  .field {
+    @apply w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-body text-ink
+      transition-colors placeholder:text-ink-4 hover:border-ink-4
+      focus:border-blue focus:outline-none disabled:cursor-not-allowed disabled:bg-muted
+      disabled:text-ink-3;
+  }
+
+  /* Apple segmented control。用于运行详情的三个审计分区。 */
+  .segmented {
+    @apply inline-flex gap-0.5 rounded-control bg-muted p-0.5;
+  }
+  .segmented-item {
+    @apply rounded-[6px] px-3 py-1.5 text-caption font-medium text-ink-2 transition-all
+      hover:text-ink;
+  }
+  .segmented-item[data-active='true'] {
+    @apply bg-surface text-ink shadow-[0_1px_3px_rgb(0_0_0/0.1)];
+  }
+
+  /* 焦点环：Apple 那种 3px 半透明蓝色外环，不挤占布局。 */
   .focus-ring {
-    @apply focus-visible:ring-1 focus-visible:ring-signal-info focus-visible:outline-none;
+    @apply focus-visible:ring-[3px] focus-visible:ring-blue/30 focus-visible:outline-none;
   }
 }

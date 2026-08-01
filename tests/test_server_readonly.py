@@ -290,6 +290,26 @@ def test_built_frontend_is_served_with_spa_fallback(
     assert client.get("/api/sessions").json()["aggregate"]["total"] == 2
 
 
+def test_woff2_is_served_with_the_right_mime(
+    make_client: Callable[..., TestClient], tmp_path: Path
+) -> None:
+    """前端自带的 Geist 字体必须以 ``font/woff2`` 发出。
+
+    Python 的 ``mimetypes`` 表里没有 woff2，不显式注册就会回落到
+    ``application/octet-stream``。浏览器加载 @font-face 时不强制校验 MIME，所以
+    这个问题在本地看不出来——直到有人在前面架了开严格 nosniff 策略的反向代理。
+    """
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text("<!doctype html><div id=root></div>", encoding="utf-8")
+    # woff2 的魔数，内容不重要，这里只关心响应头。
+    (static / "assets" / "Geist.woff2").write_bytes(b"wOF2\x00\x00\x00\x00")
+
+    response = make_client(static_dir=static).get("/assets/Geist.woff2")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("font/woff2")
+
+
 def test_make_client_accepts_read_only(make_client: Callable[..., TestClient]) -> None:
     read_only = make_client(read_only=True)
     assert read_only.get("/api/meta").json()["server"]["read_only"] is True

@@ -1,20 +1,52 @@
 /**
  * 运行详情：控制台的主视图。
  *
- * 三栏布局——左边计划与元信息，中间时间线（或诊断 / 折叠），右边选中条目的完整
- * payload。「从这里分叉」挂在右栏，因为分叉的语义就是「从当前选中这条重来」。
+ * 三栏——左边计划与元信息，中间三个审计分区（执行链 / 诊断 / 上下文折叠），
+ * 右边选中条目的完整 payload。「从这里分叉」挂在右栏，因为分叉的语义就是
+ * 「从当前选中这条重来」。
+ *
+ * 两处刻意的可审计设计：
+ *   1. 验证缺口用**首屏横幅**而不是埋在诊断分区里——「成功但没验证」是这个项目
+ *      最想让人看见的结论，藏在二级 tab 里等于没说。
+ *   2. `parent_id` 可点击跳转。那根把 JSONL 串成树的指针应当是可导航的，
+ *      而不是一行死文本。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, fetchAllEntries } from '../lib/api'
 import type { SessionAnalysis, SessionEntry, SessionSummary } from '../lib/types'
 import { foldedEntryIds, formatDuration, splitRuns } from '../lib/entries'
 import { hrefFor } from '../lib/router'
-import { Button, ErrorBox, HealthBadge, JsonView, MetaRow, Panel, Spinner, StatusChip } from '../components/ui'
+import {
+  Banner,
+  Button,
+  ErrorBox,
+  HealthBadge,
+  JsonView,
+  LinkButton,
+  MetaRow,
+  PageHeader,
+  Panel,
+  Segmented,
+  Spinner,
+  StatusChip,
+} from '../components/ui'
 import { Timeline } from '../components/Timeline'
 import { Diagnostics } from '../components/Diagnostics'
 import { CompactionView } from '../components/CompactionView'
 
 type Tab = 'timeline' | 'diagnostics' | 'compaction'
+
+const TAB_OPTIONS: { value: Tab; label: string }[] = [
+  { value: 'timeline', label: '执行链' },
+  { value: 'diagnostics', label: '诊断' },
+  { value: 'compaction', label: '上下文折叠' },
+]
+
+const TAB_TITLE: Record<Tab, string> = {
+  timeline: '执行链',
+  diagnostics: '诊断',
+  compaction: '上下文折叠',
+}
 
 interface RunData {
   summary: SessionSummary
@@ -26,11 +58,13 @@ export function RunDetail({
   session,
   readOnly,
   compareWith,
+  onCompareWith,
   onSessionCreated,
 }: {
   session: string
   readOnly: boolean
   compareWith: string | null
+  onCompareWith: (name: string | null) => void
   onSessionCreated: () => void
 }) {
   const [data, setData] = useState<RunData | null>(null)
@@ -73,6 +107,43 @@ export function RunDetail({
     [visibleEntries, selectedId],
   )
 
+  // j / k 在执行链上下移动，Esc 清除选中。审计工具该有的键盘操作。
+  useEffect(() => {
+    if (tab !== 'timeline') return
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+
+      if (event.key === 'Escape') {
+        setSelectedId(null)
+        return
+      }
+      if (event.key !== 'j' && event.key !== 'k') return
+      if (visibleEntries.length === 0) return
+      event.preventDefault()
+
+      setSelectedId((current) => {
+        // 未选中时 index = -1，于是 j 和 k 都落到第 0 条。
+        const index = current ? visibleEntries.findIndex((entry) => entry.id === current) : -1
+        const next =
+          event.key === 'j'
+            ? Math.min(index + 1, visibleEntries.length - 1)
+            : Math.max(index - 1, 0)
+        return visibleEntries[next]?.id ?? current
+      })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tab, visibleEntries])
+
+  // 键盘移动后把选中项滚进视野。
+  useEffect(() => {
+    if (!selectedId) return
+    const node = document.querySelector(`[data-entry-id="${CSS.escape(selectedId)}"]`)
+    node?.scrollIntoView({ block: 'nearest' })
+  }, [selectedId])
+
   const doFork = useCallback(async () => {
     if (!selected) return
     try {
@@ -90,7 +161,10 @@ export function RunDetail({
         title="打不开这个会话"
         detail={error}
         action={
-          <a href={hrefFor({ name: 'list' })} className="font-mono text-xs text-signal-info hover:underline">
+          <a
+            href={hrefFor({ name: 'list' })}
+            className="text-caption font-medium text-blue hover:underline"
+          >
             ← 回到会话库
           </a>
         }
@@ -100,143 +174,199 @@ export function RunDetail({
   if (!data) return <Spinner label={`读取 ${session}`} />
 
   const { summary, analysis } = data
+  const isCompareBase = compareWith === session
+  const parentInView =
+    selected?.parent_id && visibleEntries.some((entry) => entry.id === selected.parent_id)
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4">
-      <header className="panel shrink-0 px-4 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <a
-                href={hrefFor({ name: 'list' })}
-                className="font-mono text-xs text-scope-faint hover:text-signal-info"
-              >
-                ←
-              </a>
-              <h1 className="truncate text-sm text-scope-text">{summary.task || session}</h1>
-            </div>
-            <p className="mt-0.5 font-mono text-[11px] text-scope-faint">{session}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+    <>
+      <PageHeader
+        title={summary.task || session}
+        description={<span className="font-mono text-micro">{session}</span>}
+        back={{ href: hrefFor({ name: 'list' }), label: '会话库' }}
+        actions={
+          <>
             <StatusChip status={summary.status} />
             <HealthBadge health={analysis.trace_health} />
-            {compareWith && compareWith !== session && (
+            {compareWith && compareWith !== session ? (
               <a
                 href={hrefFor({ name: 'diff', a: compareWith, b: session })}
-                className="focus-ring rounded border border-signal-info/50 bg-signal-info/10 px-2 py-1 font-mono text-[11px] text-signal-info"
+                className="focus-ring rounded-control border border-transparent bg-blue px-3.5 py-1.5 text-caption font-medium text-white transition-colors hover:bg-blue-ink"
               >
                 与基准 diff
               </a>
+            ) : (
+              <Button
+                onClick={() => onCompareWith(isCompareBase ? null : session)}
+                title="选为 diff 的基准，再打开另一个会话即可对比"
+              >
+                {isCompareBase ? '取消基准' : '设为基准'}
+              </Button>
             )}
-          </div>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 font-mono text-[11px] text-scope-dim">
-          <span>步数 {summary.step_count}</span>
-          <span>工具 {summary.tool_call_count}</span>
-          <span>重规划 {summary.replan_count}</span>
-          <span>耗时 {formatDuration(summary.duration_seconds)}</span>
-          <span>{summary.provider ?? '—'} / {summary.model ?? '—'}</span>
-          <span>schema {summary.schema_version ?? '—'}</span>
-        </div>
-      </header>
+          </>
+        }
+      >
+        <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2">
+          <Metric label="步数" value={String(summary.step_count)} />
+          <Metric label="工具调用" value={String(summary.tool_call_count)} />
+          <Metric
+            label="重规划"
+            value={String(summary.replan_count)}
+            tone={summary.replan_count > 0 ? 'indigo' : undefined}
+          />
+          <Metric label="耗时" value={formatDuration(summary.duration_seconds)} />
+          <Metric label="模型" value={`${summary.provider ?? '—'} / ${summary.model ?? '—'}`} />
+          <Metric label="schema" value={summary.schema_version ?? '—'} />
+        </dl>
+      </PageHeader>
 
-      {runs.length > 1 && (
-        <div className="panel flex shrink-0 flex-wrap items-center gap-2 px-3 py-2">
-          <span className="meta-label">这份日志含 {runs.length} 段 run</span>
-          {runs.map((segment) => (
-            <Button
-              key={segment.index}
-              variant={segment.index === runIndex ? 'primary' : 'ghost'}
-              onClick={() => setRunIndex(segment.index)}
+      <div className="min-h-0 flex-1 overflow-hidden px-8 py-5">
+        <div className="flex h-full min-h-0 flex-col gap-4">
+          {/* 首屏审计横幅。这两条结论不该等人点进二级分区才看见。 */}
+          {analysis.verification.gap && (
+            <Banner
+              tone="warn"
+              title="宣布完成前没跑过任何验证"
+              action={<LinkButton onClick={() => setTab('diagnostics')}>查看诊断</LinkButton>}
             >
-              #{segment.index + 1} {segment.runId.slice(0, 8)}
-            </Button>
-          ))}
-        </div>
-      )}
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,22rem)]">
-        <PlanPanel summary={summary} className="hidden lg:flex" />
-
-        <Panel
-          title="过程"
-          actions={
-            <>
-              <Button variant={tab === 'timeline' ? 'primary' : 'ghost'} onClick={() => setTab('timeline')}>
-                时间线
-              </Button>
-              <Button
-                variant={tab === 'diagnostics' ? 'primary' : 'ghost'}
-                onClick={() => setTab('diagnostics')}
-              >
-                诊断
-              </Button>
-              <Button
-                variant={tab === 'compaction' ? 'primary' : 'ghost'}
-                onClick={() => setTab('compaction')}
-              >
-                折叠
-              </Button>
-            </>
-          }
-          bodyClassName="overflow-auto"
-        >
-          {tab === 'timeline' && (
-            <Timeline
-              entries={visibleEntries}
-              foldedIds={folded}
-              selectedId={selectedId}
-              onSelect={(entry) => setSelectedId(entry.id)}
-            />
+              这次运行报告成功，但全程没有执行 run_tests / run_linter 一类的验证动作——
+              结果可能是对的，但这次运行本身没有给出任何证据。
+            </Banner>
           )}
-          {tab === 'diagnostics' && <Diagnostics analysis={analysis} />}
-          {tab === 'compaction' && <CompactionView entries={visibleEntries} />}
-        </Panel>
-
-        <Panel
-          title={selected ? `条目 ${selected.id}` : '条目详情'}
-          subtitle={selected ? selected.event : '在左侧时间线里选一条'}
-          actions={
-            selected && !readOnly ? (
-              <Button onClick={doFork} title="从这条条目分叉出一份新会话">
-                从这里分叉
-              </Button>
-            ) : null
-          }
-          bodyClassName="overflow-auto"
-        >
-          {forkNotice && (
-            <p className="border-b border-scope-line-soft px-3 py-2 font-mono text-[11px] text-signal-info">
-              {forkNotice}
-            </p>
+          {!analysis.verification.gap && analysis.trace_health.grade === 'risky' && (
+            <Banner
+              tone="risk"
+              title={`过程健康度为「有风险」（${analysis.trace_health.score.toFixed(2)}）`}
+              action={<LinkButton onClick={() => setTab('diagnostics')}>查看扣分项</LinkButton>}
+            >
+              共 {analysis.trace_health.issues.length} 项扣分。
+            </Banner>
           )}
-          {selected ? (
-            <div className="p-3">
-              <MetaRow label="parent" value={selected.parent_id || '（根）'} />
-              <MetaRow label="run id" value={selected.run_id} />
-              <MetaRow label="时间" value={selected.timestamp} />
-              <div className="mt-3 border-t border-scope-line-soft pt-3 font-mono text-xs">
-                <JsonView value={selected.payload} />
-              </div>
+
+          {runs.length > 1 && (
+            <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-subtle px-4 py-2.5">
+              <span className="text-caption text-ink-2">这份日志含 {runs.length} 段 run</span>
+              <Segmented
+                value={String(runIndex)}
+                options={runs.map((segment) => ({
+                  value: String(segment.index),
+                  label: `#${segment.index + 1} ${segment.runId.slice(0, 8)}`,
+                }))}
+                onChange={(value) => setRunIndex(Number(value))}
+              />
             </div>
-          ) : (
-            <div className="p-3">
-              <p className="text-xs text-scope-faint">
-                选中一条后这里显示它的完整 payload。会话日志是 append-only 的，
-                你在这里看到的就是磁盘上的原文。
-              </p>
-              {summary.final_answer && (
-                <div className="mt-4">
-                  <div className="meta-label">最终回答</div>
-                  <p className="mt-1 font-mono text-xs break-words whitespace-pre-wrap text-scope-text">
-                    {summary.final_answer}
+          )}
+
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)_22rem]">
+            <PlanPanel summary={summary} className="hidden lg:flex" />
+
+            <Panel
+              title={TAB_TITLE[tab]}
+              actions={<Segmented value={tab} options={TAB_OPTIONS} onChange={setTab} />}
+              bodyClassName="overflow-auto"
+            >
+              {tab === 'timeline' && (
+                <Timeline
+                  entries={visibleEntries}
+                  foldedIds={folded}
+                  selectedId={selectedId}
+                  onSelect={(entry) => setSelectedId(entry.id)}
+                />
+              )}
+              {tab === 'diagnostics' && <Diagnostics analysis={analysis} />}
+              {tab === 'compaction' && <CompactionView entries={visibleEntries} />}
+            </Panel>
+
+            <Panel
+              title={selected ? `条目 ${selected.id}` : '条目详情'}
+              subtitle={selected ? selected.event : '在执行链里选一条（或用 j / k 键）'}
+              actions={
+                selected && !readOnly ? (
+                  <Button size="sm" onClick={doFork} title="从这条条目分叉出一份新会话">
+                    从这里分叉
+                  </Button>
+                ) : null
+              }
+              className="hidden lg:flex"
+              bodyClassName="overflow-auto"
+            >
+              {forkNotice && (
+                <p className="border-b border-line bg-blue/[0.06] px-5 py-2.5 text-micro text-blue-ink">
+                  {forkNotice}
+                </p>
+              )}
+              {selected ? (
+                <div className="px-5 py-4">
+                  <MetaRow
+                    label="parent"
+                    value={
+                      selected.parent_id ? (
+                        parentInView ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedId(selected.parent_id)}
+                            className="focus-ring rounded font-mono text-blue hover:underline"
+                            title="跳到父条目——这根指针就是把会话串成树的那一根"
+                          >
+                            {selected.parent_id}
+                          </button>
+                        ) : (
+                          <span title="父条目不在当前所选 run 段内">{selected.parent_id}</span>
+                        )
+                      ) : (
+                        '（根）'
+                      )
+                    }
+                  />
+                  <MetaRow label="run id" value={selected.run_id} />
+                  <MetaRow label="时间" value={selected.timestamp} />
+                  <div className="mt-4 border-t border-line pt-4 font-mono text-micro">
+                    <JsonView value={selected.payload} />
+                  </div>
+                </div>
+              ) : (
+                <div className="px-5 py-4">
+                  <p className="text-caption text-ink-2">
+                    选中一条后这里显示它的完整 payload。会话日志是 append-only 的，
+                    你在这里看到的就是磁盘上的原文。
                   </p>
+                  {summary.final_answer && (
+                    <div className="mt-5 border-t border-line pt-4">
+                      <div className="text-micro font-medium text-ink-3">最终回答</div>
+                      <p className="mt-1.5 text-caption break-words whitespace-pre-wrap text-ink">
+                        {summary.final_answer}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-        </Panel>
+            </Panel>
+          </div>
+        </div>
       </div>
+    </>
+  )
+}
+
+function Metric({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'indigo'
+}) {
+  return (
+    <div>
+      <dt className="text-micro text-ink-3">{label}</dt>
+      <dd
+        className={`text-caption font-medium tabular-nums ${
+          tone === 'indigo' ? 'text-indigo-ink' : 'text-ink'
+        }`}
+      >
+        {value}
+      </dd>
     </div>
   )
 }
@@ -244,29 +374,33 @@ export function RunDetail({
 function PlanPanel({ summary, className = '' }: { summary: SessionSummary; className?: string }) {
   const executed = new Set(summary.steps.map((step) => step.action).filter(Boolean))
   return (
-    <Panel title={`计划（${summary.plan_steps.length} 步）`} className={className} bodyClassName="overflow-auto">
+    <Panel
+      title={`计划（${summary.plan_steps.length} 步）`}
+      className={className}
+      bodyClassName="overflow-auto"
+    >
       {summary.plan_steps.length === 0 ? (
-        <p className="p-3 text-xs text-scope-faint">这次运行没有生成计划。</p>
+        <p className="px-5 py-4 text-caption text-ink-3">这次运行没有生成计划。</p>
       ) : (
-        <ol className="divide-y divide-scope-line-soft/60">
+        <ol className="divide-y divide-line">
           {summary.plan_steps.map((step, index) => {
             const ran = step.action ? executed.has(step.action) : false
             return (
-              <li key={index} className="px-3 py-2">
-                <div className="flex items-center gap-2">
+              <li key={index} className="px-5 py-3">
+                <div className="flex items-center gap-2.5">
                   <span
-                    className={`inline-block size-1.5 rounded-full ${ran ? 'bg-signal-good' : 'bg-scope-line'}`}
+                    className={`inline-block size-1.5 shrink-0 rounded-full ${
+                      ran ? 'bg-green' : 'border border-line-strong bg-surface'
+                    }`}
                     title={ran ? '执行链里出现过这个动作' : '计划里有，但执行链里没出现'}
                   />
-                  <span className="font-mono text-[11px] text-scope-faint">
+                  <span className="tabular-nums text-micro text-ink-4">
                     {step.step_number ?? index + 1}
                   </span>
-                  <span className="truncate font-mono text-xs text-scope-text">
-                    {step.action ?? '—'}
-                  </span>
+                  <span className="truncate font-mono text-micro text-ink">{step.action ?? '—'}</span>
                 </div>
                 {step.reason && (
-                  <p className="mt-0.5 pl-6 text-[11px] text-scope-faint">{step.reason}</p>
+                  <p className="mt-1 pl-7 text-micro text-ink-3">{step.reason}</p>
                 )}
               </li>
             )

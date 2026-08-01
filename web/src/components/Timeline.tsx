@@ -1,8 +1,10 @@
 /**
- * 时间线：一次运行的全部条目，按步骤分组。
+ * 执行链时间轴：一次运行的全部条目，按步骤分组。
  *
- * 被折叠过的 message 条目会画成半透明并标「已折叠」——但**仍然在列**。
- * 这是本项目和别家最不一样的地方：折叠不删原文，所以事后还能逐条核对。
+ * 被折叠过的 message 条目画成**虚线节点 + 虚线边框 + 明写「已折叠」**——但仍在列。
+ * 这是本项目和别家最不一样的地方：折叠只追加一条派生记录，原文一条不删，
+ * 所以事后还能逐条核对。上一版只是把它调成 45% 透明度，等于把最独特的不变式
+ * 表达成了「这条不重要」，正好说反了。
  */
 import type { SessionEntry } from '../lib/types'
 import {
@@ -15,19 +17,20 @@ import {
   type EventKind,
 } from '../lib/entries'
 
-const KIND_STYLE: Record<EventKind, { dot: string; label: string; text: string }> = {
-  lifecycle: { dot: 'bg-scope-faint', label: '生命周期', text: 'text-scope-dim' },
-  plan: { dot: 'bg-signal-plan', label: '计划', text: 'text-signal-plan' },
-  llm: { dot: 'bg-signal-info/50', label: 'LLM', text: 'text-scope-dim' },
-  tool: { dot: 'bg-signal-info', label: '工具', text: 'text-scope-text' },
-  step: { dot: 'bg-scope-text', label: '步骤', text: 'text-scope-text' },
-  message: { dot: 'bg-scope-line', label: '消息', text: 'text-scope-dim' },
-  compaction: { dot: 'bg-signal-plan/70', label: '折叠', text: 'text-signal-plan' },
-  replan: { dot: 'bg-signal-plan', label: '重规划', text: 'text-signal-plan' },
-  critic: { dot: 'bg-signal-warn', label: 'Critic', text: 'text-signal-warn' },
-  guard: { dot: 'bg-signal-warn', label: '守卫', text: 'text-signal-warn' },
-  failure: { dot: 'bg-signal-risk', label: '失败', text: 'text-signal-risk' },
-  other: { dot: 'bg-scope-line', label: '其他', text: 'text-scope-dim' },
+/** 事件归类 → 节点色 / 事件名文字色。语义色只在这里定义一次。 */
+const KIND_STYLE: Record<EventKind, { dot: string; text: string }> = {
+  lifecycle: { dot: 'bg-ink-4', text: 'text-ink-2' },
+  plan: { dot: 'bg-indigo', text: 'text-indigo-ink' },
+  llm: { dot: 'bg-line-strong', text: 'text-ink-3' },
+  tool: { dot: 'bg-blue', text: 'text-ink' },
+  step: { dot: 'bg-ink', text: 'text-ink' },
+  message: { dot: 'bg-line-strong', text: 'text-ink-3' },
+  compaction: { dot: 'bg-indigo', text: 'text-indigo-ink' },
+  replan: { dot: 'bg-indigo', text: 'text-indigo-ink' },
+  critic: { dot: 'bg-orange', text: 'text-orange-ink' },
+  guard: { dot: 'bg-orange', text: 'text-orange-ink' },
+  failure: { dot: 'bg-red', text: 'text-red-ink' },
+  other: { dot: 'bg-ink-4', text: 'text-ink-2' },
 }
 
 export function Timeline({
@@ -44,21 +47,23 @@ export function Timeline({
   const groups = groupByStep(entries)
 
   return (
-    <ol className="divide-y divide-scope-line-soft/60">
+    <ol>
       {groups.map((group, index) => (
         <li key={`${group.stepNumber ?? 'x'}-${index}`}>
-          <div className="flex items-center gap-2 bg-scope-raised/40 px-3 py-1">
-            <span className="meta-label">
+          <div className="sticky top-0 z-10 flex items-center gap-2.5 border-y border-line bg-muted/85 px-5 py-2 backdrop-blur">
+            <span className="text-micro font-semibold text-ink-2">
               {group.stepNumber === null ? '运行级' : `步骤 ${group.stepNumber}`}
             </span>
             {group.action && (
               <span
-                className={`font-mono text-xs ${group.failed ? 'text-signal-risk' : 'text-scope-text'}`}
+                className={`font-mono text-micro ${group.failed ? 'text-red-ink' : 'text-ink-2'}`}
               >
                 {group.action}
               </span>
             )}
-            {group.failed && <span className="chip border-signal-risk/40 text-signal-risk">失败</span>}
+            {group.failed && (
+              <span className="chip border-red/25 bg-red/10 text-red-ink">失败</span>
+            )}
           </div>
           <ul>
             {group.entries.map((entry) => (
@@ -96,36 +101,51 @@ function EntryRow({
     <li>
       <button
         type="button"
+        data-entry-id={entry.id}
         onClick={() => onSelect(entry)}
-        className={`focus-ring flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors ${
-          selected ? 'bg-signal-info/10' : 'hover:bg-scope-raised/40'
-        } ${folded ? 'opacity-45' : ''}`}
+        className={`focus-ring flex w-full gap-3 px-5 text-left transition-colors ${
+          selected ? 'bg-blue/[0.07]' : 'hover:bg-muted/60'
+        }`}
       >
-        <span className={`mt-1.5 inline-block size-1.5 shrink-0 rounded-full ${style.dot}`} />
-        <span className="w-16 shrink-0 font-mono text-[10px] text-scope-faint">
-          {formatClock(entry.timestamp)}
+        {/* 时间轴轨道：每行画一段竖线，行行相接即成连续的轴。 */}
+        <span className="relative flex w-3 shrink-0 justify-center">
+          <span className="absolute inset-y-0 w-px bg-line" aria-hidden="true" />
+          <span
+            className={`relative mt-3 size-2 shrink-0 rounded-full ring-2 ring-surface ${
+              folded ? 'border border-dashed border-indigo bg-surface' : style.dot
+            }`}
+            aria-hidden="true"
+          />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className={`font-mono text-xs ${failed ? 'text-signal-risk' : style.text}`}>
+
+        <span
+          className={`min-w-0 flex-1 py-2.5 ${
+            folded ? 'border-l-2 border-dashed border-indigo/35 pl-2.5' : ''
+          }`}
+        >
+          <span className="flex flex-wrap items-center gap-2">
+            <span className={`font-mono text-caption ${failed ? 'text-red-ink' : style.text}`}>
               {entry.event}
             </span>
             {actionOf(entry) && (
-              <span className="font-mono text-[11px] text-scope-dim">{actionOf(entry)}</span>
+              <span className="font-mono text-micro text-ink-2">{actionOf(entry)}</span>
             )}
             {folded && (
-              <span
-                className="chip border-signal-plan/40 text-signal-plan"
-                title="构造上下文时跳过了这条，但原文仍在会话日志里"
-              >
-                已折叠
+              <span className="chip border-indigo/25 bg-indigo/10 text-indigo-ink">
+                已折叠 · 原文仍在
               </span>
             )}
           </span>
           <Preview entry={entry} />
         </span>
-        <span className="shrink-0 font-mono text-[10px] text-scope-faint">
-          {entry.id.split('-').pop()}
+
+        <span className="shrink-0 py-2.5 text-right">
+          <span className="block font-mono text-micro tabular-nums text-ink-3">
+            {formatClock(entry.timestamp)}
+          </span>
+          <span className="block font-mono text-micro tabular-nums text-ink-4">
+            {entry.id.split('-').pop()}
+          </span>
         </span>
       </button>
     </li>
@@ -136,9 +156,7 @@ function EntryRow({
 function Preview({ entry }: { entry: SessionEntry }) {
   const text = previewText(entry)
   if (!text) return null
-  return (
-    <span className="mt-0.5 block truncate font-mono text-[11px] text-scope-faint">{text}</span>
-  )
+  return <span className="mt-1 block truncate text-micro text-ink-3">{text}</span>
 }
 
 function previewText(entry: SessionEntry): string {

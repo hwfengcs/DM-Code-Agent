@@ -1,14 +1,14 @@
 /**
- * 折叠视图——本项目最难用文字讲清、但一看就懂的那个特性。
+ * 上下文折叠视图——本项目最难用文字讲清、但一看就懂的那个特性。
  *
  * 别的 agent 压缩上下文 = 扇掉历史，事后没法追。这里折叠只**追加**一条 compaction
  * 派生记录，被折叠的原文一条都没删，只是构造下一次请求时跳过。所以这个页面能把
- * 「折叠了什么」和「原文长什么样」并排放在一起——右边那些暗着的条目就是证据。
+ * 「折叠了什么」和「原文长什么样」并排放在一起——展开那些条目就是证据。
  */
 import { useState } from 'react'
 import type { SessionEntry } from '../lib/types'
 import { compactionSpans, formatClock, stringField } from '../lib/entries'
-import { EmptyState, Panel } from './ui'
+import { EmptyState, Stat } from './ui'
 
 export function CompactionView({ entries }: { entries: SessionEntry[] }) {
   const spans = compactionSpans(entries)
@@ -30,10 +30,10 @@ export function CompactionView({ entries }: { entries: SessionEntry[] }) {
   const totalFolded = spans.reduce((sum, span) => sum + span.foldedIds.length, 0)
 
   return (
-    <div className="space-y-3 p-3">
-      <div className="grid grid-cols-3 gap-3">
+    <div className="space-y-4 p-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="折叠次数" value={String(spans.length)} />
-        <Stat label="估算节省" value={`${totalSaved} tokens`} tone="good" />
+        <Stat label="估算节省" value={`${totalSaved}`} hint="tokens" tone="good" />
         <Stat
           label="被删除的原文"
           value="0 条"
@@ -42,96 +42,96 @@ export function CompactionView({ entries }: { entries: SessionEntry[] }) {
         />
       </div>
 
-      <p className="px-1 text-[11px] text-scope-faint">
+      <p className="rounded-card border border-line bg-subtle px-4 py-3 text-micro text-ink-2">
         折叠是本地确定性的（不额外调 LLM），且带净收益护栏：只有
-        <code className="mx-1 rounded bg-scope-raised px-1 font-mono">
+        <code className="mx-1 rounded bg-muted px-1.5 py-0.5 font-mono text-ink">
           estimated_tokens_after &lt; estimated_tokens_before
         </code>
         才提交，压亏了整体回滚。下面每一条都能展开看被折叠的原文——它们仍在会话日志里。
       </p>
 
       {spans.map((span) => (
-        <Panel
-          key={span.entry.id}
-          title={`compaction ${span.entry.id}`}
-          subtitle={`${formatClock(span.entry.timestamp)} · ${span.phase || 'compaction'}${
-            span.trigger ? ` · trigger=${span.trigger}` : ''
-          }`}
-        >
-          <div className="space-y-2 p-3">
-            <div className="flex items-center gap-3 font-mono text-xs">
-              <span className="text-scope-dim">{span.tokensBefore ?? '?'}</span>
-              <span className="text-signal-plan">→</span>
-              <span className="text-signal-good">{span.tokensAfter ?? '?'}</span>
-              <span className="text-scope-faint">tokens</span>
+        <section key={span.entry.id} className="card">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+            <div className="min-w-0">
+              <div className="font-mono text-caption text-ink">{span.entry.id}</div>
+              <div className="mt-0.5 text-micro text-ink-3">
+                {formatClock(span.entry.timestamp)} · {span.phase || 'compaction'}
+                {span.trigger ? ` · trigger=${span.trigger}` : ''}
+              </div>
+            </div>
+            {span.phase === 'sticky_reuse' && (
+              <span
+                className="chip border-indigo/25 bg-indigo/10 text-indigo-ink"
+                title="复用了上一次已证明正收益的折叠结果，不计为一次新压缩"
+              >
+                粘性复用
+              </span>
+            )}
+          </header>
+
+          <div className="space-y-3 px-5 py-4">
+            <div className="flex flex-wrap items-center gap-2.5 font-mono text-caption tabular-nums">
+              <span className="text-ink-2">{span.tokensBefore ?? '?'}</span>
+              <span className="text-indigo">→</span>
+              <span className="font-medium text-ink">{span.tokensAfter ?? '?'}</span>
+              <span className="text-micro text-ink-3">tokens</span>
               {span.tokensBefore !== null && span.tokensAfter !== null && (
                 <span
-                  className={
-                    span.tokensAfter < span.tokensBefore ? 'text-signal-good' : 'text-signal-warn'
-                  }
+                  className={`chip ${
+                    span.tokensAfter < span.tokensBefore
+                      ? 'border-green/25 bg-green/10 text-green-ink'
+                      : 'border-orange/25 bg-orange/10 text-orange-ink'
+                  }`}
                 >
                   {span.tokensAfter < span.tokensBefore
                     ? `节省 ${span.tokensBefore - span.tokensAfter}`
                     : '无收益（应已回滚）'}
                 </span>
               )}
-              {span.phase === 'sticky_reuse' && (
-                <span
-                  className="chip border-signal-plan/40 text-signal-plan"
-                  title="复用了上一次已证明正收益的折叠结果，不计为一次新压缩"
-                >
-                  粘性复用
-                </span>
-              )}
             </div>
 
-            <div className="font-mono text-[11px] text-scope-faint">
-              保留起点 first_kept_entry_id ={' '}
-              <span className="text-scope-dim">{span.firstKeptId || '—'}</span>
+            <div className="text-micro text-ink-3">
+              保留起点 <span className="font-mono">first_kept_entry_id</span> ={' '}
+              <span className="font-mono text-ink-2">{span.firstKeptId || '—'}</span>
             </div>
 
             <FoldedList ids={span.foldedIds} byId={byId} />
           </div>
-        </Panel>
+        </section>
       ))}
     </div>
   )
 }
 
-function FoldedList({
-  ids,
-  byId,
-}: {
-  ids: string[]
-  byId: Map<string, SessionEntry>
-}) {
+function FoldedList({ ids, byId }: { ids: string[]; byId: Map<string, SessionEntry> }) {
   const [open, setOpen] = useState(false)
   if (ids.length === 0) {
-    return <p className="font-mono text-[11px] text-scope-faint">这条折叠没有记录具体条目 id。</p>
+    return <p className="text-micro text-ink-3">这条折叠没有记录具体条目 id。</p>
   }
   return (
-    <div className="rounded border border-scope-line-soft">
+    <div className="overflow-hidden rounded-control border border-line">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="focus-ring flex w-full items-center justify-between px-2 py-1.5 text-left"
+        className="focus-ring flex w-full items-center justify-between gap-3 bg-subtle px-4 py-2.5 text-left transition-colors hover:bg-muted"
       >
-        <span className="font-mono text-[11px] text-scope-dim">
-          被跳过的 {ids.length} 条原文（仍在日志里）
+        <span className="text-caption text-ink-2">
+          被跳过的 <span className="font-medium text-ink">{ids.length}</span> 条原文（仍在日志里）
         </span>
-        <span className="font-mono text-[11px] text-signal-info">{open ? '收起' : '展开'}</span>
+        <span className="text-micro font-medium text-blue">{open ? '收起' : '展开核对'}</span>
       </button>
       {open && (
-        <ul className="divide-y divide-scope-line-soft/60 border-t border-scope-line-soft">
+        <ul className="divide-y divide-line border-t border-line">
           {ids.map((id) => {
             const entry = byId.get(id)
             return (
-              <li key={id} className="px-2 py-1.5 opacity-60">
-                <div className="flex items-center gap-2 font-mono text-[10px] text-scope-faint">
+              <li key={id} className="border-l-2 border-dashed border-indigo/35 px-4 py-2.5">
+                <div className="flex items-center gap-2.5 font-mono text-micro text-ink-3">
                   <span>{id}</span>
-                  {entry && <span>{stringField(entry, 'role') || entry.event}</span>}
+                  {entry && <span className="text-ink-4">{stringField(entry, 'role') || entry.event}</span>}
                 </div>
-                <p className="mt-0.5 line-clamp-3 font-mono text-[11px] break-words whitespace-pre-wrap text-scope-dim">
+                <p className="mt-1 line-clamp-3 font-mono text-micro break-words whitespace-pre-wrap text-ink-2">
                   {entry
                     ? stringField(entry, 'content') ||
                       `（保真档只留了长度与指纹：${String(entry.payload.content_chars ?? '?')} 字）`
@@ -142,28 +142,6 @@ function FoldedList({
           })}
         </ul>
       )}
-    </div>
-  )
-}
-
-function Stat({
-  label,
-  value,
-  tone = 'neutral',
-  hint,
-}: {
-  label: string
-  value: string
-  tone?: 'neutral' | 'good'
-  hint?: string
-}) {
-  return (
-    <div className="panel px-3 py-2">
-      <div className="meta-label">{label}</div>
-      <div className={`font-mono text-lg ${tone === 'good' ? 'text-signal-good' : 'text-scope-text'}`}>
-        {value}
-      </div>
-      {hint && <div className="text-[11px] text-scope-faint">{hint}</div>}
     </div>
   )
 }
