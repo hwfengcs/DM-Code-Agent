@@ -53,6 +53,7 @@ from .runner import (
     format_agent_context_status,
     load_reflexion_memory_file,
     review_completed_run,
+    run_conversation_stdin,
     run_single_task,
     save_reflexion_memory_file,
 )
@@ -112,6 +113,7 @@ __all__ = [
     "print_welcome",
     "resolve_advanced_features",
     "review_completed_run",
+    "run_conversation_stdin",
     "run_single_task",
     "save_config_to_file",
     "save_reflexion_memory_file",
@@ -233,6 +235,15 @@ def main(argv: Any = None) -> int:
             print("省略任务参数即可沿用 checkpoint 中的原始任务。", file=sys.stderr)
             return 2
         args.task = resume_state.task
+
+    # 长驻会话模式：任务从 stdin 逐轮进来，共享同一个 agent 的对话历史。
+    if args.conversation_stdin:
+        return run_conversation_stdin(
+            config,
+            trace_path=args.trace,
+            trace_llm_io=args.trace_llm_io,
+            extension_registry=extension_registry,
+        )
 
     # 如果提供了任务参数，直接执行任务
     if args.task:
