@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import subprocess
@@ -25,7 +26,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["RunProcess", "RunSpec", "SpecError", "build_argv"]
+__all__ = [
+    "RunProcess",
+    "RunSpec",
+    "SpecError",
+    "build_argv",
+    "build_conversation_argv",
+]
 
 # 任务文本上限。防止有人把一整个仓库粘进来撑爆 argv（Windows 命令行约 32K 上限）。
 MAX_TASK_CHARS = 8000
@@ -67,9 +74,24 @@ class RunSpec:
     model: str = ""
     options: dict[str, Any] = field(default_factory=dict)
 
-    def validate(self, allowed_providers: set[str]) -> None:
-        if not self.task.strip():
+    def validate(self, allowed_providers: set[str], *, for_conversation: bool = False) -> None:
+        """校验请求。
+
+        ``for_conversation=True`` 时有两处不同，都是对话模式的固有约束：
+
+        * 建对话时**还没有任务**（第一轮随后从 stdin 送进去），所以跳过任务非空检查。
+        * **拒绝 Reflexion**。它每次 trial 会把对话历史回滚到本轮开始前的快照，与
+          「跨轮累积对话」正好相反，CLI 侧的 ``validate_feature_args`` 也会直接拒。
+          在这里挡下来是为了给用户一个 400 和一句人话，而不是让子进程静静地 exit 2。
+
+        其余校验（provider、model、开关取值范围）两种模式完全一致。
+        """
+        if not for_conversation and not self.task.strip():
             raise SpecError("任务不能为空。")
+        if for_conversation and self.options.get("enable_reflexion") is True:
+            raise SpecError(
+                "多轮对话不支持 Reflexion：它的多次尝试会回滚对话历史，与跨轮累积上下文冲突。"
+            )
         if len(self.task) > MAX_TASK_CHARS:
             raise SpecError(f"任务过长（{len(self.task)} 字，上限 {MAX_TASK_CHARS}）。")
         if self.provider not in allowed_providers:
@@ -93,8 +115,8 @@ class RunSpec:
             # 其余键静默忽略——前端可能比后端新，多传字段不该让整个请求失败。
 
 
-def build_argv(spec: RunSpec, *, trace_path: Path) -> list[str]:
-    """把请求拼成完整的子进程命令行。
+def _base_argv(spec: RunSpec, *, trace_path: Path) -> list[str]:
+    """单次运行与对话模式共用的那一段命令行。
 
     用 ``python -m dm_agent.cli`` 而不是 ``dm-agent``：console script 不一定在 PATH 上
     （editable 安装、未激活 venv 都可能没有），而 ``sys.executable`` 一定是当前解释器。
@@ -117,11 +139,25 @@ def build_argv(spec: RunSpec, *, trace_path: Path) -> list[str]:
         value = spec.options.get(key)
         if value is not None and not isinstance(value, bool):
             argv += [flag, str(value)]
+    return argv
 
+
+def build_argv(spec: RunSpec, *, trace_path: Path) -> list[str]:
+    """把一次性运行的请求拼成完整的子进程命令行。"""
+    argv = _base_argv(spec, trace_path=trace_path)
     # `--` 之后的一切都被 argparse 当成位置参数。以 `--` 开头的任务文本
     # （"--help 这个选项坏了"）才不会被解析成选项。
     argv += ["--", spec.task]
     return argv
+
+
+def build_conversation_argv(spec: RunSpec, *, trace_path: Path) -> list[str]:
+    """把一次多轮对话的请求拼成命令行。
+
+    与 ``build_argv`` 的唯一区别是**没有位置参数任务**，改成 ``--conversation-stdin``：
+    任务逐轮从 stdin 送进去，子进程用同一个 agent 跑完全部轮次。
+    """
+    return [*_base_argv(spec, trace_path=trace_path), "--conversation-stdin"]
 
 
 class RunProcess:
@@ -133,7 +169,12 @@ class RunProcess:
         self.trace_path = trace_path
         self._process: subprocess.Popen[bytes] | None = None
 
-    def start(self) -> None:
+    def start(self, *, stdin_pipe: bool = False) -> None:
+        """拉起子进程。
+
+        ``stdin_pipe=True`` 给对话模式用：子进程会一直活着等下一轮任务从 stdin 进来，
+        因此 stdin 必须是管道而不是 DEVNULL（DEVNULL 会让它立刻读到 EOF 然后退出）。
+        """
         # 进程组 / 新会话：为的是能连同 agent 拉起的 MCP stdio 子进程一起收掉。
         kwargs: dict[str, Any] = {}
         if sys.platform == "win32":
@@ -147,10 +188,45 @@ class RunProcess:
             cwd=str(self.cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if stdin_pipe else subprocess.DEVNULL,
             shell=False,
             **kwargs,
         )
+
+    def send_line(self, payload: dict[str, Any]) -> bool:
+        """往子进程 stdin 写一行 JSON。写不进去（进程已死 / 管道已关）返回 False。
+
+        必须显式 ``flush()``：管道是块缓冲的，不刷的话这一轮任务会一直卡在缓冲区里，
+        子进程根本收不到。
+        """
+        process = self._process
+        if process is None or process.stdin is None or process.poll() is not None:
+            return False
+        line = json.dumps(payload, ensure_ascii=False) + "\n"
+        try:
+            process.stdin.write(line.encode("utf-8"))
+            process.stdin.flush()
+        except (OSError, ValueError):
+            return False
+        return True
+
+    def close_stdin(self) -> None:
+        """关掉 stdin，让对话子进程读到 EOF 后自己优雅退出。"""
+        process = self._process
+        if process is None or process.stdin is None:
+            return
+        with contextlib.suppress(OSError, ValueError):
+            process.stdin.close()
+
+    def wait(self, timeout: float) -> int | None:
+        """等子进程退出；超时返回 None。"""
+        process = self._process
+        if process is None:
+            return None
+        try:
+            return process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return None
 
     @property
     def pid(self) -> int:
@@ -209,6 +285,20 @@ class RunProcess:
         # 硬杀后仍不退出极罕见，但也不值得再阻塞下去——调用方靠 poll() 拿真实状态。
         with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(timeout=5)
+
+    def shutdown(self, *, grace_seconds: float = 5.0) -> bool:
+        """优雅结束一个对话子进程：先关 stdin 让它自己收尾，超时才动粗。
+
+        比直接 ``stop()`` 好在于：agent 有机会写完最后一条 ``conversation_end``、
+        保存 reflexion 记忆、并把 MCP 服务器正常关掉。
+        """
+        process = self._process
+        if process is None or process.poll() is not None:
+            return False
+        self.close_stdin()
+        if self.wait(grace_seconds) is not None:
+            return True
+        return self.stop()
 
     def read_output(self, limit: int = 8000) -> str:
         """读子进程的 stdout/stderr 合流。只在运行结束后调用，用于展示失败原因。"""

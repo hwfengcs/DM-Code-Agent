@@ -19,6 +19,7 @@ from dm_agent.server.process import (
     RunSpec,
     SpecError,
     build_argv,
+    build_conversation_argv,
 )
 
 PROVIDERS = set(PROVIDER_DEFAULTS)
@@ -214,6 +215,75 @@ def test_default_argv_is_also_accepted(tmp_path: Path) -> None:
     assert parsed.task == "修一个 bug"
     # 没传 --disable-edit-guard，守卫保持默认开启。
     assert parsed.enable_edit_guard is True
+
+
+# --- 对话模式的 argv ------------------------------------------------------
+
+
+def test_conversation_argv_has_no_positional_task() -> None:
+    """对话模式的任务是逐轮从 stdin 送的，argv 里**不能**有位置参数任务。"""
+    argv = build_conversation_argv(spec(), trace_path=Path("sessions/c.jsonl"))
+    assert "--conversation-stdin" in argv
+    assert "--" not in argv
+    assert "修一个 bug" not in argv
+
+
+def test_conversation_argv_keeps_the_same_switch_whitelist() -> None:
+    """两条入口共用一份开关翻译——对话模式不该有自己的一套开关语义。"""
+    options = {key: value for key, value in ALL_OPTIONS.items() if key != "enable_reflexion"}
+    request = spec("", model="m", options=options)
+    run_argv = build_argv(request, trace_path=Path("sessions/t.jsonl"))
+    chat_argv = build_conversation_argv(request, trace_path=Path("sessions/t.jsonl"))
+    # 一次性运行的尾巴是 ["--", task]，对话的尾巴是 ["--conversation-stdin"]。
+    assert chat_argv[:-1] == run_argv[:-2]
+
+
+def test_conversation_argv_is_accepted_by_the_real_cli_parser() -> None:
+    """同样的防漂移断言：对话 argv 必须过真解析器 **且** 过真的互斥校验。
+
+    只测 parse_args 不够——``--conversation-stdin`` 的前置条件（必须配 --trace、
+    不能带位置任务、不能开 Reflexion）住在 ``validate_feature_args`` 里，那才是子进程
+    真正会执行的检查。这条断言最初就抓到了「server 会拼出一个子进程直接 exit 2 的 argv」。
+    """
+    from dm_agent.cli.args import parse_args, validate_feature_args
+
+    options = {key: value for key, value in ALL_OPTIONS.items() if key != "enable_reflexion"}
+    request = spec("", model="m", options=options)
+    request.validate(PROVIDERS, for_conversation=True)
+    argv = build_conversation_argv(request, trace_path=Path("sessions/c.jsonl"))
+
+    parsed = parse_args(argv[3:])
+    assert parsed.conversation_stdin is True
+    assert parsed.task is None
+    assert Path(parsed.trace) == Path("sessions/c.jsonl")
+    assert parsed.max_steps == 10
+    assert parsed.enable_edit_guard is False
+    assert validate_feature_args(parsed) == ""
+
+
+def test_conversation_rejects_reflexion_instead_of_silently_dropping_it() -> None:
+    """Reflexion 会回滚对话历史，与多轮累积冲突。
+
+    悄悄不加这个开关是最坏的选择——用户以为开着，实际没开。这里必须硬拒。
+    """
+    with pytest.raises(SpecError, match="Reflexion"):
+        RunSpec(task="", provider="deepseek", options={"enable_reflexion": True}).validate(
+            PROVIDERS, for_conversation=True
+        )
+
+
+def test_conversation_spec_may_skip_task_validation() -> None:
+    """建对话时还没有任务；其余校验（provider / 数值范围）一条不能少。"""
+    RunSpec(task="", provider="deepseek").validate(PROVIDERS, for_conversation=True)
+
+    with pytest.raises(SpecError):
+        RunSpec(task="", provider="deepseek").validate(PROVIDERS)
+    with pytest.raises(SpecError):
+        RunSpec(task="", provider="nope").validate(PROVIDERS, for_conversation=True)
+    with pytest.raises(SpecError):
+        RunSpec(task="", provider="deepseek", options={"max_steps": 9999}).validate(
+            PROVIDERS, for_conversation=True
+        )
 
 
 # --- 真实的启动与终止 ---------------------------------------------------

@@ -23,7 +23,7 @@ from starlette.types import Scope
 
 from dm_agent import __version__
 
-from .routes import meta, runs, sessions
+from .routes import conversations, meta, runs, sessions
 from .runs import RunRegistry
 from .settings import ServerSettings
 
@@ -109,6 +109,7 @@ def create_app(settings: ServerSettings) -> FastAPI:
     app.include_router(meta.router)
     app.include_router(sessions.router)
     app.include_router(runs.router)
+    app.include_router(conversations.router)
 
     static_dir = settings.static_dir or default_static_dir()
     if static_dir is not None and (static_dir / "index.html").is_file():
