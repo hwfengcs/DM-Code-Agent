@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, fetchAllEntries } from '../lib/api'
 import type { SessionAnalysis, SessionEntry, SessionSummary } from '../lib/types'
 import { foldedEntryIds, formatDuration, splitRuns } from '../lib/entries'
+import { looksLikeConversation, splitTurns } from '../lib/turns'
 import { hrefFor } from '../lib/router'
 import {
   Banner,
@@ -31,18 +32,14 @@ import {
   StatusChip,
 } from '../components/ui'
 import { Timeline } from '../components/Timeline'
+import { ChatTurn } from '../components/ChatTurn'
 import { Diagnostics } from '../components/Diagnostics'
 import { CompactionView } from '../components/CompactionView'
 
-type Tab = 'timeline' | 'diagnostics' | 'compaction'
-
-const TAB_OPTIONS: { value: Tab; label: string }[] = [
-  { value: 'timeline', label: '执行链' },
-  { value: 'diagnostics', label: '诊断' },
-  { value: 'compaction', label: '上下文折叠' },
-]
+type Tab = 'conversation' | 'timeline' | 'diagnostics' | 'compaction'
 
 const TAB_TITLE: Record<Tab, string> = {
+  conversation: '对话',
   timeline: '执行链',
   diagnostics: '诊断',
   compaction: '上下文折叠',
@@ -69,7 +66,7 @@ export function RunDetail({
 }) {
   const [data, setData] = useState<RunData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>('timeline')
+  const [tab, setTab] = useState<Tab>('conversation')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [runIndex, setRunIndex] = useState(0)
   const [forkNotice, setForkNotice] = useState<string | null>(null)
@@ -80,6 +77,7 @@ export function RunDetail({
     setError(null)
     setSelectedId(null)
     setRunIndex(0)
+    setTab('conversation')
     Promise.all([api.summary(session), api.analysis(session), fetchAllEntries(session)])
       .then(([summary, analysis, entries]) => {
         if (cancelled) return
@@ -101,10 +99,33 @@ export function RunDetail({
     return data.entries.slice(segment.startIndex, segment.endIndex + 1)
   }, [data, runs, runIndex])
 
+  // 对话分区看的是**整份日志**，不受 run 段筛选影响——多段 run 在对话里正是多轮，
+  // 只显示其中一段等于把对话拆散了。其余分区（执行链 / 折叠）仍按所选段看。
+  const turns = useMemo(() => (data ? splitTurns(data.entries) : []), [data])
+  const canReadAsConversation = useMemo(
+    () => (data ? looksLikeConversation(data.entries) : false),
+    [data],
+  )
+  const tabOptions = useMemo(() => {
+    const options: { value: Tab; label: string }[] = []
+    if (canReadAsConversation) options.push({ value: 'conversation', label: '对话' })
+    options.push(
+      { value: 'timeline', label: '执行链' },
+      { value: 'diagnostics', label: '诊断' },
+      { value: 'compaction', label: '上下文折叠' },
+    )
+    return options
+  }, [canReadAsConversation])
+
+  // 老 1.x trace / 只含 checkpoint 条目的文件读不成对话，退回执行链而不是显示空白。
+  useEffect(() => {
+    if (!canReadAsConversation && tab === 'conversation') setTab('timeline')
+  }, [canReadAsConversation, tab])
+
   const folded = useMemo(() => foldedEntryIds(visibleEntries), [visibleEntries])
   const selected = useMemo(
-    () => visibleEntries.find((entry) => entry.id === selectedId) ?? null,
-    [visibleEntries, selectedId],
+    () => data?.entries.find((entry) => entry.id === selectedId) ?? null,
+    [data, selectedId],
   )
 
   // j / k 在执行链上下移动，Esc 清除选中。审计工具该有的键盘操作。
@@ -176,7 +197,7 @@ export function RunDetail({
   const { summary, analysis } = data
   const isCompareBase = compareWith === session
   const parentInView =
-    selected?.parent_id && visibleEntries.some((entry) => entry.id === selected.parent_id)
+    selected?.parent_id && data.entries.some((entry) => entry.id === selected.parent_id)
 
   return (
     <>
@@ -243,14 +264,18 @@ export function RunDetail({
             </Banner>
           )}
 
-          {runs.length > 1 && (
-            <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-subtle px-4 py-2.5">
-              <span className="text-caption text-ink-2">这份日志含 {runs.length} 段 run</span>
+          {runs.length > 1 && tab !== 'conversation' && (
+            <div className="surface-raised flex flex-wrap items-center gap-3 rounded-card px-4 py-2.5">
+              <span className="text-caption text-ink-2">
+                这份日志含 {runs.length} 段 run
+                {canReadAsConversation && '（在「对话」分区里它们就是多轮）'}
+              </span>
               <Segmented
                 value={String(runIndex)}
                 options={runs.map((segment) => ({
                   value: String(segment.index),
-                  label: `#${segment.index + 1} ${segment.runId.slice(0, 8)}`,
+                  // 多轮对话共用一个 run_id，用它当标签会全部重复；任务文本才分得清。
+                  label: `#${segment.index + 1} ${segment.task.slice(0, 14) || segment.runId.slice(0, 8)}`,
                 }))}
                 onChange={(value) => setRunIndex(Number(value))}
               />
@@ -262,9 +287,27 @@ export function RunDetail({
 
             <Panel
               title={TAB_TITLE[tab]}
-              actions={<Segmented value={tab} options={TAB_OPTIONS} onChange={setTab} />}
+              subtitle={
+                tab === 'conversation' && turns.length > 1 ? `${turns.length} 轮` : undefined
+              }
+              actions={<Segmented value={tab} options={tabOptions} onChange={setTab} />}
               bodyClassName="overflow-auto"
             >
+              {tab === 'conversation' && (
+                // 与实时对话界面**同一个** ChatTurn 组件：它们本来就是同一份条目流，
+                // 共用渲染器才谈得上「实时看到的和事后审计到的一致」。
+                <div className="space-y-8 px-5 py-5">
+                  {turns.map((turn) => (
+                    <ChatTurn
+                      key={`${turn.index}-${turn.startedAt}`}
+                      turn={turn}
+                      selectedId={selectedId}
+                      onSelect={(entry) => setSelectedId(entry.id)}
+                      defaultOpen={false}
+                    />
+                  ))}
+                </div>
+              )}
               {tab === 'timeline' && (
                 <Timeline
                   entries={visibleEntries}
@@ -279,7 +322,13 @@ export function RunDetail({
 
             <Panel
               title={selected ? `条目 ${selected.id}` : '条目详情'}
-              subtitle={selected ? selected.event : '在执行链里选一条（或用 j / k 键）'}
+              subtitle={
+                selected
+                  ? selected.event
+                  : tab === 'conversation'
+                    ? '展开某一轮的「执行过程」，点其中一条'
+                    : '在执行链里选一条（或用 j / k 键）'
+              }
               actions={
                 selected && !readOnly ? (
                   <Button size="sm" onClick={doFork} title="从这条条目分叉出一份新会话">

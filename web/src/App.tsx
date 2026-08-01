@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, api, bootstrapToken, setToken } from './lib/api'
 import { useRoute } from './lib/router'
+import { restoreConversation, useConversation } from './lib/conversationStore'
 import type { MetaResponse, SessionListResponse } from './lib/types'
 import { Button, ErrorBox, Spinner } from './components/ui'
 import { Sidebar } from './components/Sidebar'
 import { SessionList } from './views/SessionList'
 import { RunDetail } from './views/RunDetail'
 import { DiffView } from './views/DiffView'
-import { NewRun } from './views/NewRun'
+import { Chat } from './views/Chat'
 
 export function App() {
   const [route] = useRoute()
@@ -16,6 +17,7 @@ export function App() {
   const [error, setError] = useState<ApiError | null>(null)
   // diff 的基准会话。放在顶层是因为它要跨「会话库」和「运行详情」两个视图存活。
   const [compareWith, setCompareWith] = useState<string | null>(null)
+  const conversation = useConversation()
 
   const load = useCallback(async () => {
     setError(null)
@@ -28,10 +30,24 @@ export function App() {
     }
   }, [])
 
+  const refreshSessions = useCallback(async () => {
+    try {
+      setSessions(await api.sessions())
+    } catch {
+      // 列表刷新失败不该顶掉整个界面——下次操作会再试。
+    }
+  }, [])
+
   useEffect(() => {
     bootstrapToken()
     void load()
   }, [load])
+
+  // 页面加载时接回上一个还活着的对话。放在 App 而不是 Chat 里，
+  // 是为了让「刷新后落在会话库」这种路径也能恢复，侧栏的活跃指示才不会说谎。
+  useEffect(() => {
+    if (meta && !meta.server.read_only) void restoreConversation()
+  }, [meta])
 
   if (error?.isAuthError) return <TokenPrompt onSubmit={load} />
   if (error) {
@@ -49,34 +65,41 @@ export function App() {
   }
   if (!meta || !sessions) return <Spinner label="连接控制台" />
 
+  // 只读展厅里对话不可用，把默认路由让给会话库——它本来就是只读模式的全部价值。
+  const effective = route.name === 'chat' && meta.server.read_only ? { name: 'list' as const } : route
+
   return (
     <div className="flex h-full min-h-0">
       <Sidebar
-        route={route}
+        route={effective}
         meta={meta}
         sessionCount={sessions.aggregate.total}
         compareWith={compareWith}
+        conversation={conversation.record}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {route.name === 'list' && (
+        {effective.name === 'chat' && (
+          <Chat meta={meta} onSessionsChanged={() => void refreshSessions()} />
+        )}
+        {effective.name === 'list' && (
           <SessionList
             data={sessions}
+            readOnly={meta.server.read_only}
             compareWith={compareWith}
             onCompareWith={setCompareWith}
             onRefresh={() => void load()}
           />
         )}
-        {route.name === 'run' && (
+        {effective.name === 'run' && (
           <RunDetail
-            session={route.session}
+            session={effective.session}
             readOnly={meta.server.read_only}
             compareWith={compareWith}
             onCompareWith={setCompareWith}
             onSessionCreated={() => void load()}
           />
         )}
-        {route.name === 'diff' && <DiffView a={route.a} b={route.b} />}
-        {route.name === 'new' && <NewRun meta={meta} onFinished={() => void load()} />}
+        {effective.name === 'diff' && <DiffView a={effective.a} b={effective.b} />}
       </main>
     </div>
   )

@@ -6,6 +6,8 @@
  * 长期留在地址栏里被截图、被写进浏览器历史。
  */
 import type {
+  ConversationRecord,
+  ConversationTurn,
   DiffResponse,
   EntriesResponse,
   ForkResponse,
@@ -140,6 +142,37 @@ export const api = {
     request<RunRecord & { stopped: boolean }>(`/runs/${encodeURIComponent(runId)}`, {
       method: 'DELETE',
     }),
+
+  // --- 多轮对话 ---------------------------------------------------------
+  // 开对话时**不带任务**：开关在 spawn 子进程时就固化了，任务是逐轮送的。
+  createConversation: (body: { provider: string; model: string; options: RunOptions }) =>
+    request<ConversationRecord>('/conversations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  conversation: (id: string) =>
+    request<ConversationRecord>(`/conversations/${encodeURIComponent(id)}`),
+  submitTurn: (id: string, task: string) =>
+    request<{ turn: ConversationTurn; conversation: ConversationRecord }>(
+      `/conversations/${encodeURIComponent(id)}/turns`,
+      { method: 'POST', body: JSON.stringify({ task }) },
+    ),
+  endConversation: (id: string) =>
+    request<ConversationRecord & { stopped: boolean }>(
+      `/conversations/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
+
+  // --- 删除（移入 sessions/.trash/，不是抹掉）----------------------------
+  deleteSession: (name: string) =>
+    request<{ name: string; trashed_as: string }>(`/sessions${query({ name })}`, {
+      method: 'DELETE',
+    }),
+  deleteSessions: (names: string[]) =>
+    request<{
+      deleted: { name: string; trashed_as: string }[]
+      failed: { name: string; error: string }[]
+    }>('/sessions/delete', { method: 'POST', body: JSON.stringify({ names }) }),
 }
 
 export type RunOptions = Record<string, boolean | number>
@@ -161,13 +194,31 @@ export type StreamEvent =
  * 代价是 EventSource 不能自定义请求头，所以 token 只能走查询参数——后端的
  * ``require_token`` 为此保留了 ``?token=`` 回退。
  */
-export function subscribeToRun(
-  runId: string,
+export function subscribeToRun(runId: string, onEvent: (event: StreamEvent) => void): () => void {
+  return subscribeToStream(`/api/runs/${encodeURIComponent(runId)}/stream`, onEvent)
+}
+
+/**
+ * 订阅一个**对话**的实时条目流。
+ *
+ * 与运行流唯一的区别在后端：这条连接横跨全部轮次，只在整个对话结束时才发 `done`。
+ * 所以前端切视图、甚至刷新页面后重新订阅，都能靠 `Last-Event-ID` 接回来，
+ * 而不是每轮重连一次。
+ */
+export function subscribeToConversation(
+  conversationId: string,
   onEvent: (event: StreamEvent) => void,
 ): () => void {
+  return subscribeToStream(
+    `/api/conversations/${encodeURIComponent(conversationId)}/stream`,
+    onEvent,
+  )
+}
+
+function subscribeToStream(path: string, onEvent: (event: StreamEvent) => void): () => void {
   const token = getToken()
-  const query = token ? `?token=${encodeURIComponent(token)}` : ''
-  const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/stream${query}`)
+  const search = token ? `?token=${encodeURIComponent(token)}` : ''
+  const source = new EventSource(`${path}${search}`)
 
   const parse = <T,>(raw: string): T | null => {
     try {

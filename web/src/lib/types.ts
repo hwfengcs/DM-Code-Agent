@@ -139,7 +139,13 @@ export interface ForkResponse {
   resumable_step_number: number | null
 }
 
-export type RunStatus = 'running' | 'completed' | 'incomplete' | 'failed' | 'cancelled'
+export type RunStatus =
+  | 'running'
+  | 'idle'
+  | 'completed'
+  | 'incomplete'
+  | 'failed'
+  | 'cancelled'
 
 export interface RunRecord {
   run_id: string
@@ -154,6 +160,29 @@ export interface RunRecord {
   cancelled: boolean
   error: string
   pid: number
+  kind?: 'run' | 'conversation'
+}
+
+/** 对话里的一轮。「跑完没有」不在这里——那个由 `completed_turns` 从会话日志现算。 */
+export interface ConversationTurn {
+  index: number
+  task: string
+  submitted_at: number
+}
+
+/**
+ * 一个长驻对话子进程的服务端视图。
+ *
+ * `status` 的语义与一次性运行不同：`idle` 表示对话开着但没有轮次在跑，
+ * `running` 才表示当前有一轮在执行。
+ */
+export interface ConversationRecord extends RunRecord {
+  kind: 'conversation'
+  turns: ConversationTurn[]
+  submitted_turns: number
+  completed_turns: number
+  busy: boolean
+  last_activity: number
 }
 
 export interface CapabilityInfo {
@@ -171,7 +200,15 @@ export interface MetaResponse {
   server: {
     read_only: boolean
     auth_required: boolean
+    /**
+     * 工作区的**完整绝对路径**。
+     *
+     * 不要直接渲染它——整条 `C:\Users\...\project` 怼在界面上既难看又没信息量。
+     * 界面一律用 `workspace_name`（或 `lib/paths.ts` 的 `workspaceName()`）。
+     */
     workspace: string
+    /** 工作区目录名，界面上显示的就是这个。 */
+    workspace_name: string
     sessions_dir_name: string
   }
   providers: {
