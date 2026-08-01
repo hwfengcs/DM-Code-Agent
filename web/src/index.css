@@ -90,6 +90,9 @@
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 0 0 1px rgb(0 0 0 / 0.045);
   --shadow-raised: 0 4px 16px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.045);
   --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
+  /* 列表行 hover 时的那一档。比 card 重一点点，比 raised 轻很多——
+     「可以点」的暗示，不是「浮起来了」的宣告。 */
+  --shadow-hover: 0 2px 8px rgb(0 0 0 / 0.05), 0 0 0 1px rgb(0 0 0 / 0.05);
 }
 
 @layer base {
@@ -174,5 +177,53 @@
   /* 焦点环：Apple 那种 3px 半透明蓝色外环，不挤占布局。 */
   .focus-ring {
     @apply focus-visible:ring-[3px] focus-visible:ring-blue/30 focus-visible:outline-none;
+  }
+
+  /* --- 这一版补的层次 -----------------------------------------------------
+     原则仍是「层次靠留白和一条极轻的边框」，这里只是把那条边框用得更一致，
+     并给可交互的面加一档几乎察觉不到的抬升。不引入新色板，不做玻璃拟态。 */
+
+  /* 次级容器：比 .card 轻一档。用于设置区、执行过程折叠块、建议卡。 */
+  .surface-raised {
+    @apply border border-line bg-subtle;
+  }
+
+  /* 分隔线。全站统一走这一个类，免得 border-line 和 border-gray-200 混用。 */
+  .divider-soft {
+    @apply border-line;
+  }
+
+  /* 侧栏：一层几乎看不见的纵向渐变，让它和纯白内容区分开又不显脏。 */
+  .sidebar {
+    border-right: 1px solid var(--color-line);
+    background: linear-gradient(180deg, var(--color-subtle) 0%, var(--color-muted) 100%);
+  }
+
+  /* 导航项选中态：左侧一条主色竖线 + 淡底。
+     上一版用整块白卡片 + 阴影，在浅色侧栏上反而比内容还抢眼。 */
+  .nav-item {
+    @apply transition-colors;
+  }
+  .nav-item-active {
+    background-color: color-mix(in oklab, var(--color-blue) 8%, transparent);
+  }
+  .nav-item-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 2px;
+    border-radius: 999px;
+    background: var(--color-blue);
+  }
+
+  /* 可点的表格行。抬升幅度刻意很小——审计表格里一次会看很多行，
+     动效大了会晃眼。 */
+  .row-interactive {
+    @apply transition-shadow;
+  }
+  .row-interactive:hover {
+    box-shadow: var(--shadow-hover);
   }
 }
