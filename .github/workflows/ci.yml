@@ -24,7 +24,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v9
+        # 钉精确版本而不是滚动标签 v9：setup-uv 只推到 v7 为止的滚动标签，
+        # v8/v9 只有 vX.Y.Z 形式，写 @v9 会直接 "unable to resolve action"。
+        # 钉死版本也与本项目 uv sync --frozen 的可复现精神一致。
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true

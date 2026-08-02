@@ -36,7 +36,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: astral-sh/setup-uv@v9
+      # 钉精确版本：setup-uv 的滚动标签只推到 v7，v8/v9 只有 vX.Y.Z 形式，
+      # 写 @v9 会 "unable to resolve action"。
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: "3.12"
           enable-cache: true
