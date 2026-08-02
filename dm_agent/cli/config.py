@@ -8,10 +8,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from dm_agent.paths import (
+    atomic_write_json,
+    resolve_config_read_path,
+    resolve_config_write_path,
+    user_env_path,
+)
+
 from .ui import UI
 
-# 配置文件与历史上的顶级 main.py 同目录（仓库根 / 安装根），搬进包内后显式回溯两级保持一致。
-CONFIG_FILE = str(Path(__file__).resolve().parents[2] / "config.json")
+# 缺 key 时告诉用户去哪儿领。纯展示信息，刻意不放进 clients 层的 PROVIDER_DEFAULTS——
+# 那是构造客户端用的数据，不该混入面向人的文案。
+PROVIDER_CONSOLE_URLS = {
+    "deepseek": "https://platform.deepseek.com/api_keys",
+    "openai": "https://platform.openai.com/api-keys",
+    "claude": "https://console.anthropic.com/settings/keys",
+    "gemini": "https://aistudio.google.com/apikey",
+}
 
 
 @dataclass
@@ -45,18 +58,30 @@ class Config:
 
 
 def load_config_from_file() -> dict[str, Any]:
-    """从配置文件加载设置"""
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            UI.status("warn", "配置文件加载失败，使用默认设置", str(e))
+    """读取配置：``./config.json`` 优先，其次 ``~/.dm_agent/config.json``。
+
+    两者都不存在时返回空字典，由调用方用硬编码默认值。文件损坏时告警并降级，
+    绝不让一个坏配置挡住整个 CLI。
+    """
+    path = resolve_config_read_path()
+    if path is None:
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+            return data
+    except Exception as e:
+        UI.status("warn", "配置文件加载失败，使用默认设置", f"{path}：{e}")
     return {}
 
 
 def save_config_to_file(config: Config) -> None:
-    """保存配置到文件"""
+    """保存配置，写回**读到的那一个**文件；都不存在时落用户级。
+
+    用原子写：临时文件 → fsync → ``os.replace``，避免写到一半崩掉留下半个 JSON
+    （下次启动就会走上面那条「加载失败」分支，用户的设置静默丢失）。
+    """
+    path = resolve_config_write_path()
     try:
         config_data = {
             "provider": config.provider,
@@ -85,11 +110,32 @@ def save_config_to_file(config: Config) -> None:
             "circuit_breaker_cooldown": config.circuit_breaker_cooldown,
             "reflexion_memory_file": config.reflexion_memory_file,
         }
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=2, ensure_ascii=False)
-        UI.status("ok", "配置已保存")
+        atomic_write_json(path, config_data)
+        UI.status("ok", "配置已保存", str(path))
     except Exception as e:
         UI.status("error", "配置保存失败", str(e))
+
+
+def format_missing_api_key_help(provider: str) -> str:
+    """缺 key 时的多行提示。
+
+    给的是**算出来的绝对路径**而不是「请在 .env 中配置」——全局安装后用户的
+    ``.env`` 该放哪不再是显然的，泛泛一句提示等于没说。
+    """
+    env_var = f"{provider.upper()}_API_KEY"
+    setter = f"set {env_var}=sk-xxx" if os.name == "nt" else f"export {env_var}=sk-xxx"
+    lines = [
+        "三种配法（任选其一）：",
+        f"  1. 环境变量   {setter}",
+        f"  2. 用户级配置 {user_env_path()}",
+        f"                写入 {env_var}=sk-xxx",
+        f"  3. 项目级      {Path.cwd() / '.env'}",
+    ]
+    console_url = PROVIDER_CONSOLE_URLS.get(provider.casefold())
+    if console_url:
+        lines.append("")
+        lines.append(f"获取 key: {console_url}")
+    return "\n".join(lines)
 
 
 def get_api_key_for_provider(provider: str) -> str | None:

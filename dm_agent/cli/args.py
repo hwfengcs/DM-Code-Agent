@@ -31,6 +31,9 @@ def validate_feature_args(args: argparse.Namespace) -> str:
         return "--checkpoint/--resume 暂不支持与 --enable-reflexion 同时使用。"
     if getattr(args, "resume_at", "") and not getattr(args, "resume", None):
         return "--resume-at 需要与 --resume 一起使用。"
+    conversation_error = _validate_conversation_args(args)
+    if conversation_error:
+        return conversation_error
     checkpoint_path = getattr(args, "checkpoint", None)
     trace_path = getattr(args, "trace", None)
     if checkpoint_path and trace_path and Path(checkpoint_path) == Path(trace_path):
@@ -46,6 +49,29 @@ def validate_feature_args(args: argparse.Namespace) -> str:
             "--enable-repeated-failure-policy-experiment requires "
             "--enable-adaptive-replanning or --enable-evolution."
         )
+    return ""
+
+
+def _validate_conversation_args(args: argparse.Namespace) -> str:
+    """校验 ``--conversation-stdin`` 的四条前置条件。
+
+    这个模式让一个进程用**同一个** ``ReactAgent`` 顺序跑多轮，因此凡是会重置或
+    分叉对话历史的开关都与它语义冲突，宁可直接拒绝也不要跑出一个「看起来是多轮、
+    实际上历史被悄悄清掉」的会话。
+    """
+    if not getattr(args, "conversation_stdin", False):
+        return ""
+    if getattr(args, "task", None):
+        return "--conversation-stdin 从 stdin 读取任务，不能同时给位置参数任务。"
+    if not getattr(args, "trace", None):
+        # 会话日志是控制台/调用方读取进展的唯一通道（子进程 stdout 只是人类可读日志）。
+        return "--conversation-stdin 必须配合 --trace，否则没有任何地方能读到每一轮的进展。"
+    if getattr(args, "resume", None) or getattr(args, "resume_at", ""):
+        return "--conversation-stdin 不支持 --resume：resume 恢复的是同一任务的中断点。"
+    if args.enable_reflexion:
+        # Reflexion 每次 trial 会把 conversation_history 回滚到本轮开始前的快照，
+        # 与「跨轮累积对话」正好相反。
+        return "--conversation-stdin 不支持 --enable-reflexion：多 trial 会回滚对话历史。"
     return ""
 
 
@@ -197,6 +223,15 @@ def parse_args(argv: Any) -> argparse.Namespace:
         "--interactive",
         action="store_true",
         help="启动交互式菜单模式。",
+    )
+    parser.add_argument(
+        "--conversation-stdin",
+        dest="conversation_stdin",
+        action="store_true",
+        help=(
+            '长驻会话模式：从 stdin 按 JSON Lines 读取任务（每行 {"task": "..."}），'
+            "用同一个 agent 顺序执行多轮并共享对话历史；读到 EOF 退出。必须配合 --trace。"
+        ),
     )
     extension_group = parser.add_mutually_exclusive_group()
     extension_group.add_argument(

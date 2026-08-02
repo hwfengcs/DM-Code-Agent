@@ -55,6 +55,20 @@ dev = [
   "types-requests>=2.31.0",
   "build>=1.2.0",
   "pre-commit>=4.0.0,<5.0.0",
+  # starlette 的 TestClient 依赖 httpx；server 层的测试全部走 TestClient，无需真起端口。
+  "httpx>=0.27.0",
+  # 自引用 web extra：让 `--extra dev` 一条就把 server 层的依赖也装齐。
+  # 这样 CI 与 pre-commit 里现有的 `uv run --frozen --extra dev ...` 全部无需改动，
+  # 也不会出现「某一步漏传 --extra web 导致 uv 把 fastapi 卸掉」的连锁失败。
+  "dm-code-agent[web]",
+]
+# Web 控制台（dm-agent-web）。核心包保持零 web 依赖：不装这个 extra 时
+# `import dm_agent` 与全部 CLI 功能不受影响，只有 dm-agent-web 会提示缺依赖。
+# 不用 uvicorn[standard]：它带的 uvloop 不支持 Windows、websockets 本项目用不到
+# （实时流走 SSE），httptools 只是性能优化。本地单用户场景纯 asyncio 实现足够。
+web = [
+  "fastapi>=0.115.0",
+  "uvicorn>=0.30.0",
 ]
 swebench = [
   "datasets>=2.14.0",
@@ -72,9 +86,14 @@ dm-agent-bench = "dm_agent.benchmarks.cli:main"
 dm-agent-trace = "dm_agent.tracing.cli:main"
 dm-agent-economics = "dm_agent.benchmarks.economics:main"
 dm-agent-manifest-diff = "dm_agent.benchmarks.manifest_diff:main"
+dm-agent-web = "dm_agent.server.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["dm_agent*"]
+
+[tool.setuptools.package-data]
+# 前端构建产物。web/ 下的源码不进 wheel，只有 npm run build 拷进来的静态文件进。
+"dm_agent.server" = ["static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -114,7 +133,12 @@ ignore = [
 #   tracing ← 只依赖 tools / memory（是个下沉的记录汇，不回头依赖 core）
 #   core    ← 依赖 clients / tools / memory / prompts / tracing，禁止依赖 cli
 #   cli     ← 可以依赖任何层
+#   server  ← 与 cli 同级的另一个最外层装配者。可以依赖任何下层，但**不得依赖 cli**：
+#             它通过 spawn 子进程复用 CLI，而不是 import 它。这一条 ruff 拦不住
+#             （见下方 per-file-ignores 里 server 的豁免理由），由
+#             tests/test_server_layering.py 显式断言。
 "dm_agent.cli".msg = "core / tools / clients / memory / evals / benchmarks / tracing 层不得依赖 CLI 层；CLI 是最外层组装者。需要共享的逻辑请下移到对应的层。"
+"dm_agent.server".msg = "只有 server 层自身可以 import dm_agent.server；它是最外层装配者，任何下层（含 cli）都不得反向依赖它。"
 # 防止顶级 main 模块回归：它曾经通过 py-modules = ["main"] 被装进 site-packages 顶层，
 # 污染用户命名空间（见 d763fc8）。除根目录那个薄转发自身外，任何地方都不该 import 它。
 "main".msg = "不要 import 顶级 main 模块（它只是 dm_agent.cli 的薄转发）；直接用 dm_agent.cli。"
@@ -126,9 +150,12 @@ ignore = [
 # 分层契约（上面的 banned-api）的三类合法例外：
 #   1. cli 包内部互相依赖本就是允许的。ruff 会把相对导入 from .ui import UI 解析成绝对的
 #      dm_agent.cli.ui.UI 再做匹配，所以改写成相对导入并不能绕过，必须在这里显式豁免。
+#      server 包同理：它的 from .settings import ... 会被解析成 dm_agent.server.settings。
+#      代价是 ruff 也不再拦 server → cli，那一条改由 tests/test_server_layering.py 断言。
 #   2. 根目录 main.py 就是那个薄转发入口，它的职责正是 import dm_agent.cli。
 #   3. 测试需要直接触达 CLI 内部符号，断言参数解析与 agent 装配行为。
 "dm_agent/cli/**" = ["TID251"]
+"dm_agent/server/**" = ["TID251"]
 "main.py" = ["TID251"]
 "tests/**" = ["TID251"]
 

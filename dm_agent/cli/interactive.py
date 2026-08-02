@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 from dm_agent import (
@@ -13,12 +12,13 @@ from dm_agent import (
     default_tools,
 )
 from dm_agent.mcp import MCPManager, load_mcp_config
+from dm_agent.paths import resolve_config_read_path
 from dm_agent.skills import SkillManager
 
 from .config import (
-    CONFIG_FILE,
     Config,
     format_advanced_feature_status,
+    format_missing_api_key_help,
     get_api_key_for_provider,
     save_config_to_file,
 )
@@ -38,9 +38,11 @@ def print_welcome() -> None:
     """打印欢迎界面"""
     UI.banner("DM-Code-Agent", "Local-first code agent with trace, tools, skills, and memory.")
 
-    # 显示配置文件状态
-    if os.path.exists(CONFIG_FILE):
-        UI.status("ok", "已加载配置文件", "config.json")
+    # 打完整路径而不是「config.json」：全局安装后配置可能来自项目级也可能来自用户级，
+    # 只说文件名等于没说。
+    source = resolve_config_read_path()
+    if source is not None:
+        UI.status("ok", "已加载配置文件", str(source))
     else:
         UI.status("info", "使用默认配置", "max_steps=100 | temperature=0.7")
     print()
@@ -87,8 +89,10 @@ def configure_settings(config: Config, extension_registry: ExtensionRegistry | N
             # 尝试获取新提供商的 API 密钥
             new_api_key = get_api_key_for_provider(provider_input)
             if provider_input in PROVIDER_DEFAULTS and not new_api_key:
-                UI.status("error", f"未找到 {provider_input.upper()}_API_KEY 环境变量")
-                UI.status("warn", f"请在 .env 文件中配置 {provider_input.upper()}_API_KEY")
+                UI.status("error", f"未找到 {provider_input.upper()}_API_KEY")
+                # 给完整路径而不是「请在 .env 中配置」——用户此刻正在切换供应商，
+                # 需要知道那个文件到底该建在哪。
+                print(format_missing_api_key_help(provider_input))
             else:
                 config.provider = provider_input
                 config.api_key = new_api_key or ""

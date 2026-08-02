@@ -1,8 +1,8 @@
 # CLI 参考
 
-## 六个入口
+## 七个入口
 
-`pyproject.toml` 的 `[project.scripts]` 定义了六个命令：
+`pyproject.toml` 的 `[project.scripts]` 定义了七个命令：
 
 | 命令 | 实现 | 用途 |
 | --- | --- | --- |
@@ -12,18 +12,27 @@
 | `dm-agent-eval` | `dm_agent.evals.cli:main` | 确定性 eval（无需 API key） |
 | `dm-agent-economics` | `dm_agent.benchmarks.economics:main` | 离线 token 成本核算 |
 | `dm-agent-manifest-diff` | `dm_agent.benchmarks.manifest_diff:main` | benchmark 任务集漂移检测 |
+| `dm-agent-web` | `dm_agent.server.cli:main` | Web 控制台（需 `[web]` extra），见 [Web 控制台](web.md) |
 
 根目录 `main.py` 是 `python main.py` 的兼容转发，不会作为顶级 `main` 模块安装。
+`python -m dm_agent.cli` 也可用（`dm_agent/cli/__main__.py`）。
 
 ## 配置优先级
 
 ```
-CLI 参数  >  config.json  >  硬编码默认
+CLI 参数  >  ./config.json  >  ~/.dm_agent/config.json  >  硬编码默认
 ```
 
+两个 `config.json` 位置**先到先得**：项目级存在就用它，否则用用户级，都没有就用硬编码默认。
+交互式设置向导保存时**写回它读到的那一个**；两者都不存在时落用户级
+（`~/.dm_agent/`，与扩展目录、信任文件同一个家）。
+
 API key 是例外：**只从环境变量读**（`DEEPSEEK_API_KEY` / `OPENAI_API_KEY` /
-`CLAUDE_API_KEY` / `GEMINI_API_KEY`），不参与上面的链条。MCP 配置独立于当前工作目录的
-`mcp_config.json`，见 [MCP 配置](mcp.md)。
+`CLAUDE_API_KEY` / `GEMINI_API_KEY`），不参与上面的链条。`.env` 按
+`./.env` → `~/.dm_agent/.env` 顺序加载，且**已导出的环境变量始终优先**——
+所以 `DEEPSEEK_API_KEY=sk-xxx dm-agent "..."` 永远压过任何文件。
+
+MCP 配置独立于当前工作目录的 `mcp_config.json`，见 [MCP 配置](mcp.md)。
 
 ## 基础参数
 
@@ -36,7 +45,30 @@ API key 是例外：**只从环境变量读**（`DEEPSEEK_API_KEY` / `OPENAI_API
 | `--temperature` | `0.7` | 采样温度（`ReactAgent` 库默认 0.0） |
 | `--show-steps` | 关 | 实时打印中间步骤 |
 | `--interactive` | — | 进入交互式菜单（不给 task 时也会进） |
+| `--conversation-stdin` | — | 长驻会话模式：多轮任务从 stdin 逐行进来，共享同一个 agent 的上下文 |
 | `--report PATH` | — | 输出人类可读的 Markdown 运行报告 |
+
+### `--conversation-stdin`
+
+Web 控制台的多轮对话就跑在这个模式上，但它本身是个通用入口：一个进程、一个
+`ReactAgent`、顺序跑多轮，对话历史 / 本地记忆 / 折叠状态跨轮延续。
+
+```bash
+printf '%s\n' \
+  '{"task": "读一遍 README，说说这个项目在做什么"}' \
+  '{"task": "接着上一轮，把它的分层契约也讲清楚"}' \
+| dm-agent --conversation-stdin --trace sessions/chat.jsonl
+```
+
+* stdin 每行一个 JSON 对象：`{"task": "..."}` 跑一轮，`{"type": "reset"}` 清空历史。
+  用 JSON 而不是裸文本行，因为任务描述完全可能含换行。
+* **没有 stdout 协议**。每一轮的进展与结果都在 `--trace` 的会话日志里
+  （`run_start` / `run_end`），调用方跟读那个文件即可；stdout 保持人类可读日志。
+* 读到 EOF 正常退出。单轮失败只记一条 `run_error` 并继续等下一轮，不会杀掉整个会话。
+
+四条前置校验（不满足直接退出码 2）：必须配 `--trace`、不能带位置参数任务、
+不能与 `--resume` 同用、不能与 `--enable-reflexion` 同用（后者每次 trial 会把对话
+历史回滚到本轮开始前的快照，与跨轮累积正好相反）。
 
 ## 基础设施护栏（默认**开**）
 

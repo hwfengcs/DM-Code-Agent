@@ -85,3 +85,12 @@ CLAUDE.md
 *.db
 *.sqlite
 *.sqlite3
+
+# Web 控制台前端
+# node_modules 不入库；构建产物 dm_agent/server/static/ **入库**，理由见 docs/web.md：
+# 用户 pip install dm-code-agent[web] 后必须直接就有 UI，不能要求他们装 Node 再构建。
+# CI 会重新构建并与入库产物比对，防止「改了源码忘了重新 build」。
+web/node_modules/
+web/dist/
+web/.vite/
+web/vite.config.ts.timestamp-*

@@ -7,6 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Installability: user-level config and `.env` (2026-08)
+
+Three bugs that made `pip install dm-code-agent` unusable outside a cloned repo. All three
+were **invisible under editable installs**, where "relative to the package" and "relative to
+the working directory" happen to coincide. Details and rejected alternatives in
+[`docs/research-log/32-user-level-config-and-env.md`](docs/research-log/32-user-level-config-and-env.md).
+
+#### Changed (breaking)
+- **`config.json` lookup is now `./config.json` → `~/.dm_agent/config.json`.** Previously the
+  path was `Path(__file__).parents[2] / "config.json"`, which resolves to `site-packages/`
+  once the package is actually installed — polluting the install root, failing outright on
+  read-only or system Python installs, sharing one config across every project, and leaving
+  the file somewhere the user cannot find. Saves write back to **whichever file was read**,
+  falling back to user level. Running from a cloned repo is byte-for-byte unchanged, so no
+  migration is required.
+- **`dm_agent.cli.CONFIG_FILE` removed** from the public `__all__`. Its semantics were wrong
+  and keeping it would invite the same bug. Use `dm_agent.paths.resolve_config_read_path()` /
+  `resolve_config_write_path()`.
+
+#### Fixed
+- **The user's `.env` is found again.** Bare `load_dotenv()` calls `find_dotenv(usecwd=False)`,
+  which searches upward from the *calling module's* directory — installed, that walk starts in
+  `site-packages/dm_agent/cli/` and never reaches the user's project, so a `.env` next to their
+  code silently did nothing. Now loaded explicitly as `./.env` → `~/.dm_agent/.env`, keeping
+  dotenv's `override=False` so **exported environment variables still win over both files**.
+- **`.env` files with a UTF-8 BOM now work.** Found while verifying the fix above from a real
+  install: dotenv reads as plain `utf-8` and folds the BOM into the first key name
+  (`﻿DEEPSEEK_API_KEY`), so the key is set but unreadable and the error still says
+  "missing API key" — undiagnosable in practice. Every common way to create a `.env` on
+  Windows writes a BOM (`Set-Content -Encoding utf8`, `>` redirection, Notepad's "UTF-8"),
+  so files are now read as `utf-8-sig`, which is identical to `utf-8` when no BOM is present.
+- **Missing-key errors are actionable.** The message now prints resolved absolute paths for all
+  three options (environment variable, `~/.dm_agent/.env`, `./.env`) plus the provider's key
+  console URL, instead of "set an environment variable" with no indication of where.
+- The welcome screen prints the config file's full path rather than the bare name `config.json`,
+  which after a global install says nothing about which of the two files was read.
+
+#### Added
+- **`dm_agent/paths.py`** — dependency-free path resolution shared by `cli` and `server`
+  (`server` may not import `cli`; it spawns it). Includes atomic JSON writes and POSIX
+  permission tightening for config files.
+- **`tests/test_cli_config_paths.py`** (15 cases), including a regression guard asserting that
+  no resolved config path ever lands inside the package directory.
+- **`isolate_user_home` autouse fixture** redirecting `HOME` and `USERPROFILE` (Windows
+  `Path.home()` reads the latter) into a temp dir. Without it, `parse_args()` now reaches
+  `~/.dm_agent/config.json` and every test's behaviour would depend on whether the machine
+  running it happens to have that file.
+
+### Web console (2026-07)
+
+A browser UI (`dm-agent-web`) serving two purposes with **one renderer**: a local
+workbench (start tasks, watch steps live, fork from any entry) and a read-only gallery
+(auditable session viewer needing no API key, hostable as static files). Live runs and
+historical traces are the same append-only JSONL entry stream, so "what you watch" and
+"what you audit afterwards" cannot diverge.
+
+#### Added
+- **`dm_agent/server/`** — a second outermost assembler, sibling to `dm_agent/cli/`:
+  read-only audit API, subprocess executor, SSE streaming. Optional `[web]` extra; the
+  core package stays free of web framework dependencies.
+- **Read-only endpoints** reusing `dm_agent.tracing` pure functions verbatim
+  (`summarize_events` / `analyze_events` / `diff_events` / `fork_session`), so the console
+  and `dm-agent-trace` always reach the same conclusions — pinned by a field-by-field
+  comparison test rather than by convention.
+- **`POST /api/runs`** spawns a `python -m dm_agent.cli` subprocess. Chosen over
+  in-process `ReactAgent` because the kernel has no cancellation interface (a hook raising
+  is documented as equivalent to allowing), and because it makes the web UI a *frontend to
+  the CLI* rather than a second assembly path that could drift.
+- **SSE live stream** tailing the session log itself (`TraceWriter` flushes per entry).
+  `id:` is the line number; append-only guarantees line numbers never shift, so the
+  browser's `Last-Event-ID` resumption works without server-side bookkeeping.
+- **`web/`** — React 19 + Vite + Tailwind v4 frontend, built into
+  `dm_agent/server/static/` and committed so `pip install dm-code-agent[web]` ships a
+  working UI without requiring Node. CI rebuilds and diffs the artifacts.
+- **`dm_agent/cli/__main__.py`** (3 lines), fixing the long-standing "`python -m
+  dm_agent.cli` silently does nothing" pitfall recorded in CLAUDE.md.
+
+#### Fixed
+- Run status no longer equates exit code 0 with success. `dm-agent` returns 0 for
+  `max_steps_exceeded` (not a CLI failure, just an unfinished agent), which the console
+  initially reported as `completed`. It now also reads the agent's own verdict from the
+  session log's `run_end`, adding an `incomplete` state. Caught by end-to-end manual
+  verification, not by the test suite — which is why the regression test exists now.
+- SPA deep links returned a JSON 404: `StaticFiles.get_response` *raises*
+  `HTTPException` rather than returning a 404 response, and raises **starlette's** class,
+  of which FastAPI's same-named class is a subclass — so `except fastapi.HTTPException`
+  never caught it.
+- The startup banner (carrying the only clickable token URL) vanished whenever stdout was
+  redirected: `print()` is block-buffered on a pipe and `uvicorn.run()` never returns.
+  Now flushed explicitly, and encoded as UTF-8 so Chinese text survives Windows
+  redirection instead of being mangled by cp936.
+
+#### Testing
+- 66 new cases across five files, all offline: layering invariants (AST-asserted, because
+  `dm_agent/server/**` must be exempt from `TID251` to allow `from .settings import`),
+  security model, argv whitelisting fed to the *real* CLI parser, SSE semantics
+  (partial lines, resumption, trailing entries after process exit), and run lifecycle.
+- **`tests/conftest.py` now forces a dummy API key on every test.** The project
+  constitution requires tests to run without keys; while writing the run-lifecycle tests
+  the first version relied on "no key configured, so the CLI fails fast" — and really
+  spent money. `load_dotenv()`'s `find_dotenv()` searches upward from the *calling
+  module's* directory (`dm_agent/cli/`), so a subprocess picks up the repo-root `.env`
+  regardless of its cwd; and on Windows `os.environ[k] = ""` deletes the variable, letting
+  dotenv refill the real key. This is now a machine guarantee instead of something to
+  remember.
+
 ### Architecture refactor (2026-07, eight steps)
 
 An eight-step restructuring benchmarked against

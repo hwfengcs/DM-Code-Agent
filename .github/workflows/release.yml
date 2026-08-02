@@ -1,0 +1,215 @@
+name: Release
+
+# 发布到 PyPI。两条路径，职责分开：
+#
+#   手动触发（workflow_dispatch） → TestPyPI  —— 随便试，装错了重来就行
+#   打 tag v*                     → 正式 PyPI —— 不可逆，版本号用掉不能重传
+#
+# 认证走 **Trusted Publishing（OIDC）**：GitHub 直接向 PyPI 证明"这个 workflow
+# 确实来自这个仓库"，仓库里不存任何长期 token。所以 Secrets 里是空的，
+# 也就没有"token 泄露"或"忘记轮换"这回事。
+#
+# 前提：在 PyPI 上把本仓库 + 本文件名（release.yml）登记为 trusted publisher。
+# 首次发布一个还不存在的包要用 "pending publisher"，见 docs/releasing.md。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "发布目标"
+        type: choice
+        options: [testpypi, none]
+        default: testpypi
+
+jobs:
+  # 发一个坏包比不发严重得多——版本号不能重传。所以构建前先把 CI 的核心检查重跑一遍，
+  # 不信任"tag 指向的 commit 当初 CI 过了"（分支可能被改过，产物可能没重建）。
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v9
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Install
+        run: uv sync --frozen --extra dev
+
+      - name: Test
+        run: uv run --frozen python -m pytest
+
+      - name: Deterministic eval gate
+        run: |
+          uv run --frozen python -m dm_agent.evals.cli --output eval_reports/release.json
+          uv run --frozen python -m dm_agent.evals.gate eval_reports/release.json --min-success-rate 1.0
+
+      - name: Lint / format / types
+        run: |
+          uv run --frozen python -m ruff check .
+          uv run --frozen python -m black --check .
+          uv run --frozen python -m mypy dm_agent
+
+      # 前端产物入库，wheel 直接打包它。发布前必须确认它与 web/ 源码一致，
+      # 否则 pip 装到的界面和仓库源码对不上，而且没人会发现。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Rebuild frontend and diff against committed artifacts
+        run: |
+          npm ci
+          npm run build
+        working-directory: web
+
+      - name: Fail if committed artifacts are stale
+        run: |
+          if ! git diff --quiet -- dm_agent/server/static; then
+            echo "::error::dm_agent/server/static 与 web/ 源码不一致，不能发布。"
+            git diff --stat -- dm_agent/server/static
+            exit 1
+          fi
+
+      - name: Build wheel and sdist
+        run: uv run --frozen python -m build
+
+      # 版本号必须与 tag 一致，否则会发出一个"tag 说 v2.0.1、包里写 2.0.0"的版本。
+      - name: Check version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PKG=$(uv run --frozen python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG 与 pyproject.toml 的 version=$PKG 不一致。"
+            exit 1
+          fi
+          echo "版本一致：$PKG"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # 把构建好的 wheel 装进一个干净环境，确认它真的能用。
+  # 这一步复刻的是人工验收：命令齐不齐、UI 在不在包里、服务起不起得来。
+  smoke:
+    name: Install from wheel and smoke test
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # 刻意不 checkout 仓库：必须在**包外**测，否则 cwd 会被加进 sys.path，
+      # import 到的是源码树而不是安装的包，配置路径类的 bug 会被完全掩盖。
+      - name: Install the built wheel
+        shell: bash
+        run: pip install "$(ls dist/*.whl)[web]"
+
+      - name: Every console script is present and runnable
+        shell: bash
+        run: |
+          for cmd in dm-agent dm-agent-eval dm-agent-bench dm-agent-trace \
+                     dm-agent-economics dm-agent-manifest-diff dm-agent-web; do
+            "$cmd" --help > /dev/null || { echo "::error::$cmd 不可用"; exit 1; }
+            echo "  ok  $cmd"
+          done
+
+      - name: Frontend ships inside the wheel
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          from dm_agent.server.app import default_static_dir
+          d = default_static_dir()
+          assert d is not None and (d / "index.html").is_file(), "wheel 里没有前端产物"
+          print("  ok  前端产物随包分发:", d)
+          PY
+
+      - name: Config never lands inside site-packages
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, dm_agent
+          from dm_agent.paths import resolve_config_write_path, user_config_path
+          site = pathlib.Path(dm_agent.__file__).parent.parent
+          for p in (resolve_config_write_path(), user_config_path()):
+              assert site not in p.resolve().parents, f"配置落进了包目录: {p}"
+          print("  ok  配置路径在包外")
+          PY
+
+      - name: Web console actually serves the UI
+        shell: bash
+        run: |
+          python - <<'PY'
+          from fastapi.testclient import TestClient
+          from dm_agent.server.app import create_app
+          from dm_agent.server.settings import ServerSettings
+          import pathlib, tempfile
+          s = ServerSettings(sessions_dir=pathlib.Path(tempfile.mkdtemp()), token="t")
+          c = TestClient(create_app(s))
+          r = c.get("/")
+          assert r.status_code == 200 and 'id="root"' in r.text, r.status_code
+          m = c.get("/api/meta", headers={"Authorization": "Bearer t"})
+          assert m.status_code == 200, m.status_code
+          print("  ok  GET / 200，/api/meta 200")
+          PY
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [build, smoke]
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/dm-code-agent
+    permissions:
+      id-token: write # OIDC，取代长期 token
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build, smoke]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/dm-code-agent
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

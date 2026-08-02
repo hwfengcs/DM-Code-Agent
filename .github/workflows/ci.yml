@@ -71,3 +71,46 @@ jobs:
 
       - name: Type check
         run: uv run --frozen python -m mypy dm_agent
+
+  web:
+    name: Web console frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # npm ci 严格按 package-lock.json 安装，与 Python 侧 uv sync --frozen 同理。
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Type check
+        run: npm run typecheck
+        working-directory: web
+
+      - name: Run frontend tests
+        run: npm run test
+        working-directory: web
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: web
+
+      # 前端产物入库（wheel 自带 UI，终端用户不需要 Node），所以必须防「改了源码
+      # 忘了重新 build」——那会让 pip 装到的界面与仓库源码不一致，且没人会发现。
+      # 上一步的构建输出就落在 dm_agent/server/static/，这里检查它是否与入库版本一致。
+      - name: Verify committed build artifacts are up to date
+        run: |
+          if ! git diff --quiet -- dm_agent/server/static; then
+            echo "::error::dm_agent/server/static 与 web/ 源码不一致。请在 web/ 下跑 npm run build 并提交产物。"
+            git diff --stat -- dm_agent/server/static
+            exit 1
+          fi
+          echo "前端产物与源码一致。"

@@ -5,7 +5,7 @@
 **Local-first · Fully auditable · The kernel is just one ReAct loop**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-301%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-429%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
@@ -56,9 +56,18 @@ dm-agent-trace analyze sessions/fix.jsonl
 python -m pytest && python -m dm_agent.evals.cli --variant full --task direct_finish
 ```
 
+Prefer a browser:
+
+```bash
+dm-agent-web --read-only            # Read-only gallery: audit sessions, no API key
+dm-agent-web                        # Full workbench: launch tasks + watch every step
+```
+
+The terminal prints a tokenized URL — just open it. See [Web console](docs/web.md).
+
 ---
 
-## ⭐ Six things you won't find elsewhere
+## ⭐ Seven things you won't find elsewhere
 
 ### 🌳 Run history is a tree that never deletes anything
 
@@ -83,6 +92,34 @@ LLM call. More importantly it does the math: a candidate is committed only when
 back completely** (memory, cadence, and summary state all restored). A compaction proven to pay
 off is reused stickily across requests and across runs, with `phase=sticky_reuse` written into
 the trace so reuse is never counted as a fresh compaction.
+
+### 🖥️ Audit in the browser — and the read-only gallery is shareable as-is
+
+```bash
+dm-agent-web --read-only     # Read-only gallery: no API key, audits but never launches
+dm-agent-web                 # Full workbench: launch tasks + watch every step over SSE
+```
+
+Five views, one question each: **Session library** (which runs succeeded — and **which
+succeeded with an unhealthy process**), **Run detail** (what every step did; select an entry
+for its full payload), **Diagnostics** (which stage failed, did it recover, did it skip
+verification), **Compaction** (how many tokens were saved, plus the skipped originals —
+**not one of them deleted**), and **Behavior diff** (at which step two runs diverged).
+
+Three boundaries keep it from becoming a second source of truth:
+
+- **Live runs and historical traces share one renderer** — they are the same append-only JSONL
+  to begin with. What you watch live and what you audit afterwards cannot disagree.
+- **The frontend computes no conclusions.** Failure stage, health score, and verification gaps
+  all arrive precomputed from `dm_agent.tracing`, the same source as `dm-agent-trace analyze`;
+  `tests/test_server_readonly.py` compares the API response field by field against calling that
+  pure function directly, so the server layer cannot drift by computing its own.
+- **Launching a run spawns a CLI subprocess** (`python -m dm_agent.cli`) rather than assembling
+  a second `ReactAgent` inside the service. The console always does what the CLI does.
+
+The read-only gallery uses hash routing and `base: './'`, so dropping the build output next to
+your session JSONL on any static host just works — **no backend, no API key**. Details in
+[Web console](docs/web.md).
 
 ### 🔌 Add tools / guards / providers without touching a single kernel line
 
@@ -120,8 +157,9 @@ to run a clean ablation.
 
 | | |
 | --- | --- |
-| Unit tests | **301 cases**, 8.7k lines of test code (21.7k lines of source) |
+| Unit tests | **429 cases**, 10.8k lines of test code (23.4k lines of backend source + 3.6k of frontend) |
 | Deterministic evals | 14 tasks × 4 variants, driven by a scripted client, **zero network calls** |
+| Frontend | vitest covers the presentation-layer pure functions; CI rebuilds and **byte-compares** the committed bundle |
 | CI matrix | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12 — **6 combinations** |
 | Quality gates | ruff (`E F I UP B SIM TID RUF`) + black + mypy + `uv lock --check` + pre-commit |
 | Layering contract | `clients → tools → tracing → core → extensions → cli`, enforced by ruff `TID251` in CI |
@@ -188,6 +226,7 @@ and the difference is machine-readable.
 
 ```mermaid
 flowchart TD
+    WEB["<b>server</b> — web console (a peer of cli)<br/>read-only audit API · SSE live stream · subprocess executor"]
     CLI["<b>cli</b> — outermost assembler<br/>dm-agent · -eval · -bench · -trace · -economics · -manifest-diff"]
     EXT["<b>extensions</b> — ExtensionAPI · registry · five-level discovery · project trust<br/>built-in capabilities: critic_gate / circuit_breaker / reflexion_loop / self_consistency"]
     CORE["<b>core</b> — agent.py is assembly + the ReAct loop only (928 lines)<br/>context_window · response_parser · tool_invoker · completion<br/>replan · persistence · run_state · observation · prompting"]
@@ -195,6 +234,7 @@ flowchart TD
     TOOLS["<b>tools</b> — 17 built-in tools + dynamic MCP tools"]
     CLIENTS["<b>clients</b> — deepseek / openai / claude / gemini + custom providers"]
 
+    WEB -. "spawns a subprocess; never imports cli as a library" .-> CLI
     CLI --> EXT
     EXT -. "six interceptable lifecycle hooks" .-> CORE
     CORE --> TRACING --> TOOLS --> CLIENTS
@@ -202,6 +242,8 @@ flowchart TD
 
 Dependencies flow **one way only** (`clients → tools → tracing → core → extensions → cli`),
 enforced by ruff `TID251` in CI — a `core` module importing `cli` fails the build.
+`server` is a peer of `cli`: it spawns CLI subprocesses, so the web UI can only ever do what
+the command line does — an invariant held by AST assertions in `tests/test_server_layering.py`.
 The authoritative prose version is [docs/architecture.md](docs/architecture.md).
 
 ---
@@ -216,6 +258,7 @@ The authoritative prose version is [docs/architecture.md](docs/architecture.md).
 | Reflexion / Critic / Self-Consistency | ✅ v2 (default off) | ❌ | partial | ❌ | ❌ |
 | Extension system (add capabilities without kernel edits) | ✅ entry_points + directories + explicit file | ❌ | plugins | ❌ | ❌ |
 | Interceptable lifecycle hooks | ✅ 6 events | ❌ | partial | ❌ | ❌ |
+| Visual audit console | ✅ read-only gallery, no key, static-hostable | chat GUI | ✅ full web UI | trajectory inspector | ❌ |
 | MCP integration | ✅ | ❌ | ✅ | ❌ | ❌ |
 | Bundled maintenance benchmark | ✅ 6+ tasks | ❌ | ❌ | SWE-bench | ❌ |
 | Published SWE-bench Lite score | ⚠️ Tier-1: 0.0% (50/300 subset, non-official protocol) | ❌ | ✅ | ✅ | ❌ |
@@ -227,12 +270,13 @@ Comparison protocol, module status, and roadmap: [project status](docs/project-s
 
 ## 📚 Documentation
 
-Start at **[docs/](docs/)** for the full index. The five you will want first:
+Start at **[docs/](docs/)** for the full index. The six you will want first:
 
 | Document | When to read it |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Install, configure, first task, local checks |
-| [CLI reference](docs/cli.md) | Six entry points, every flag and its default |
+| [CLI reference](docs/cli.md) | Seven entry points, every flag and its default |
+| [Web console](docs/web.md) | Session audit, live runs, security model, static hosting |
 | [Architecture](docs/architecture.md) | Layering, execution chain, hook points, session model |
 | [Extensions](docs/extensions.md) | Add tools / guards / providers without kernel edits, plus the security model |
 | [Sessions and traces](docs/tracing.md) | Session tree, privacy tiers, checkpoints, fork |

@@ -7,7 +7,8 @@
 | 文档 | 内容 |
 | --- | --- |
 | [快速开始](getting-started.md) | 安装、配置 API key、跑第一个任务、本地验证 |
-| [CLI 参考](cli.md) | 六个命令行入口、配置优先级、全部开关及其默认值 |
+| [CLI 参考](cli.md) | 七个命令行入口、配置优先级、全部开关及其默认值 |
+| [Web 控制台](web.md) | `dm-agent-web`：会话审计、实时运行、安全模型、静态托管 |
 | [能力清单](capabilities.md) | 能力总表、默认开/关的分类原则、上下文记忆 |
 
 ## 深入
@@ -32,6 +33,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [项目现状与对标](project-status.md) | 同类项目对比、算法模块状态、评测口径说明、roadmap |
+| [发布到 PyPI](releasing.md) | Trusted Publishing 原理、一次性设置、每次发版流程 |
 | [研究日志](research-log/) | 每个非平凡设计决策的动机、实验、ablation、踩坑 |
 | [产品定位](product.md) | 目标用户与落地场景 |
 | [v2.0.0 发布说明](release-v2.0.0.md) | 发布叙事与 smoke checklist |

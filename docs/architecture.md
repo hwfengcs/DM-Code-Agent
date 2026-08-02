@@ -26,10 +26,18 @@ core         依赖 clients / tools / memory / prompts / tracing，禁止依赖 
 extensions   依赖 core（把内置能力装到事件总线上）
    ↑
 cli          最外层组装者，可以依赖任何层
+server       与 cli 同级的另一个最外层组装者；可依赖任何下层，但不得依赖 cli
 ```
 
 `cli` 是**参考实现，不是被复用的库**。想自己造 agent 就直接用 `dm_agent.core.ReactAgent`，
 不必接受这套 CLI 与 UI。
+
+`server`（[Web 控制台](web.md)）与 `cli` 同级而非在它之上：它要发起运行时 **spawn 一个
+CLI 子进程**，不把 CLI 当库用。这样 Web 界面永远和命令行做同一件事，不会变成第二套
+装配逻辑。三条相关不变式——server 不 import cli、无下层反向依赖 server、
+`settings.py` 零 web 依赖——由 `tests/test_server_layering.py` 用 AST 断言，
+因为 `dm_agent/server/**` 与 `dm_agent/cli/**` 一样整体豁免了 `TID251`
+（否则 `from .settings import` 会被误判），豁免后 ruff 也就管不住 server → cli。
 
 | 包 | 职责 |
 | --- | --- |
@@ -45,6 +53,7 @@ cli          最外层组装者，可以依赖任何层
 | `dm_agent/benchmarks/` | coding / maintenance / swebench-lite 套件与经济学核算 |
 | `dm_agent/evals/` | 确定性与真实模型 eval |
 | `dm_agent/cli/` | argparse、Config、UI、报告、运行装配 |
+| `dm_agent/server/` | Web 控制台：只读审计 API、子进程执行器、SSE 实时流（需 `[web]` extra） |
 
 `tracing/` 内部同样按职责单向拆分：`summary.py` / `analysis.py` 放确定性算法，
 `render.py` 只做输出，`replay.py` / `fork.py` 承担显式动作，`cli.py` 只保留参数解析与分发。
