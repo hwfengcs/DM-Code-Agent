@@ -54,6 +54,28 @@ def block_real_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(name, DUMMY_API_KEY)
 
 
+@pytest.fixture(autouse=True)
+def isolate_user_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """把用户级数据目录（``~/.dm_agent``）重定向到 tmp，让测试不读开发机的真实配置。
+
+    ``parse_args()`` 会调 ``load_config_from_file()``，而配置查找的第二档是
+    ``~/.dm_agent/config.json``。不隔离的话，**全部测试的行为都会取决于跑测试这台
+    机器上碰巧有没有那个文件**——本地全绿、CI 全红（或反过来）的经典配方。
+
+    ``Path.home()`` 在 POSIX 上读 ``HOME``，在 Windows 上读 ``USERPROFILE``，
+    所以两个都要设。``~/.dm_agent/.env`` 同理：不隔离就可能把开发者的真 key
+    读进测试（``block_real_api_keys`` 是第二道防线，这是第一道）。
+
+    刻意用 ``tmp_path_factory`` 而不是 ``tmp_path``：后者是测试自己的工作目录，
+    在里面占一个 ``home/`` 会和测试自建的同名目录撞车。
+    """
+    fake_home = tmp_path_factory.mktemp("fake-home")
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
+
+
 def linked_entries(
     run_id: str,
     id_prefix: str,

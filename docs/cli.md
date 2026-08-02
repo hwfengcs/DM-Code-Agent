@@ -20,12 +20,19 @@
 ## 配置优先级
 
 ```
-CLI 参数  >  config.json  >  硬编码默认
+CLI 参数  >  ./config.json  >  ~/.dm_agent/config.json  >  硬编码默认
 ```
 
+两个 `config.json` 位置**先到先得**：项目级存在就用它，否则用用户级，都没有就用硬编码默认。
+交互式设置向导保存时**写回它读到的那一个**；两者都不存在时落用户级
+（`~/.dm_agent/`，与扩展目录、信任文件同一个家）。
+
 API key 是例外：**只从环境变量读**（`DEEPSEEK_API_KEY` / `OPENAI_API_KEY` /
-`CLAUDE_API_KEY` / `GEMINI_API_KEY`），不参与上面的链条。MCP 配置独立于当前工作目录的
-`mcp_config.json`，见 [MCP 配置](mcp.md)。
+`CLAUDE_API_KEY` / `GEMINI_API_KEY`），不参与上面的链条。`.env` 按
+`./.env` → `~/.dm_agent/.env` 顺序加载，且**已导出的环境变量始终优先**——
+所以 `DEEPSEEK_API_KEY=sk-xxx dm-agent "..."` 永远压过任何文件。
+
+MCP 配置独立于当前工作目录的 `mcp_config.json`，见 [MCP 配置](mcp.md)。
 
 ## 基础参数
 

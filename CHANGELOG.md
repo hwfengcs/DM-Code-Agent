@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Installability: user-level config and `.env` (2026-08)
+
+Three bugs that made `pip install dm-code-agent` unusable outside a cloned repo. All three
+were **invisible under editable installs**, where "relative to the package" and "relative to
+the working directory" happen to coincide. Details and rejected alternatives in
+[`docs/research-log/32-user-level-config-and-env.md`](docs/research-log/32-user-level-config-and-env.md).
+
+#### Changed (breaking)
+- **`config.json` lookup is now `./config.json` → `~/.dm_agent/config.json`.** Previously the
+  path was `Path(__file__).parents[2] / "config.json"`, which resolves to `site-packages/`
+  once the package is actually installed — polluting the install root, failing outright on
+  read-only or system Python installs, sharing one config across every project, and leaving
+  the file somewhere the user cannot find. Saves write back to **whichever file was read**,
+  falling back to user level. Running from a cloned repo is byte-for-byte unchanged, so no
+  migration is required.
+- **`dm_agent.cli.CONFIG_FILE` removed** from the public `__all__`. Its semantics were wrong
+  and keeping it would invite the same bug. Use `dm_agent.paths.resolve_config_read_path()` /
+  `resolve_config_write_path()`.
+
+#### Fixed
+- **The user's `.env` is found again.** Bare `load_dotenv()` calls `find_dotenv(usecwd=False)`,
+  which searches upward from the *calling module's* directory — installed, that walk starts in
+  `site-packages/dm_agent/cli/` and never reaches the user's project, so a `.env` next to their
+  code silently did nothing. Now loaded explicitly as `./.env` → `~/.dm_agent/.env`, keeping
+  dotenv's `override=False` so **exported environment variables still win over both files**.
+- **`.env` files with a UTF-8 BOM now work.** Found while verifying the fix above from a real
+  install: dotenv reads as plain `utf-8` and folds the BOM into the first key name
+  (`﻿DEEPSEEK_API_KEY`), so the key is set but unreadable and the error still says
+  "missing API key" — undiagnosable in practice. Every common way to create a `.env` on
+  Windows writes a BOM (`Set-Content -Encoding utf8`, `>` redirection, Notepad's "UTF-8"),
+  so files are now read as `utf-8-sig`, which is identical to `utf-8` when no BOM is present.
+- **Missing-key errors are actionable.** The message now prints resolved absolute paths for all
+  three options (environment variable, `~/.dm_agent/.env`, `./.env`) plus the provider's key
+  console URL, instead of "set an environment variable" with no indication of where.
+- The welcome screen prints the config file's full path rather than the bare name `config.json`,
+  which after a global install says nothing about which of the two files was read.
+
+#### Added
+- **`dm_agent/paths.py`** — dependency-free path resolution shared by `cli` and `server`
+  (`server` may not import `cli`; it spawns it). Includes atomic JSON writes and POSIX
+  permission tightening for config files.
+- **`tests/test_cli_config_paths.py`** (15 cases), including a regression guard asserting that
+  no resolved config path ever lands inside the package directory.
+- **`isolate_user_home` autouse fixture** redirecting `HOME` and `USERPROFILE` (Windows
+  `Path.home()` reads the latter) into a temp dir. Without it, `parse_args()` now reaches
+  `~/.dm_agent/config.json` and every test's behaviour would depend on whether the machine
+  running it happens to have that file.
+
 ### Web console (2026-07)
 
 A browser UI (`dm-agent-web`) serving two purposes with **one renderer**: a local

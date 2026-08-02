@@ -102,9 +102,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        from dotenv import load_dotenv
+        from dm_agent.paths import load_env_files
 
-        load_dotenv()
+        # 与 CLI 同一套查找顺序：./.env → ~/.dm_agent/.env。子进程各自也会再加载一次，
+        # 但 server 进程自己也要能读到 key（例如将来做启动前的可用性检查）。
+        load_env_files()
     except ImportError:  # pragma: no cover - dotenv 是核心依赖，正常装不上才会走到
         pass
 

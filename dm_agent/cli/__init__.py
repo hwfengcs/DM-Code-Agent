@@ -19,8 +19,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
 from dm_agent import PROVIDER_DEFAULTS
 from dm_agent.core.checkpoint import RunCheckpoint
 from dm_agent.core.persistence import load_resume_state
@@ -29,12 +27,13 @@ from dm_agent.extensions import (
     ProjectTrustDecision,
     discover_extensions,
 )
+from dm_agent.paths import load_env_files
 
 from .args import parse_args, validate_feature_args
 from .config import (
-    CONFIG_FILE,
     Config,
     format_advanced_feature_status,
+    format_missing_api_key_help,
     get_api_key_for_provider,
     load_config_from_file,
     resolve_advanced_features,
@@ -78,7 +77,6 @@ from .ui import (
 )
 
 __all__ = [
-    "CONFIG_FILE",
     "PROVIDER_DEFAULTS",
     "UI",
     "Config",
@@ -98,6 +96,7 @@ __all__ = [
     "format_advanced_feature_status",
     "format_agent_context_status",
     "format_duration",
+    "format_missing_api_key_help",
     "format_run_status",
     "format_step_input",
     "get_api_key_for_provider",
@@ -127,7 +126,9 @@ __all__ = [
 def main(argv: Any = None) -> int:
     """主入口函数"""
     configure_console_encoding()
-    load_dotenv()
+    # 显式按 ./.env → ~/.dm_agent/.env 加载。无参数的 load_dotenv() 是从**调用方模块
+    # 所在目录**向上找的，全局安装后从 site-packages 往上翻，永远够不到用户的工作目录。
+    load_env_files()
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
     feature_error = validate_feature_args(args)
@@ -174,8 +175,12 @@ def main(argv: Any = None) -> int:
 
     # 四家内置供应商保持原有的 API key 前置校验；扩展供应商自行决定是否需要。
     if not args.api_key and provider_name in PROVIDER_DEFAULTS:
-        print(UI.paint("[ERR] 缺少 API 密钥", Fore.RED, bright=True), file=sys.stderr)
-        print(f"请提供 --api-key 或设置环境变量 {args.provider.upper()}_API_KEY。", file=sys.stderr)
+        print(
+            UI.paint(f"[ERR] 缺少 {args.provider} API key", Fore.RED, bright=True),
+            file=sys.stderr,
+        )
+        print(file=sys.stderr)
+        print(format_missing_api_key_help(args.provider), file=sys.stderr)
         return 2
     args.api_key = args.api_key or ""
 
