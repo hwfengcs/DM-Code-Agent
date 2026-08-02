@@ -5,17 +5,17 @@
 **本地优先 · 全程可审计 · 内核只有一个 ReAct 循环**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-429%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-429%20passed-brightgreen.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/tests)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/hwfengcs/DM-Code-Agent/blob/main/LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/hwfengcs/DM-Code-Agent?color=informational)](https://github.com/hwfengcs/DM-Code-Agent/commits/main)
-[![Docs](https://img.shields.io/badge/Docs-docs%2F-purple.svg)](docs/)
-[![Research Log](https://img.shields.io/badge/Research%20Log-32%20entries-orange.svg)](docs/research-log/)
+[![Docs](https://img.shields.io/badge/Docs-docs%2F-purple.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs)
+[![Research Log](https://img.shields.io/badge/Research%20Log-32%20entries-orange.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log)
 
-**中文** | [English](README_EN.md)
+**中文** | [English](https://github.com/hwfengcs/DM-Code-Agent/blob/main/README_EN.md)
 
-<img src="docs/project-overview-simple.png" alt="DM-Code-Agent 总览：交任务 → 规划 → ReAct 循环 → 完成门 → 交付" width="100%">
+<img src="https://raw.githubusercontent.com/hwfengcs/DM-Code-Agent/main/docs/project-overview-simple.png" alt="DM-Code-Agent 总览：交任务 → 规划 → ReAct 循环 → 完成门 → 交付" width="100%">
 
 </div>
 
@@ -59,7 +59,7 @@ dm-agent-web --read-only            # 只读展厅：审计会话，不需要 AP
 dm-agent-web                        # 完整工作台：对话式交任务 + 实时看每一步
 ```
 
-终端会打印一条带 token 的地址，点开即可。详见 [Web 控制台](docs/web.md)。
+终端会打印一条带 token 的地址，点开即可。详见 [Web 控制台](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/web.md)。
 
 ---
 
@@ -114,7 +114,7 @@ dm-agent-web                 # 完整工作台：对话式交任务 + SSE 实时
   另装一套 `ReactAgent`。所以 Web 永远和命令行做同一件事。
 
 只读展厅用 hash 路由 + `base: './'`，把构建产物和会话 JSONL 一起丢到任何静态托管上就能跑，
-**不需要后端，也不需要 key**。详见 [Web 控制台](docs/web.md)。
+**不需要后端，也不需要 key**。详见 [Web 控制台](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/web.md)。
 
 ### 🔌 加工具 / 守卫 / 模型供应商，一行内核代码都不用改
 
@@ -130,7 +130,7 @@ dm-agent-web                 # 完整工作台：对话式交任务 + SSE 实时
 | `before_finish` | 否决「假装做完了」 |
 | `on_run_start` / `on_run_end` | 改 metadata / 追加 prompt / `{retry: True}` 重跑一轮 |
 
-[`examples/block_dangerous_shell.py`](examples/block_dangerous_shell.py) 是一个 25 行的
+[`examples/block_dangerous_shell.py`](https://github.com/hwfengcs/DM-Code-Agent/blob/main/examples/block_dangerous_shell.py) 是一个 25 行的
 可运行例子：拦住 `rm -rf`。发现来源有五级优先级（builtin → entry_points → 用户目录 →
 项目目录 → `--extension`），**项目本地扩展需要显式信任**才会加载。
 
@@ -166,7 +166,7 @@ dm-agent-web                 # 完整工作台：对话式交任务 + SSE 实时
 跨模型跑分目前**冻结**；已发布的 SWE-bench Lite Tier-1 baseline 是
 `0.0% resolved / 72.0% patch-applied`（DeepSeek，固定 50 题子集，受 host verifier 噪声影响，
 **不能和官方 leaderboard 直接比较**）。v2 的算法模块只声明「代码、keyless 测试和离线报告
-能力已落地」。完整口径见[项目现状](docs/project-status.md)。
+能力已落地」。完整口径见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
 
 ---
 
@@ -234,7 +234,7 @@ flowchart TD
 由 ruff `TID251` 在 CI 强制——`core` 层想 import `cli` 会直接构建失败。
 `server` 与 `cli` 同级：它 spawn CLI 子进程，所以 Web 界面永远和命令行做同一件事，
 这条由 `tests/test_server_layering.py` 的 AST 断言守着。
-文字版权威说明见 [docs/architecture.md](docs/architecture.md)。
+文字版权威说明见 [docs/architecture.md](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/architecture.md)。
 
 ---
 
@@ -254,36 +254,36 @@ flowchart TD
 | 公开 SWE-bench Lite 分数 | ⚠️ Tier-1：0.0%（50/300 子集，非官方口径） | ❌ | ✅ | ✅ | ❌ |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
-对比口径、算法模块落地状态与 roadmap 见[项目现状](docs/project-status.md)。
+对比口径、算法模块落地状态与 roadmap 见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
 
 ---
 
 ## 📚 文档
 
-从 **[docs/](docs/)** 开始，那里有完整导航。最常用的六份：
+从 **[docs/](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs)** 开始，那里有完整导航。最常用的六份：
 
 | 文档 | 什么时候读 |
 | --- | --- |
-| [快速开始](docs/getting-started.md) | 安装、配置、第一个任务、本地验证 |
-| [CLI 参考](docs/cli.md) | 七个入口、全部开关及默认值 |
-| [Web 控制台](docs/web.md) | 会话审计、实时运行、安全模型、静态托管 |
-| [架构](docs/architecture.md) | 分层、执行链、钩子位置、会话数据模型 |
-| [扩展开发](docs/extensions.md) | 不改内核加工具 / 守卫 / 供应商，含安全模型 |
-| [会话与 trace](docs/tracing.md) | 会话树、隐私分档、checkpoint、fork |
+| [快速开始](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/getting-started.md) | 安装、配置、第一个任务、本地验证 |
+| [CLI 参考](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/cli.md) | 七个入口、全部开关及默认值 |
+| [Web 控制台](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/web.md) | 会话审计、实时运行、安全模型、静态托管 |
+| [架构](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/architecture.md) | 分层、执行链、钩子位置、会话数据模型 |
+| [扩展开发](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/extensions.md) | 不改内核加工具 / 守卫 / 供应商，含安全模型 |
+| [会话与 trace](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/tracing.md) | 会话树、隐私分档、checkpoint、fork |
 
-设计决策的动机、实验与踩坑都在 [`docs/research-log/`](docs/research-log/)（32 篇）。
+设计决策的动机、实验与踩坑都在 [`docs/research-log/`](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log)（32 篇）。
 
 ---
 
 ## 🤝 贡献
 
-欢迎 issue 和 PR。先读 [CONTRIBUTING.md](CONTRIBUTING.md)、[AGENTS.md](AGENTS.md)、
-[SECURITY.md](SECURITY.md)、[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+欢迎 issue 和 PR。先读 [CONTRIBUTING.md](https://github.com/hwfengcs/DM-Code-Agent/blob/main/CONTRIBUTING.md)、[AGENTS.md](https://github.com/hwfengcs/DM-Code-Agent/blob/main/AGENTS.md)、
+[SECURITY.md](https://github.com/hwfengcs/DM-Code-Agent/blob/main/SECURITY.md)、[CODE_OF_CONDUCT.md](https://github.com/hwfengcs/DM-Code-Agent/blob/main/CODE_OF_CONDUCT.md)。
 涉及算法决策或非平凡 ablation 的改动，请在
-[`docs/research-log/`](docs/research-log/) 留一篇 devlog。
+[`docs/research-log/`](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log) 留一篇 devlog。
 
 **加一个内置工具**只需要动一处：`dm_agent/tools/__init__.py:_builtin_tools()`。
-**加一个第三方扩展**连仓库都不用碰——见[扩展开发](docs/extensions.md)。
+**加一个第三方扩展**连仓库都不用碰——见[扩展开发](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/extensions.md)。
 
 ## ⭐ Star History
 
@@ -291,4 +291,4 @@ flowchart TD
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+MIT License. See [LICENSE](https://github.com/hwfengcs/DM-Code-Agent/blob/main/LICENSE).
