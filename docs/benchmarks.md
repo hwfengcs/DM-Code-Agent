@@ -15,8 +15,26 @@ HuggingFace download — but a real API key is required, because the point is to
 
 ## How to read the score
 
-The headline number is `summary.overall_pass_rate`. Measured baseline: DeepSeek scores
-`0.5 (3/6)` on the coding suite (`bench_reports/deepseek_coding.json`).
+The headline number is `summary.overall_pass_rate`. The archived baseline
+(`bench_reports/baseline-20260803.json`, DeepSeek `deepseek-chat`, suite `all`, 2026-08-03):
+
+| Metric | Value |
+| --- | --- |
+| `overall_pass_rate` | **0.385** (5/13) |
+| 95% CI (Wilson) | [0.177, 0.645] |
+| `hidden_test_pass_rate` | 0.769 |
+| `agent_completion_rate` | 0.615 |
+| Total tokens | 750,672 |
+| Wall clock | 7.1 min |
+
+Read the gap between those rates, not just the first line. Hidden tests pass on **77%** of tasks
+while only **38%** count as a pass — the difference is process discipline, not coding ability:
+three tasks edited files the prompt forbade (all three went for the test file), four ran out of
+steps, one produced unparseable output.
+
+A concrete demonstration of why the noise floor matters: an earlier run of the same 6 coding
+tasks with the same model scored 3/6, this baseline scores 4/6. **Same model, same tasks, one
+task of difference.** That is the ±7.7 points talking, not a change in capability.
 
 **At 13 tasks, one flipped task is ±7.7 percentage points.** That is the single most important
 thing to know about this number:

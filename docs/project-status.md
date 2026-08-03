@@ -15,7 +15,10 @@ Tier-2 verifier 从未实现，CI 也从不跑它。
 **本项目的记分牌是自带的 coding + maintenance benchmark**：13 道题，本地建工作区 →
 agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overall_pass_rate`。
 它不依赖 Docker、不依赖 HuggingFace，需要一个真实 API key。已实测：DeepSeek 在
-coding suite 上 **pass_rate 0.5（3/6）**（`bench_reports/deepseek_coding.json`）。
+13 题上 **pass_rate 0.385（5/13）**，95% CI [0.177, 0.645]
+（`bench_reports/baseline-20260803.json`，2026-08-03）。同一份报告里隐藏测试通过率是
+**0.769**——落差来自「改了不该改的文件」（3 题）与「步数耗尽」（4 题），
+不是写不出代码。
 
 读这个分数时请记住：13 题的规模下，**一题翻转就是 ±7.7 个百分点**。它适合用来对照
 「改了策略之后有没有变好」，不适合当作与其他项目横向比较的绝对值。所有离线报告都附 raw JSON。

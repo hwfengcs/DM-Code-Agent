@@ -171,7 +171,9 @@ v2.1 做了一次减法：把 6 个**毕业标准依赖已冻结评测**的默�
 0.0% resolved 且受 host verifier 噪声污染，Tier-2 verifier 从未实现）。
 
 记分牌换成自带的 **coding + maintenance benchmark**：13 道题，隐藏测试判 pass/fail，
-不依赖 Docker 与 HuggingFace。实测 DeepSeek 在 coding suite 上 `pass_rate 0.5（3/6）`。
+不依赖 Docker 与 HuggingFace。已存档 baseline（DeepSeek，2026-08-03，13 题）：
+**`pass_rate 0.385（5/13）`**，而隐藏测试通过率是 `0.769`——差距全在「改了不该改的
+文件」和「步数耗尽」上，见 `bench_reports/baseline-20260803.json`。
 
 ```bash
 dm-agent-bench --suite all --provider deepseek --output bench_reports/after.json

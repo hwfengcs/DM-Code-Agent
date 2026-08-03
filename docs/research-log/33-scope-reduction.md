@@ -119,6 +119,34 @@ repeated_failure_policy_experiment_enabled / repeated_failure_policy_applied_cou
 这正是扩展系统存在的意义：**内核不该为无法证伪的假设付出维护成本，而假设本身
 不必因此消失。**
 
+## Baseline（2026-08-03）
+
+减法完成后立刻存了一份对照原点：`bench_reports/baseline-20260803.json`
+（DeepSeek `deepseek-chat`，suite `all`，13 题，7.1 分钟，750,672 tokens）。
+
+| 指标 | 值 |
+| --- | --- |
+| `overall_pass_rate` | **0.385**（5/13），95% CI [0.177, 0.645] |
+| `hidden_test_pass_rate` | 0.769 |
+| `agent_completion_rate` | 0.615 |
+
+**最值得看的是三个比率之间的落差，而不是第一行。** 隐藏测试在 77% 的题上通过，
+但只有 38% 计为成功。失败的 8 题里有 5 题隐藏测试其实是过的：
+
+| 失败模式 | 题数 | 说明 |
+| --- | --- | --- |
+| 步数耗尽 | 4 | 其中 1 题隐藏测试已通过，只是没在步数内声明完成 |
+| 改了不该改的文件 | 3 | **三题全是去改 `tests/test_public_*.py`** |
+| 模型输出格式崩坏 | 1 | `Response is not a valid JSON object` |
+
+所以这个 agent 的瓶颈**不是写不出代码，是过程纪律**：不知道何时收手，以及在改不动
+实现时转向改测试。`allowed_changed_files` 约束把后者抓了个正着——这正是隐藏测试
+之外还需要改动文件约束的原因。
+
+顺带得到一个噪声口径的活教材：同一模型、同样的 6 道 coding 题，历史报告
+`deepseek_coding.json` 是 3/6，本次 baseline 是 4/6。**一题的差异，什么都没改。**
+这就是 ±7.7 个百分点的实际含义。
+
 ## 下一步
 
 减法完成后，真正该投入的是让记分牌可用：把 coding + maintenance 合成一条命令出一个总分、

@@ -181,7 +181,9 @@ polluted by host verifier noise, and the Tier-2 verifier was never implemented.
 
 The scoreboard is now the bundled **coding + maintenance benchmark**: 13 tasks judged pass/fail
 by hidden tests, with no Docker or HuggingFace dependency. Measured: DeepSeek scores
-`pass_rate 0.5 (3/6)` on the coding suite.
+an archived baseline (DeepSeek, 2026-08-03, 13 tasks) of **`pass_rate 0.385 (5/13)`** —
+while its hidden-test pass rate is `0.769`. The gap is entirely process discipline: editing
+files it was told not to touch, and running out of steps.
 
 ```bash
 dm-agent-bench --suite all --provider deepseek --output bench_reports/after.json
