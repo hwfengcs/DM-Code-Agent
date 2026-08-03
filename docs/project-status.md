@@ -7,13 +7,18 @@
 
 **本项目不声明任何未实际运行过的评测分数提升。**
 
-真实 SWE-bench / Docker Tier-2 verifier / 跨模型跑分目前**冻结**。已发布的
-SWE-bench Lite Tier-1 baseline（DeepSeek，固定 50 题子集）是
-**0.0% resolved / 72.0% patch-applied**，这个数字受 host verifier 环境噪声影响，
-**不能和官方 leaderboard 直接比较**。
+真实 SWE-bench / Docker Tier-2 verifier / 跨模型跑分**冻结**，且 v2.1 已把
+SWE-bench Lite 子系统整个移除：它跑不通（Tier-1 baseline 0.0% resolved，且受 host
+verifier 环境噪声污染，按本项目自己的口径就不能与官方 leaderboard 比较），
+Tier-2 verifier 从未实现，CI 也从不跑它。
 
-所以 v2 的算法模块（Reflexion / Critic / Self-Consistency / Adaptive Replanning）只声明
-「代码、keyless 测试和离线报告能力已落地」，不声明真实分数提升。所有离线报告都附 raw JSON。
+**本项目的记分牌是自带的 coding + maintenance benchmark**：13 道题，本地建工作区 →
+agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overall_pass_rate`。
+它不依赖 Docker、不依赖 HuggingFace，需要一个真实 API key。已实测：DeepSeek 在
+coding suite 上 **pass_rate 0.5（3/6）**（`bench_reports/deepseek_coding.json`）。
+
+读这个分数时请记住：13 题的规模下，**一题翻转就是 ±7.7 个百分点**。它适合用来对照
+「改了策略之后有没有变好」，不适合当作与其他项目横向比较的绝对值。所有离线报告都附 raw JSON。
 
 ## v.s. 同类项目（当前公开口径）
 
@@ -25,12 +30,11 @@ SWE-bench Lite Tier-1 baseline（DeepSeek，固定 50 题子集）是
 | 本地优先（无沙箱依赖） | ✅ | ✅ | docker | docker | ✅ |
 | 会话日志 + Replay | ✅ JSONL 条目树 + dry/tool replay + diff + fork | git diff | server log | trajectory | 弱 |
 | 非破坏式上下文折叠 | ✅ 原文不删，可离线重算 | repo-map | partial | trajectory | weak |
-| Reflexion / Critic / Self-Consistency | ✅ v2（默认关） | ❌ | partial | ❌ | ❌ |
 | 扩展系统（不改内核加能力） | ✅ entry_points + 目录 + 显式文件 | ❌ | plugins | ❌ | ❌ |
 | 可拦截生命周期钩子 | ✅ 6 个事件 | ❌ | partial | ❌ | ❌ |
 | MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
-| 自带 maintenance benchmark | ✅ 6+ tasks | ❌ | ❌ | SWE-bench | ❌ |
-| 公开 SWE-bench Lite 分数 | ⚠️ Tier-1：0.0%（50/300 子集，非官方口径） | ❌ | ✅ | ✅ | ❌ |
+| 自带 hidden-test benchmark | ✅ 13 题，可出分 | ❌ | ❌ | SWE-bench | ❌ |
+| 公开 SWE-bench Lite 分数 | ❌ 已移除（跑不通，见上） | ❌ | ✅ | ✅ | ❌ |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
 ## 算法模块状态
@@ -38,16 +42,15 @@ SWE-bench Lite Tier-1 baseline（DeepSeek，固定 50 题子集）是
 | 模块 | 状态 | 说明 | Devlog |
 | --- | --- | --- | --- |
 | ReAct + Planner + Replan | ✅ v1.5 | 基础 ReAct 循环 + 3–8 步全局计划 + 失败 replan | [00](research-log/00-kickoff.md) |
-| SWE-bench Lite suite | ✅ P1 | 50 题子集，Tier-1 baseline 含失败模式分析与 host 噪声说明 | [01](research-log/01-swebench-baseline.md) |
-| Reflexion（episodic memory） | ✅ 实现落地 | ablation 待真实评测解冻 | [02](research-log/02-reflexion.md) |
+| 自带 hidden-test benchmark | ✅ 现役记分牌 | coding 6 题 + maintenance 7 题，出 `overall_pass_rate` | [09](research-log/09-maintenance-realism.md) |
 | Mem0 风格上下文记忆 | ✅ 现役 | 原子记忆 + 按任务召回 + 保留最近轮次原文 | [24](research-log/24-memory-hygiene-and-recall.md) |
-| Critic + Self-Consistency | ✅ 实现落地 | 完成前 peer-review 门禁 + N 路选优（majority / critic score / test pass） | [04](research-log/04-critic-and-consistency.md) |
 | Adaptive Replanning + token economics | ✅ 实现落地 | 错误信号映射到 replan 策略；离线统计 token / cost-per-success | [05](research-log/05-adaptive-and-economics.md) |
 | 长上下文护栏 | ✅ 默认开 | 观察截断 + 分页提示、预算触发折叠、read-before-edit 拦截 | [23](research-log/23-observation-truncation-and-token-budget.md) |
-| 状态容错 | ✅ 默认开 | 统一重试、原子写 + 备份、checkpoint/resume、进度保留 replan；熔断默认关 | [25](research-log/25-unified-llm-retry-and-atomic-io.md) [26](research-log/26-run-checkpoint-and-progress-carrying-replan.md) [27](research-log/27-tool-circuit-breaker-experiment.md) |
+| 状态容错 | ✅ 默认开 | 统一重试、原子写 + 备份、checkpoint/resume、进度保留 replan | [25](research-log/25-unified-llm-retry-and-atomic-io.md) [26](research-log/26-run-checkpoint-and-progress-carrying-replan.md) |
 | Evals 闭环 | ✅ CI 门禁 | 恢复成功率、per-tag 能力画像、幻觉代理指标、repeat 方差、100% eval 门禁 + manifest 守卫 | [28](research-log/28-evals-recovery-capability-and-gates.md) |
 | 扩展系统 + 生命周期钩子 | ✅ 架构升级 | 注册表 + 三来源发现 + 6 个可拦截事件；可选能力搬出内核 | — |
 | 会话树 + 非破坏式折叠 + fork | ✅ 架构升级 | 条目带 id/parent_id，folding 只追加不删除，`dm-agent-trace fork` | [29](research-log/29-session-tree.md) |
+| 减法重构 | ✅ v2.1 | 移除跑不通的 SWE-bench 与 6 个无法毕业的默认关模块，CLI 开关 35 → 23 | [33](research-log/33-scope-reduction.md) |
 
 ## 架构升级批次（2026-07）
 
@@ -67,8 +70,11 @@ SWE-bench Lite Tier-1 baseline（DeepSeek，固定 50 题子集）是
 
 ## Roadmap
 
-**冻结项**：Docker/Tier-2 SWE-bench、真实 cross-model 跑分，以及任何 v2 机制的
-真实分数提升声明。
+**已移除**（不是冻结，是删掉了）：SWE-bench Lite 子系统、Reflexion / Critic /
+Self-Consistency / 工具熔断 / 记忆卫生 / LLM 摘要压缩。理由见
+[devlog 33](research-log/33-scope-reduction.md)。
+
+**冻结项**：Docker/Tier-2 verifier、真实 cross-model 跑分。
 
 短期在做的非算法方向：
 

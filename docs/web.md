@@ -93,7 +93,6 @@ python -m dm_agent.cli --provider deepseek --trace sessions/chat-xxx.jsonl --con
 | --- | --- |
 | **「结束对话」结束的是整个进程**，不是只打断当前这一轮 | `ReactAgent` 没有取消接口。能做的只有收掉子进程 |
 | **上一轮没跑完不能发下一轮**（409） | ReactAgent 是单线程顺序执行的；排队只会让「现在在跑哪一轮」变得不可读 |
-| **对话模式不支持 Reflexion**（400） | 它每次 trial 会把对话历史回滚到本轮开始前的快照，与跨轮累积正好相反 |
 
 ### 生命周期
 
@@ -159,8 +158,8 @@ SSE 订阅挂在模块级的 store 上，不跟着组件卸载走。
 `tests/test_server_process.py` 有一条断言把生成的 argv 直接喂给 `dm_agent.cli` 真正的
 解析器（对话 argv 还额外过一遍 `validate_feature_args`）——有人改了 CLI 开关名而忘了
 改这边，测试立刻红，而不是等运行时报 `unrecognized arguments`。这条断言写下来当天就
-抓到一个真 bug：server 会为对话拼出带 `--enable-reflexion` 的 argv，而子进程会因为
-互斥校验直接 exit 2。
+抓到一个真 bug：server 会为对话拼出一个子进程因互斥校验直接 exit 2 的 argv。
+（那条互斥随 v2.1 移除 Reflexion 一起消失了，但这条防漂移断言仍然有效。）
 
 `tests/test_cli_conversation.py` 里还有一条真进程端到端：用 `build_conversation_argv`
 起真的 CLI，喂两轮任务，断言**第二轮发给模型的 prompt 里含第一轮的内容**。provider

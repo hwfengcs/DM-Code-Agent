@@ -83,21 +83,14 @@ dm-agent-manifest-diff bench_reports/baseline.json bench_reports/experiment.json
 The manifest diff is offline-only. It exits with `0` when suite signatures, task fingerprints, and
 variant names match; it exits with `1` when reports are from different task contracts.
 
-Default-off v2 plumbing for coding/maintenance benchmark experiments:
+Default-off plumbing for coding/maintenance benchmark experiments:
 
 ```bash
-dm-agent-bench --suite maintenance \
-  --enable-critic \
-  --self-consistency-runs 3 \
-  --self-consistency-strategy test_pass
+dm-agent-bench --suite maintenance --enable-adaptive-replanning --max-replans 3
 ```
 
-Critic review uses the same configured LLM client as the main run unless future code supplies a
-separate client. Self-consistency creates fresh workspaces per candidate and then selects by
-majority vote, critic score, or test pass. These features are disabled by default and are not used
-by CI live runs.
-
-SWE-bench Lite self-consistency is intentionally blocked while real SWE-bench evaluation is frozen.
+> v2.1 removed the Critic and self-consistency benchmark switches along with the
+> SWE-bench Lite suite. See [devlog 33](research-log/33-scope-reduction.md).
 
 ## Maintenance Suite
 
@@ -144,17 +137,10 @@ The report includes:
 - agent metadata such as replan, parse repair, and tool error counts
 - adaptive replanning metadata when enabled: signal kind, selected strategy, skipped replans,
   and replan budget exhaustion
-- repeated-failure policy experiment metadata when explicitly enabled: loop-breaking strategy
-  counts for repeated action/error signatures
-- critic / self-consistency configuration metadata when those default-off switches are used
-- self-consistency uncertainty metadata when multiple candidates are run: vote distribution,
-  selected support, support fraction, tie detection, margin to runner-up, and confidence label
-- self-consistency patch fingerprints when file edits are available, so majority voting can group
-  equivalent workspace changes before falling back to final-answer text
 - manifest provenance: task ids, per-task fingerprints, variant names, and suite signature
 - compact trace analysis when `--trace-dir` is enabled
 - recovery success rate per variant: `recovered_runs / runs_with_failures`, where a run
-  "had failures" when any parse/tool/unknown/argument/critic/edit-guard counter is non-zero
+  "had failures" when any parse/tool/unknown/argument/edit-guard counter is non-zero
 - `by_tag` capability breakdown: per-tag runs, successes, and success rate
 - repeat-variance stability when `--repeat` is greater than 1: per-task `pass@k`, `pass^k`,
   per-repeat pass lists, and a task pass-rate standard deviation (same config reruns; API

@@ -32,12 +32,7 @@ DM-Code-Agent 面向真实的代码维护任务：在本地工作区里读写文
 | Skill 系统 | 开 | 按任务关键词激活领域 prompt 与专用工具，见 [Skill 系统](skills.md) |
 | 扩展系统 | 开 | 工具/技能/供应商/钩子都可由外部扩展注册，见 [扩展开发](extensions.md) |
 | 生命周期钩子 | 开 | 六个可拦截的事件点，见 [生命周期事件](lifecycle-events.md) |
-| Critic 完成门禁 | **关** | `--enable-critic` |
-| Reflexion | **关** | `--enable-reflexion`；失败 trial 生成 lesson 注入下一轮 |
-| Adaptive Replanning | **关** | `--enable-adaptive-replanning` |
-| 工具熔断 | **关** | `--enable-circuit-breaker` |
-| 记忆卫生 / LLM 摘要 | **关** | `--enable-memory-hygiene` / `--enable-llm-compression` |
-| Self-Consistency | 仅 bench | `dm-agent-bench --self-consistency-runs N`，未接入 `dm-agent` |
+| Adaptive Replanning | **关** | `--enable-adaptive-replanning`；扩展的重规划决策策略与预算限制 |
 | 确定性 eval | — | 无 API key 的行为回归，覆盖 JSON 修复、工具恢复、replan 等 |
 | Maintenance benchmark | — | hidden-test benchmark，记录改动文件约束与 agent 指标 |
 
@@ -50,9 +45,12 @@ DM-Code-Agent 面向真实的代码维护任务：在本地工作区里读写文
 - **基础设施护栏默认开**。观察截断、token 预算、read-before-edit 守卫、LLM 重试、
   原子写+备份——它们防止 agent 因为上下文爆掉、瞬时网络故障或盲改文件而失败，
   开着不会改变任务语义。
-- **行为/算法类默认关**。Reflexion、Critic、Adaptive Replanning、熔断、记忆卫生、
-  LLM 摘要——它们会改变 agent 的决策路径，属于需要实验验证的假设，
-  所以必须显式打开，且每一个都有对应的 devlog。
+- **行为/算法类默认关**。目前只剩 Adaptive Replanning——它会改变 agent 的决策路径，
+  属于需要实验验证的假设，所以必须显式打开。
+
+> 曾经还有 Reflexion / Critic / Self-Consistency / 工具熔断 / 记忆卫生 / LLM 摘要，
+> 它们在 v2.1 被移除：毕业标准依赖真实评测数据，而真实评测冻结后这些假设
+> 永远无法被证伪。理由与取回方式见 [devlog 33](research-log/33-scope-reduction.md)。
 
 ## 上下文记忆
 

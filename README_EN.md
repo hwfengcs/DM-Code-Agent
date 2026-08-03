@@ -5,7 +5,7 @@
 **Local-first · Fully auditable · The kernel is just one ReAct loop**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-429%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-427%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
@@ -24,8 +24,8 @@ workspace — reading and writing files, running tests and linters, calling MCP 
 records every plan, tool call, and observation into an **append-only session log**. When
 something goes wrong you can replay it, diagnose it, and **fork a new run from any single step**.
 
-Not another chat black box: the kernel is just the ReAct loop (928 lines), while Reflexion /
-Critic / circuit breaking are extensions hanging off lifecycle hooks, and context compaction
+Not another chat black box: the kernel is just the ReAct loop (847 lines), while optional
+capabilities are extensions hanging off lifecycle hooks, and context compaction
 **never deletes history** — so ablation conclusions can actually be verified.
 
 > If this project is useful to you, a ⭐ helps others find it.
@@ -146,35 +146,44 @@ This classification is written into the project's constitution, not decided ad h
 
 | Default **ON** (infrastructure guardrails) | Default **OFF** (behavior / algorithms) |
 | --- | --- |
-| read-before-edit guard, observation truncation, token-budget compaction | Reflexion (reflect-and-retry) |
-| Atomic writes + automatic backups, unified LLM retry | Critic completion gate, Self-Consistency |
-| `--checkpoint` / `--resume` run-level resumption | Circuit breaker, adaptive replanning, LLM compression |
+| read-before-edit guard, observation truncation, token-budget compaction | Adaptive replanning (error signals → replan strategy) |
+| Atomic writes + automatic backups, unified LLM retry | |
+| `--checkpoint` / `--resume` run-level resumption | |
 
 New users get a **safe** default configuration; researchers flip one `--enable-xxx` at a time
 to run a clean ablation.
+
+v2.1 did a round of subtraction: six default-off modules whose graduation criteria depended on
+the frozen real evaluation were removed (Reflexion / Critic / Self-Consistency / circuit breaker /
+memory hygiene / LLM compression). CLI flags went 35 → 23. To revive any of them, write it as an
+external extension — that is precisely what the extension system is for.
 
 ### 🔬 Full verification with no API key
 
 | | |
 | --- | --- |
-| Unit tests | **429 cases**, 10.8k lines of test code (23.4k lines of backend source + 3.6k of frontend) |
+| Unit tests | **427 cases**, 10.3k lines of test code (20.1k lines of backend source + 3.6k of frontend) |
 | Deterministic evals | 14 tasks × 4 variants, driven by a scripted client, **zero network calls** |
 | Frontend | vitest covers the presentation-layer pure functions; CI rebuilds and **byte-compares** the committed bundle |
 | CI matrix | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12 — **6 combinations** |
 | Quality gates | ruff (`E F I UP B SIM TID RUF`) + black + mypy + `uv lock --check` + pre-commit |
 | Layering contract | `clients → tools → tracing → core → extensions → cli`, enforced by ruff `TID251` in CI |
 
-"Minimal kernel" is a number you can check, not a slogan: `agent.py` 1774 → **928** lines,
+"Minimal kernel" is a number you can check, not a slogan: `agent.py` 1774 → **847** lines,
 `main.py` 2048 → **6** lines, `tracing/cli.py` 1111 → **171** lines.
 
 ### 🧪 No inflated scores
 
 **This project never claims an evaluation improvement it has not actually run.** Real
-SWE-bench / Docker Tier-2 verifier / cross-model scoring are currently **frozen**. The
-published SWE-bench Lite Tier-1 baseline is `0.0% resolved / 72.0% patch-applied` (DeepSeek,
-a fixed 50-task subset, affected by host verifier noise and therefore **not comparable to the
-official leaderboard**). The v2 algorithm modules only claim "code, keyless tests, and offline
-reporting have landed". Full caveats in [project status](docs/project-status.md).
+SWE-bench / Docker Tier-2 verifier / cross-model scoring are **frozen**, and the SWE-bench Lite
+suite was removed in v2.1 because it did not work: the Tier-1 baseline was 0.0% resolved and
+polluted by host verifier noise, and the Tier-2 verifier was never implemented.
+
+The scoreboard is now the bundled **coding + maintenance benchmark**: 13 tasks judged pass/fail
+by hidden tests, with no Docker or HuggingFace dependency. Measured: DeepSeek scores
+`pass_rate 0.5 (3/6)` on the coding suite. At 13 tasks, one flip is ±7.7 percentage points — use
+it to check whether a change helped, not to compare against other projects. Full caveats in
+[project status](docs/project-status.md).
 
 ---
 
@@ -228,8 +237,8 @@ and the difference is machine-readable.
 flowchart TD
     WEB["<b>server</b> — web console (a peer of cli)<br/>read-only audit API · SSE live stream · subprocess executor"]
     CLI["<b>cli</b> — outermost assembler<br/>dm-agent · -eval · -bench · -trace · -economics · -manifest-diff"]
-    EXT["<b>extensions</b> — ExtensionAPI · registry · five-level discovery · project trust<br/>built-in capabilities: critic_gate / circuit_breaker / reflexion_loop / self_consistency"]
-    CORE["<b>core</b> — agent.py is assembly + the ReAct loop only (928 lines)<br/>context_window · response_parser · tool_invoker · completion<br/>replan · persistence · run_state · observation · prompting"]
+    EXT["<b>extensions</b> — ExtensionAPI · registry · five-level discovery · project trust"]
+    CORE["<b>core</b> — agent.py is assembly + the ReAct loop only (847 lines)<br/>context_window · response_parser · tool_invoker · completion<br/>replan · persistence · run_state · observation · prompting"]
     TRACING["<b>tracing</b> — session entry tree · append-only writes · privacy tiers · fork"]
     TOOLS["<b>tools</b> — 17 built-in tools + dynamic MCP tools"]
     CLIENTS["<b>clients</b> — deepseek / openai / claude / gemini + custom providers"]
@@ -255,13 +264,12 @@ The authoritative prose version is [docs/architecture.md](docs/architecture.md).
 | Local-first (no sandbox dependency) | ✅ | ✅ | docker | docker | ✅ |
 | Session log + replay | ✅ JSONL entry tree + dry/tool replay + diff + fork | git diff | server log | trajectory | weak |
 | Non-destructive context compaction | ✅ originals kept, recomputable offline | repo-map | partial | trajectory | weak |
-| Reflexion / Critic / Self-Consistency | ✅ v2 (default off) | ❌ | partial | ❌ | ❌ |
 | Extension system (add capabilities without kernel edits) | ✅ entry_points + directories + explicit file | ❌ | plugins | ❌ | ❌ |
 | Interceptable lifecycle hooks | ✅ 6 events | ❌ | partial | ❌ | ❌ |
 | Visual audit console | ✅ read-only gallery, no key, static-hostable | chat GUI | ✅ full web UI | trajectory inspector | ❌ |
 | MCP integration | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Bundled maintenance benchmark | ✅ 6+ tasks | ❌ | ❌ | SWE-bench | ❌ |
-| Published SWE-bench Lite score | ⚠️ Tier-1: 0.0% (50/300 subset, non-official protocol) | ❌ | ✅ | ✅ | ❌ |
+| Bundled hidden-test benchmark | ✅ 13 tasks, scored | ❌ | ❌ | SWE-bench | ❌ |
+| Published SWE-bench Lite score | ❌ removed (did not work, see above) | ❌ | ✅ | ✅ | ❌ |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
 Comparison protocol, module status, and roadmap: [project status](docs/project-status.md).

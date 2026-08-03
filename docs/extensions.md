@@ -285,17 +285,19 @@ dm-agent --extension ./echo_provider.py --provider echo "随便说点什么"
 
 ## 内置能力也是扩展
 
-`--enable-critic` / `--enable-circuit-breaker` / `--enable-reflexion` 以及内置的
-read-before-edit 守卫，实现方式和你的扩展**完全一样**——都是挂在事件总线上的处理器：
+内置的 read-before-edit 守卫，实现方式和你的扩展**完全一样**——
+都是挂在事件总线上的处理器：
 
 | 能力 | 开关 | 挂载事件 | 实现 |
 | --- | --- | --- | --- |
 | read-before-edit 守卫 | 默认开，`--disable-edit-guard` 关 | `before_tool_call` + `after_tool_result` | `dm_agent/core/guards.py` |
-| Critic 完成门禁 | `--enable-critic` | `before_finish` | `dm_agent/extensions/capabilities/critic_gate.py` |
-| 工具熔断 | `--enable-circuit-breaker` | `before_tool_call` + `after_tool_result` | `dm_agent/extensions/capabilities/circuit_breaker_gate.py` |
-| Reflexion 多 trial | `--enable-reflexion` | `on_run_start` + `on_run_end` | `dm_agent/extensions/capabilities/reflexion_loop.py` |
 
-想看真实用法就读这几个文件——它们是最好的参考实现。
+想看真实用法就读这个文件——它是最好的参考实现。
+
+> v2.1 之前这里还列着 Critic / 工具熔断 / Reflexion 三个内置能力。它们被移除后
+> `dm_agent/extensions/capabilities/` 子包一并删除，`ReactAgent(capabilities=[...])`
+> 成为可选能力的唯一入口。要复活其中任何一个，按本文档写成外部扩展即可——
+> 这正是扩展系统存在的意义。见 [devlog 33](research-log/33-scope-reduction.md)。
 
 需要比 `setup(api)` 更多控制（例如要一个按 phase 包装的 LLM 客户端）时，可以实现
 `dm_agent.core.capabilities.AgentCapability` 协议，直接传给 Agent：
