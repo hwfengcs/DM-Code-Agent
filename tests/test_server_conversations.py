@@ -263,16 +263,6 @@ def test_unknown_conversation_is_404(writable_client: TestClient) -> None:
     )
 
 
-def test_reflexion_is_rejected_with_a_readable_reason(writable_client: TestClient) -> None:
-    """开着 Reflexion 建对话必须拿到 400 + 一句人话，而不是一个立刻 exit 2 的子进程。"""
-    response = writable_client.post(
-        "/api/conversations",
-        json={"provider": "deepseek", "options": {"enable_reflexion": True}},
-    )
-    assert response.status_code == 400
-    assert "Reflexion" in response.json()["detail"]
-
-
 def test_a_run_id_is_not_a_conversation_id(
     writable_client: TestClient, fake_conversation: Callable[..., None]
 ) -> None:

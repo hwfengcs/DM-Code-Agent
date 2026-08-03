@@ -55,11 +55,6 @@ def test_benchmark_feature_flags_parse_without_api_key():
         bench_main(
             [
                 "--list",
-                "--enable-critic",
-                "--self-consistency-runs",
-                "2",
-                "--self-consistency-strategy",
-                "critic_score",
             ]
         )
         == 0
@@ -135,18 +130,12 @@ def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest
     report = runner_module.run_benchmark_suite(
         tasks=[task],
         config=BenchmarkRunConfig(
-            enable_critic=True,
             enable_adaptive_replanning=True,
             enable_repeated_failure_policy_experiment=True,
-            self_consistency_runs=2,
-            self_consistency_strategy="critic_score",
         ),
     )
 
-    assert report["critic"]["enabled"] is True
     assert report["adaptive_replanning"]["repeated_failure_policy_experiment"] is True
-    assert report["self_consistency"]["runs"] == 2
-    assert report["self_consistency"]["strategy"] == "critic_score"
     assert report["manifest"]["task_fingerprints"][task.task_id]
     assert report["manifest"]["suite_signature"]
 
@@ -253,89 +242,6 @@ def test_benchmark_manifest_diff_reports_suite_task_variant_and_fingerprint_drif
     assert "different" in output
     assert "packaging_ci_contract" in output
     assert "config_precedence" in output
-
-
-def test_self_consistency_benchmark_uses_fresh_candidate_results(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    task = get_coding_tasks(["slugify_cleanup"])[0]
-    candidates = [
-        _bench_result(task.task_id, success=False, final_answer="bad", tokens=200),
-        _bench_result(task.task_id, success=True, final_answer="good", tokens=300),
-    ]
-
-    def fake_run_in_workspace(*args, **kwargs):
-        repeat_index = kwargs["repeat_index"]
-        return candidates[repeat_index]
-
-    monkeypatch.setattr(runner_module, "_run_benchmark_task_in_workspace", fake_run_in_workspace)
-
-    result = runner_module.run_benchmark_task(
-        task,
-        runner_module.DEFAULT_BENCH_VARIANTS[0],
-        BenchmarkRunConfig(self_consistency_runs=2, self_consistency_strategy="test_pass"),
-    )
-
-    assert result.success is True
-    assert result.final_answer == "good"
-    assert result.estimated_tokens == 500
-    assert result.metadata["self_consistency"]["runs"] == 2
-    assert result.metadata["self_consistency"]["selected_index"] == 2
-    uncertainty = result.metadata["self_consistency"]["uncertainty"]
-    assert uncertainty["vote_distribution"] == {"bad": 1, "good": 1}
-    assert uncertainty["selected_support"] == 1
-    assert uncertainty["runner_confidence"] == "high"
-
-
-def test_benchmark_self_consistency_majority_vote_groups_by_patch_fingerprint(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    task = get_coding_tasks(["slugify_cleanup"])[0]
-    candidates = [
-        _bench_result_with_metadata(
-            task.task_id,
-            success=True,
-            final_answer="wording one",
-            tokens=100,
-            metadata={"patch_fingerprint": "patch-a"},
-        ),
-        _bench_result_with_metadata(
-            task.task_id,
-            success=False,
-            final_answer="wording two",
-            tokens=90,
-            metadata={"patch_fingerprint": "patch-b"},
-        ),
-        _bench_result_with_metadata(
-            task.task_id,
-            success=True,
-            final_answer="wording three",
-            tokens=110,
-            metadata={"patch_fingerprint": "patch-a"},
-        ),
-    ]
-
-    def fake_run_in_workspace(*args, **kwargs):
-        repeat_index = kwargs["repeat_index"]
-        return candidates[repeat_index]
-
-    monkeypatch.setattr(runner_module, "_run_benchmark_task_in_workspace", fake_run_in_workspace)
-
-    result = runner_module.run_benchmark_task(
-        task,
-        runner_module.DEFAULT_BENCH_VARIANTS[0],
-        BenchmarkRunConfig(self_consistency_runs=3, self_consistency_strategy="majority_vote"),
-    )
-
-    uncertainty = result.metadata["self_consistency"]["uncertainty"]
-
-    assert result.final_answer == "wording one"
-    assert uncertainty["vote_distribution"] == {"patch-a": 2, "patch-b": 1}
-    assert uncertainty["selected_vote_key"] == "patch-a"
-    assert uncertainty["selected_vote_key_source"] == "patch_fingerprint"
-    assert result.metadata["self_consistency"]["candidates"][0]["vote_key_source"] == (
-        "patch_fingerprint"
-    )
 
 
 def test_patch_fingerprint_is_stable_content_sensitive_and_ignores_hidden_files(tmp_path):

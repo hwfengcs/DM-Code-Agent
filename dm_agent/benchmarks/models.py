@@ -65,15 +65,10 @@ class BenchmarkRunConfig:
     workspace_root: str | None = None
     trace_dir: str | None = None
     quiet: bool = True
-    enable_reflexion: bool = False
-    max_trials: int = 1
     enable_adaptive_replanning: bool = False
     max_replans: int = -1
     enable_repeated_failure_policy_experiment: bool = False
     cost_per_1k_tokens: float = 0.0
-    enable_critic: bool = False
-    self_consistency_runs: int = 1
-    self_consistency_strategy: str = "majority_vote"
     # Advisory: run hidden tests node-by-node for partial credit (score unchanged).
     per_test_credit: bool = False
 

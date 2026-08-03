@@ -1,6 +1,6 @@
 """内核与可选能力之间的装配契约。
 
-可选能力（Critic 门禁、工具熔断、Reflexion 重试……）不再以 ``if self.enable_xxx:``
+可选能力（工具熔断等）不再以 ``if self.enable_xxx:``
 分支的形式住在 :class:`~dm_agent.core.agent.ReactAgent` 里，而是实现本模块的
 ``AgentCapability`` 协议，在 Agent 装配的最后一步挂到生命周期事件总线上。
 

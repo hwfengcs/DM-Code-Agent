@@ -141,9 +141,6 @@ def test_cli_advanced_features_default_off(monkeypatch):
 
     args = parse_args(["do maintenance"])
 
-    assert args.enable_reflexion is False
-    assert args.max_trials == 3
-    assert args.enable_critic is False
     assert args.enable_adaptive_replanning is False
     assert args.max_replans == -1
     assert args.enable_repeated_failure_policy_experiment is False
@@ -156,10 +153,6 @@ def test_cli_advanced_features_wire_into_agent(monkeypatch):
     args = parse_args(
         [
             "do maintenance",
-            "--enable-reflexion",
-            "--max-trials",
-            "2",
-            "--enable-critic",
             "--enable-evolution",
         ]
     )
@@ -167,15 +160,10 @@ def test_cli_advanced_features_wire_into_agent(monkeypatch):
 
     config = Config(
         api_key="test-key",
-        enable_reflexion=args.enable_reflexion,
-        max_trials=args.max_trials,
-        enable_critic=args.enable_critic,
         enable_evolution=args.enable_evolution,
     )
 
     advanced = resolve_advanced_features(config)
-    assert advanced["reflexion"] is True
-    assert advanced["critic"] is True
     assert advanced["adaptive_replanning"] is True
     assert advanced["repeated_failure_policy_experiment"] is True
 
@@ -185,18 +173,12 @@ def test_cli_advanced_features_wire_into_agent(monkeypatch):
         [Tool("noop", "No operation.", lambda arguments: "ok")],
     )
 
-    assert agent.enable_reflexion is True
-    assert agent.max_trials == 2
-    assert agent.critic is not None
     assert agent.enable_adaptive_replanning is True
     assert agent.enable_repeated_failure_policy_experiment is True
 
 
 def test_cli_advanced_feature_validation(monkeypatch):
     monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
-
-    bad_trials = parse_args(["task", "--max-trials", "0"])
-    assert "--max-trials" in validate_feature_args(bad_trials)
 
     bad_replans = parse_args(["task", "--enable-repeated-failure-policy-experiment"])
     assert "--enable-adaptive-replanning" in validate_feature_args(bad_replans)

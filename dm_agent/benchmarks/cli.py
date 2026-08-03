@@ -49,17 +49,6 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     parser.add_argument("--repeat", type=int, default=1, help="Repeat count per task/variant.")
     parser.add_argument("--max-steps", type=int, help="Override task max steps.")
     parser.add_argument(
-        "--enable-reflexion",
-        action="store_true",
-        help="Retry failed agent trials with Reflexion lessons. Default is off.",
-    )
-    parser.add_argument(
-        "--max-trials",
-        type=int,
-        default=3,
-        help="Maximum trials when --enable-reflexion is set.",
-    )
-    parser.add_argument(
         "--enable-adaptive-replanning",
         action="store_true",
         help="Enable deterministic error-signal-aware replanning. Default is off.",
@@ -83,23 +72,6 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         type=float,
         default=0.0,
         help="Estimated provider cost per 1K tokens for local economics reports.",
-    )
-    parser.add_argument(
-        "--enable-critic",
-        action="store_true",
-        help="Enable critic review gate for benchmark agent completions. Default is off.",
-    )
-    parser.add_argument(
-        "--self-consistency-runs",
-        type=int,
-        default=1,
-        help="Run N fresh-workspace candidates and select one. Default is 1/off.",
-    )
-    parser.add_argument(
-        "--self-consistency-strategy",
-        choices=["majority_vote", "critic_score", "test_pass"],
-        default="majority_vote",
-        help="Selection strategy when --self-consistency-runs is greater than 1.",
     )
     parser.add_argument("--test-timeout", type=int, default=30, help="Hidden test timeout.")
     parser.add_argument(
@@ -132,9 +104,6 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
 
 def main(argv: Any = None) -> int:
     args = parse_args(argv)
-    if args.max_trials < 1:
-        print("--max-trials must be at least 1.", file=sys.stderr)
-        return 2
     if args.max_replans < -1:
         print("--max-replans must be -1 or greater.", file=sys.stderr)
         return 2
@@ -197,17 +166,12 @@ def main(argv: Any = None) -> int:
                 workspace_root=args.workspace_root,
                 trace_dir=args.trace_dir,
                 quiet=not args.show_agent_output,
-                enable_reflexion=args.enable_reflexion,
-                max_trials=args.max_trials,
                 enable_adaptive_replanning=args.enable_adaptive_replanning,
                 max_replans=args.max_replans,
                 enable_repeated_failure_policy_experiment=(
                     args.enable_repeated_failure_policy_experiment
                 ),
                 cost_per_1k_tokens=args.cost_per_1k_tokens,
-                enable_critic=args.enable_critic,
-                self_consistency_runs=args.self_consistency_runs,
-                self_consistency_strategy=args.self_consistency_strategy,
                 per_test_credit=args.per_test_credit,
             ),
         )
@@ -229,10 +193,6 @@ def _validate_feature_args(args: argparse.Namespace) -> str:
         return (
             "--enable-repeated-failure-policy-experiment requires " "--enable-adaptive-replanning."
         )
-    if args.self_consistency_runs < 1:
-        return "--self-consistency-runs must be at least 1."
-    if args.self_consistency_strategy == "critic_score" and not args.enable_critic:
-        return "--self-consistency-strategy critic_score requires --enable-critic."
     return ""
 
 

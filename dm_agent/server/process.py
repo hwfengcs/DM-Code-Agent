@@ -45,8 +45,6 @@ class SpecError(ValueError):
 # 白名单：请求字段 → CLI 开关。**只有这张表里的键会被翻译成 argv**，
 # 请求里多出来的字段一律忽略，不存在「传个奇怪的键就能注入参数」这条路。
 BOOL_FLAGS: dict[str, str] = {
-    "enable_reflexion": "--enable-reflexion",
-    "enable_critic": "--enable-critic",
     "enable_adaptive_replanning": "--enable-adaptive-replanning",
     "enable_memory_hygiene": "--enable-memory-hygiene",
     "enable_llm_compression": "--enable-llm-compression",
@@ -60,7 +58,6 @@ NUMBER_FLAGS: dict[str, tuple[str, float, float]] = {
     "max_observation_chars": ("--max-observation-chars", 0, 1_000_000),
     "context_token_budget": ("--context-token-budget", 0, 1_000_000),
     "llm_max_retries": ("--llm-max-retries", 0, 10),
-    "max_trials": ("--max-trials", 1, 10),
     "max_replans": ("--max-replans", -1, 100),
 }
 
@@ -77,21 +74,13 @@ class RunSpec:
     def validate(self, allowed_providers: set[str], *, for_conversation: bool = False) -> None:
         """校验请求。
 
-        ``for_conversation=True`` 时有两处不同，都是对话模式的固有约束：
-
-        * 建对话时**还没有任务**（第一轮随后从 stdin 送进去），所以跳过任务非空检查。
-        * **拒绝 Reflexion**。它每次 trial 会把对话历史回滚到本轮开始前的快照，与
-          「跨轮累积对话」正好相反，CLI 侧的 ``validate_feature_args`` 也会直接拒。
-          在这里挡下来是为了给用户一个 400 和一句人话，而不是让子进程静静地 exit 2。
+        ``for_conversation=True`` 时只有一处不同：建对话时**还没有任务**
+        （第一轮随后从 stdin 送进去），所以跳过任务非空检查。
 
         其余校验（provider、model、开关取值范围）两种模式完全一致。
         """
         if not for_conversation and not self.task.strip():
             raise SpecError("任务不能为空。")
-        if for_conversation and self.options.get("enable_reflexion") is True:
-            raise SpecError(
-                "多轮对话不支持 Reflexion：它的多次尝试会回滚对话历史，与跨轮累积上下文冲突。"
-            )
         if len(self.task) > MAX_TASK_CHARS:
             raise SpecError(f"任务过长（{len(self.task)} 字，上限 {MAX_TASK_CHARS}）。")
         if self.provider not in allowed_providers:
@@ -290,7 +279,7 @@ class RunProcess:
         """优雅结束一个对话子进程：先关 stdin 让它自己收尾，超时才动粗。
 
         比直接 ``stop()`` 好在于：agent 有机会写完最后一条 ``conversation_end``、
-        保存 reflexion 记忆、并把 MCP 服务器正常关掉。
+        并把 MCP 服务器正常关掉。
         """
         process = self._process
         if process is None or process.poll() is not None:

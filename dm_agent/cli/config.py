@@ -42,9 +42,6 @@ class Config:
     context_token_budget: int = 24000
     enable_edit_guard: bool = True
     llm_max_retries: int = 2
-    enable_reflexion: bool = False
-    max_trials: int = 3
-    enable_critic: bool = False
     enable_adaptive_replanning: bool = False
     max_replans: int = -1
     enable_repeated_failure_policy_experiment: bool = False
@@ -54,7 +51,6 @@ class Config:
     enable_circuit_breaker: bool = False
     circuit_breaker_threshold: int = 3
     circuit_breaker_cooldown: int = 5
-    reflexion_memory_file: str = ""
 
 
 def load_config_from_file() -> dict[str, Any]:
@@ -94,9 +90,6 @@ def save_config_to_file(config: Config) -> None:
             "context_token_budget": config.context_token_budget,
             "enable_edit_guard": config.enable_edit_guard,
             "llm_max_retries": config.llm_max_retries,
-            "enable_reflexion": config.enable_reflexion,
-            "max_trials": config.max_trials,
-            "enable_critic": config.enable_critic,
             "enable_adaptive_replanning": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
             "enable_repeated_failure_policy_experiment": (
@@ -108,7 +101,6 @@ def save_config_to_file(config: Config) -> None:
             "enable_circuit_breaker": config.enable_circuit_breaker,
             "circuit_breaker_threshold": config.circuit_breaker_threshold,
             "circuit_breaker_cooldown": config.circuit_breaker_cooldown,
-            "reflexion_memory_file": config.reflexion_memory_file,
         }
         atomic_write_json(path, config_data)
         UI.status("ok", "配置已保存", str(path))
@@ -157,8 +149,6 @@ def resolve_advanced_features(config: Config) -> dict[str, bool]:
         config.enable_repeated_failure_policy_experiment or config.enable_evolution
     )
     return {
-        "reflexion": config.enable_reflexion,
-        "critic": config.enable_critic,
         "adaptive_replanning": adaptive_replanning,
         "repeated_failure_policy_experiment": repeated_failure_policy,
         "evolution": config.enable_evolution,
@@ -174,8 +164,6 @@ def format_advanced_feature_status(config: Config) -> str:
     enabled = [
         label
         for key, label in [
-            ("reflexion", "reflexion"),
-            ("critic", "critic"),
             ("adaptive_replanning", "adaptive-replan"),
             ("repeated_failure_policy_experiment", "loop-break"),
             ("evolution", "evolution"),

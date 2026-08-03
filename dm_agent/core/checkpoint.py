@@ -62,7 +62,6 @@ class RunCheckpoint:
     metadata: dict[str, Any] = field(default_factory=dict)
     plan: list[dict[str, Any]] = field(default_factory=list)
     compressor_state: dict[str, Any] | None = None
-    reflexion_memory: dict[str, Any] | None = None
     agent_config: dict[str, Any] = field(default_factory=dict)
     cwd: str = ""
     schema_version: int = CHECKPOINT_SCHEMA_VERSION
@@ -89,7 +88,6 @@ class RunCheckpoint:
             metadata=dict(data.get("metadata") or {}),
             plan=list(data.get("plan") or []),
             compressor_state=data.get("compressor_state"),
-            reflexion_memory=data.get("reflexion_memory"),
             agent_config=dict(data.get("agent_config") or {}),
             cwd=str(data.get("cwd", "")),
             schema_version=version,

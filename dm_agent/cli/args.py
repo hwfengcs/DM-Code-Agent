@@ -11,8 +11,6 @@ from .config import load_config_from_file
 
 def validate_feature_args(args: argparse.Namespace) -> str:
     """Validate default-off advanced feature CLI arguments."""
-    if args.max_trials < 1:
-        return "--max-trials must be at least 1."
     if args.max_replans < -1:
         return "--max-replans must be -1 or greater."
     if args.max_observation_chars != 0 and args.max_observation_chars < 200:
@@ -25,10 +23,6 @@ def validate_feature_args(args: argparse.Namespace) -> str:
         return "--circuit-breaker-threshold must be at least 2."
     if args.circuit_breaker_cooldown < 1:
         return "--circuit-breaker-cooldown must be at least 1."
-    if args.enable_reflexion and (
-        getattr(args, "checkpoint", None) or getattr(args, "resume", None)
-    ):
-        return "--checkpoint/--resume 暂不支持与 --enable-reflexion 同时使用。"
     if getattr(args, "resume_at", "") and not getattr(args, "resume", None):
         return "--resume-at 需要与 --resume 一起使用。"
     conversation_error = _validate_conversation_args(args)
@@ -68,10 +62,6 @@ def _validate_conversation_args(args: argparse.Namespace) -> str:
         return "--conversation-stdin 必须配合 --trace，否则没有任何地方能读到每一轮的进展。"
     if getattr(args, "resume", None) or getattr(args, "resume_at", ""):
         return "--conversation-stdin 不支持 --resume：resume 恢复的是同一任务的中断点。"
-    if args.enable_reflexion:
-        # Reflexion 每次 trial 会把 conversation_history 回滚到本轮开始前的快照，
-        # 与「跨轮累积对话」正好相反。
-        return "--conversation-stdin 不支持 --enable-reflexion：多 trial 会回滚对话历史。"
     return ""
 
 
@@ -146,24 +136,6 @@ def parse_args(argv: Any) -> argparse.Namespace:
         type=int,
         default=saved_config.get("llm_max_retries", 2),
         help="LLM 瞬时故障（超时/断连/429/5xx）的统一重试次数；0 表示不重试（默认：2）。",
-    )
-    parser.add_argument(
-        "--enable-reflexion",
-        action="store_true",
-        default=saved_config.get("enable_reflexion", False),
-        help="启用失败后的 Reflexion 反思重试。默认关闭。",
-    )
-    parser.add_argument(
-        "--max-trials",
-        type=int,
-        default=saved_config.get("max_trials", 3),
-        help="启用 Reflexion 时最多尝试的轮数（默认：3）。",
-    )
-    parser.add_argument(
-        "--enable-critic",
-        action="store_true",
-        default=saved_config.get("enable_critic", False),
-        help="启用完成前 Critic 审查门禁。默认关闭。",
     )
     parser.add_argument(
         "--enable-adaptive-replanning",
@@ -272,11 +244,6 @@ def parse_args(argv: Any) -> argparse.Namespace:
         default="",
         metavar="ENTRY_ID",
         help="仅对 JSONL 会话日志有效：从该条目（或之前最近的 checkpoint 条目）恢复；支持唯一前缀。",
-    )
-    parser.add_argument(
-        "--reflexion-memory-file",
-        default=saved_config.get("reflexion_memory_file", ""),
-        help="Reflexion 经验教训的持久化文件（可选）；启动时加载，结束时保存。",
     )
     parser.add_argument(
         "--trace-llm-io",

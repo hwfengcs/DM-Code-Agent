@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from dm_agent import (
-    CriticAgent,
     LLMError,
     ReactAgent,
     Tool,
@@ -18,7 +16,6 @@ from dm_agent import (
     default_tools,
 )
 from dm_agent.core.checkpoint import RunCheckpoint
-from dm_agent.core.reflexion import EpisodicMemory
 from dm_agent.mcp import MCPManager, load_mcp_config
 from dm_agent.skills import SkillManager
 from dm_agent.tracing import SessionWriter, TraceWriter
@@ -95,7 +92,6 @@ def create_agent(
     step_callback: Any = None,
     skill_manager: SkillManager | None = None,
     trace_writer: SessionWriter | TraceWriter | None = None,
-    reflexion_memory: EpisodicMemory | None = None,
     extension_registry: ExtensionRegistry | None = None,
 ) -> ReactAgent:
     """Create a ReactAgent with the CLI's default-off advanced switches."""
@@ -116,10 +112,6 @@ def create_agent(
         enable_circuit_breaker=advanced["circuit_breaker"],
         circuit_breaker_threshold=config.circuit_breaker_threshold,
         circuit_breaker_cooldown=config.circuit_breaker_cooldown,
-        enable_reflexion=advanced["reflexion"],
-        max_trials=config.max_trials,
-        reflexion_memory=reflexion_memory,
-        critic=CriticAgent(client) if advanced["critic"] else None,
         enable_adaptive_replanning=advanced["adaptive_replanning"],
         max_replans=config.max_replans,
         enable_repeated_failure_policy_experiment=(advanced["repeated_failure_policy_experiment"]),
@@ -127,36 +119,6 @@ def create_agent(
             extension_registry.create_event_bus() if extension_registry is not None else None
         ),
     )
-
-
-def load_reflexion_memory_file(path_value: str) -> EpisodicMemory | None:
-    """从文件加载持久化的 Reflexion 经验；文件不存在时返回空记忆。"""
-    if not path_value:
-        return None
-    path = Path(path_value)
-    if not path.exists():
-        return EpisodicMemory()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return EpisodicMemory.from_dict(data)
-    except (OSError, ValueError) as e:
-        UI.status("warn", "Reflexion 记忆文件加载失败，使用空记忆", str(e))
-        return EpisodicMemory()
-
-
-def save_reflexion_memory_file(path_value: str, memory: EpisodicMemory | None) -> None:
-    if not path_value or memory is None:
-        return
-    path = Path(path_value)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = path.with_name(f"{path.name}.tmp-{os.getpid()}")
-        tmp_path.write_text(
-            json.dumps(memory.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        os.replace(tmp_path, path)
-    except OSError as e:
-        UI.status("warn", "Reflexion 记忆文件保存失败", str(e))
 
 
 def format_agent_context_status(agent: ReactAgent) -> str:
@@ -229,9 +191,6 @@ def _assemble_agent(
                 "mcp_tool_count": len(mcp_tools),
                 "skill_count": skill_count,
                 "trace_llm_io": trace_llm_io,
-                "reflexion_enabled": advanced["reflexion"],
-                "max_trials": config.max_trials,
-                "critic_enabled": advanced["critic"],
                 "adaptive_replanning_enabled": advanced["adaptive_replanning"],
                 "max_replans": config.max_replans,
                 "repeated_failure_policy_experiment_enabled": (
@@ -242,7 +201,6 @@ def _assemble_agent(
         )
 
     step_callback = create_step_callback(config.show_steps)
-    reflexion_memory = load_reflexion_memory_file(config.reflexion_memory_file)
     agent = create_agent(
         config,
         client,
@@ -250,7 +208,6 @@ def _assemble_agent(
         step_callback=step_callback,
         skill_manager=skill_manager,
         trace_writer=trace_writer,
-        reflexion_memory=reflexion_memory,
         extension_registry=extension_registry,
     )
     return agent, trace_writer
@@ -298,7 +255,6 @@ def run_single_task(
         git_status_before = collect_git_status()
         result = agent.run(task, checkpoint_path=checkpoint_path, resume_state=resume_state)
         git_status_after = collect_git_status()
-        save_reflexion_memory_file(config.reflexion_memory_file, agent.reflexion_memory)
         if report_path:
             write_run_report(
                 report_path,
@@ -475,7 +431,6 @@ def run_conversation_stdin(
                 f"第 {turn} 轮结束",
                 f"{metadata.get('status', '?')} | {format_agent_context_status(agent)}",
             )
-            save_reflexion_memory_file(config.reflexion_memory_file, agent.reflexion_memory)
         return 0
     except KeyboardInterrupt:
         reason = "interrupted"

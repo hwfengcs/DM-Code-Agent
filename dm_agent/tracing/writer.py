@@ -222,11 +222,6 @@ class TraceWriter:
             payload["signal"] = signal
         self.record("replan", payload)
 
-    def record_critic_review(self, *, step_number: int, review: dict[str, Any]) -> None:
-        payload = {"step_number": step_number}
-        payload.update(review)
-        self.record("critic_review", payload)
-
     def record_message(self, *, role: str, content: str, step_number: int, kind: str) -> str:
         """记录一条进入对话历史的消息，返回它的 entry id。
 

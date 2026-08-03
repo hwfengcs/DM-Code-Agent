@@ -1,8 +1,11 @@
 """完成判定与结果格式化。
 
 内核在两处判定"任务完成"：模型直接返回 ``finish``，以及模型调用 ``task_complete``
-工具。两条路径都要先把候选文本交给 ``before_finish`` 钩子链（Critic 门就挂在这里），
+工具。两条路径都要先把候选文本交给 ``before_finish`` 钩子链（扩展可在此否决完成），
 放行后再统一格式化成给用户看的最终答案与完成摘要。
+
+被否决时的失败标识沿用 ``critic_rejected``：这是完成门否决的历史字段名，
+会话日志与 ``planner`` 的重规划策略都按它对齐，不随内置 Critic 的移除而改名。
 """
 
 from __future__ import annotations

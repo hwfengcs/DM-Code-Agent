@@ -62,11 +62,9 @@ def initial_run_metadata(
     memory_hygiene_enabled: bool,
     llm_compression_enabled: bool,
     circuit_breaker_enabled: bool,
-    critic_enabled: bool,
     adaptive_replanning_enabled: bool,
     max_replans: int,
     repeated_failure_policy_experiment_enabled: bool,
-    reflexion_lesson_count: int,
 ) -> dict[str, Any]:
     """构造一次 run 的遥测 metadata 初值。
 
@@ -108,12 +106,6 @@ def initial_run_metadata(
         "llm_retry_count": 0,
         "backup_count": 0,
         "backup_dir": "",
-        "reflexion_enabled": False,
-        "critic_enabled": critic_enabled,
-        "critic_review_count": 0,
-        "critic_pass_count": 0,
-        "critic_fail_count": 0,
-        "critic_reject_count": 0,
         "adaptive_replanning_enabled": adaptive_replanning_enabled,
         "max_replans": max_replans,
         "replan_decision_count": 0,
@@ -129,9 +121,6 @@ def initial_run_metadata(
         "repeated_failure_policy_applied_count": 0,
         "terminal_action_alias_count": 0,
         "terminal_action_aliases": [],
-        # trial / max_trials / reflexion_* 的中性默认值；
-        # 装了 Reflexion 能力时由它在 on_run_start 里改写。
+        # 本次尝试序号；``on_run_end`` 处理器请求重试时由 ``run()`` 递增。
         "trial": attempt,
-        "max_trials": 1,
-        "reflexion_lesson_count": reflexion_lesson_count,
     }
