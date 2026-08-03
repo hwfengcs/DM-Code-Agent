@@ -1,12 +1,70 @@
 # Benchmarks
 
-DM-Code-Agent has two benchmark suites:
+**This is the project's scoreboard.** It is the only place a real number about agent capability
+comes from, so read the caveats before quoting it.
 
-- `coding`: compact hidden-test coding tasks.
-- `maintenance`: repository-maintenance tasks that mimic real fixes more closely.
+Three suites:
 
-Both suites create a temporary workspace, let the agent inspect and edit files, inject hidden
-tests after the agent finishes, and score the run by executable behavior.
+- `coding` (6 tasks): compact hidden-test coding tasks.
+- `maintenance` (7 tasks): repository-maintenance tasks that mimic real fixes more closely.
+- `all` (13 tasks): both of the above in one run — **use this when you want one score.**
+
+Every suite creates a temporary workspace, lets the agent inspect and edit files, injects hidden
+tests after the agent finishes, and scores the run by executable behavior. No Docker, no
+HuggingFace download — but a real API key is required, because the point is to measure a real model.
+
+## How to read the score
+
+The headline number is `summary.overall_pass_rate`. The archived baseline
+(`bench_reports/baseline-20260803.json`, DeepSeek `deepseek-chat`, suite `all`, 2026-08-03):
+
+| Metric | Value |
+| --- | --- |
+| `overall_pass_rate` | **0.385** (5/13) |
+| 95% CI (Wilson) | [0.177, 0.645] |
+| `hidden_test_pass_rate` | 0.769 |
+| `agent_completion_rate` | 0.615 |
+| Total tokens | 750,672 |
+| Wall clock | 7.1 min |
+
+Read the gap between those rates, not just the first line. Hidden tests pass on **77%** of tasks
+while only **38%** count as a pass — the difference is process discipline, not coding ability:
+three tasks edited files the prompt forbade (all three went for the test file), four ran out of
+steps, one produced unparseable output.
+
+A concrete demonstration of why the noise floor matters: an earlier run of the same 6 coding
+tasks with the same model scored 3/6, this baseline scores 4/6. **Same model, same tasks, one
+task of difference.** That is the ±7.7 points talking, not a change in capability.
+
+**At 13 tasks, one flipped task is ±7.7 percentage points.** That is the single most important
+thing to know about this number:
+
+- It is good for *"did my change help?"* — run before, run after, compare.
+- It is **not** good for comparing against other projects, and a swing of one or two tasks is
+  not evidence of anything. `dm-agent-score-diff` says so out loud rather than letting you
+  read a 1-task flip as an improvement.
+- `pass_rate_ci_95` (Wilson interval) is in every report. At this sample size it is wide. That
+  is honest, not a defect.
+
+## Comparing two runs
+
+```bash
+dm-agent-bench --suite all --provider deepseek --output bench_reports/before.json
+# ... change a strategy ...
+dm-agent-bench --suite all --provider deepseek --output bench_reports/after.json
+
+dm-agent-score-diff bench_reports/before.json bench_reports/after.json
+```
+
+Output gives the pass-rate delta, **which specific tasks flipped in each direction**, and the
+token/cost change. Per-task flips matter more than the total: "总分 +7.7%" tells you almost
+nothing, "`ttl_cache_lru` started passing and `safe_workspace_join` started failing" tells you
+where to look next.
+
+Regressions are always listed separately, **even when the total went up** — that is the failure
+mode a single aggregate number hides. Exit code is `1` when any task regressed, so it can gate
+a script. If the two reports have different task sets, the tool refuses to compare
+(`exit 2`) instead of printing a meaningless delta.
 
 ## Commands
 
@@ -83,21 +141,14 @@ dm-agent-manifest-diff bench_reports/baseline.json bench_reports/experiment.json
 The manifest diff is offline-only. It exits with `0` when suite signatures, task fingerprints, and
 variant names match; it exits with `1` when reports are from different task contracts.
 
-Default-off v2 plumbing for coding/maintenance benchmark experiments:
+Default-off plumbing for coding/maintenance benchmark experiments:
 
 ```bash
-dm-agent-bench --suite maintenance \
-  --enable-critic \
-  --self-consistency-runs 3 \
-  --self-consistency-strategy test_pass
+dm-agent-bench --suite maintenance --enable-adaptive-replanning --max-replans 3
 ```
 
-Critic review uses the same configured LLM client as the main run unless future code supplies a
-separate client. Self-consistency creates fresh workspaces per candidate and then selects by
-majority vote, critic score, or test pass. These features are disabled by default and are not used
-by CI live runs.
-
-SWE-bench Lite self-consistency is intentionally blocked while real SWE-bench evaluation is frozen.
+> v2.1 removed the Critic and self-consistency benchmark switches along with the
+> SWE-bench Lite suite. See [devlog 33](research-log/33-scope-reduction.md).
 
 ## Maintenance Suite
 
@@ -144,17 +195,10 @@ The report includes:
 - agent metadata such as replan, parse repair, and tool error counts
 - adaptive replanning metadata when enabled: signal kind, selected strategy, skipped replans,
   and replan budget exhaustion
-- repeated-failure policy experiment metadata when explicitly enabled: loop-breaking strategy
-  counts for repeated action/error signatures
-- critic / self-consistency configuration metadata when those default-off switches are used
-- self-consistency uncertainty metadata when multiple candidates are run: vote distribution,
-  selected support, support fraction, tie detection, margin to runner-up, and confidence label
-- self-consistency patch fingerprints when file edits are available, so majority voting can group
-  equivalent workspace changes before falling back to final-answer text
 - manifest provenance: task ids, per-task fingerprints, variant names, and suite signature
 - compact trace analysis when `--trace-dir` is enabled
 - recovery success rate per variant: `recovered_runs / runs_with_failures`, where a run
-  "had failures" when any parse/tool/unknown/argument/critic/edit-guard counter is non-zero
+  "had failures" when any parse/tool/unknown/argument/edit-guard counter is non-zero
 - `by_tag` capability breakdown: per-tag runs, successes, and success rate
 - repeat-variance stability when `--repeat` is greater than 1: per-task `pass@k`, `pass^k`,
   per-repeat pass lists, and a task pass-rate standard deviation (same config reruns; API

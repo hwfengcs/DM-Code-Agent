@@ -23,7 +23,8 @@ real repository maintenance, traceability, reproducibility, and benchmark qualit
 - Tool replay that mutates files or runs commands must remain explicit and documented.
 - Keep benchmark tasks executable with plain pytest hidden tests.
 - When changing benchmark behavior, update tests and docs together.
-- Do not claim evaluation numbers that were not actually run. Real SWE-bench / Docker /
+- Do not claim evaluation numbers that were not actually run. The scoreboard is the bundled
+  coding + maintenance benchmark (13 hidden-test tasks). Real SWE-bench / Docker /
   cross-model scoring is frozen.
 - Do not mix a fix into a pure-refactor commit — it destroys the "eval identical field by
   field" check that makes the refactor verifiable.
@@ -55,10 +56,9 @@ the updated `uv.lock` — CI fails on `uv lock --check` otherwise.
   result formatting), `replan.py` (failure signatures and replanning), `persistence.py`
   (checkpoint codec and pre-write backup), `observation.py`, `prompting.py`, `run_state.py`.
 - `dm_agent/core/events.py` + `capabilities.py`: lifecycle hooks and the capability contract.
-  Optional behaviors (Critic, circuit breaker, Reflexion) are extensions, not kernel branches.
+  Optional behaviors are extensions, not kernel branches.
 - `dm_agent/extensions/`: `ExtensionAPI` + registry, three-source discovery
-  (`discovery.py`), project trust store (`trust.py`), and the built-in capabilities under
-  `capabilities/`.
+  (`discovery.py`), and the project trust store (`trust.py`).
 - `dm_agent/tracing/`: append-only JSONL session log — `writer.py` (entry ids, privacy tiers),
   `session.py` (read-side normalization, `rebuild_context`), `summary.py` / `analysis.py`
   (deterministic algorithms), `render.py` (human/JSON/Markdown output), `replay.py` / `fork.py`

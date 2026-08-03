@@ -75,7 +75,7 @@ def create_conversation(
 
     spec = RunSpec(task="", provider=payload.provider, model=payload.model, options=payload.options)
     try:
-        # 建对话时还没有任务；同时挡掉与多轮语义冲突的 Reflexion（详见 RunSpec.validate）。
+        # 建对话时还没有任务（详见 RunSpec.validate）。
         spec.validate(set(PROVIDER_DEFAULTS), for_conversation=True)
     except SpecError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

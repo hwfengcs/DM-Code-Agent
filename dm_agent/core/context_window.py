@@ -53,14 +53,10 @@ class ContextWindow:
         *,
         compressor: ContextCompressor | None,
         enabled: bool,
-        memory_hygiene: bool,
-        llm_compression: bool,
         trace_writer: Any | None = None,
     ) -> None:
         self.compressor = compressor
         self.enabled = enabled
-        self.memory_hygiene = memory_hygiene
-        self.llm_compression = llm_compression
         self.trace_writer = trace_writer
         self._last_logged_memory_items = 0
         self._last_logged_saved_messages = 0
@@ -200,11 +196,6 @@ class ContextWindow:
             return
         metadata = context.metadata
         metadata["memory_items"] = compressor.memory_count
-        if self.memory_hygiene:
-            metadata["memory_invalidation_count"] = compressor.memory.superseded_count
-        if self.llm_compression:
-            metadata["llm_summary_count"] = compressor.llm_summary_count
-            metadata["llm_summary_error_count"] = compressor.llm_summary_error_count
 
     def _record_budget_events(
         self,
@@ -268,23 +259,6 @@ class ContextWindow:
         metadata["memory_items"] = memory_count
         metadata["memory_injection_count"] += int(memory_block_injected)
         metadata["memory_compression_count"] += 1
-
-        if self.memory_hygiene:
-            superseded_total = compressor.memory.superseded_count
-            superseded_delta = superseded_total - int(metadata["memory_invalidation_count"])
-            metadata["memory_invalidation_count"] = superseded_total
-            if superseded_delta > 0 and self.trace_writer:
-                self.trace_writer.record(
-                    "memory_invalidation",
-                    {
-                        "step_number": context.step_number,
-                        "superseded": superseded_delta,
-                        "total": superseded_total,
-                    },
-                )
-        if self.llm_compression:
-            metadata["llm_summary_count"] = compressor.llm_summary_count
-            metadata["llm_summary_error_count"] = compressor.llm_summary_error_count
 
         if should_log_memory_status(
             compression_count=int(metadata["memory_compression_count"]),

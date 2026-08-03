@@ -60,7 +60,6 @@ def configure_settings(config: Config, extension_registry: ExtensionRegistry | N
             ("Temperature", config.temperature),
             ("Show steps", "是" if config.show_steps else "否"),
             ("Advanced", format_advanced_feature_status(config)),
-            ("Reflexion max trials", config.max_trials),
             ("Max replans", config.max_replans),
         ],
     )
@@ -161,29 +160,6 @@ def configure_settings(config: Config, extension_registry: ExtensionRegistry | N
         "这些能力会增加模型调用或改变恢复策略；默认关闭，建议按任务显式启用。",
     )
 
-    new_reflexion = ask_bool_setting("启用 Reflexion 反思重试", config.enable_reflexion)
-    if new_reflexion != config.enable_reflexion:
-        config.enable_reflexion = new_reflexion
-        config_changed = True
-    if config.enable_reflexion:
-        try:
-            max_trials_input = UI.ask("反思最大尝试轮数", default=str(config.max_trials)).strip()
-            if max_trials_input:
-                new_max_trials = int(max_trials_input)
-                if new_max_trials >= 1:
-                    if new_max_trials != config.max_trials:
-                        config.max_trials = new_max_trials
-                        config_changed = True
-                else:
-                    UI.status("error", "反思最大尝试轮数必须至少为 1")
-        except ValueError:
-            UI.status("error", "无效的数字")
-
-    new_critic = ask_bool_setting("启用 Critic 完成审查", config.enable_critic)
-    if new_critic != config.enable_critic:
-        config.enable_critic = new_critic
-        config_changed = True
-
     new_adaptive = ask_bool_setting("启用自适应重规划", config.enable_adaptive_replanning)
     if new_adaptive != config.enable_adaptive_replanning:
         config.enable_adaptive_replanning = new_adaptive
@@ -203,24 +179,6 @@ def configure_settings(config: Config, extension_registry: ExtensionRegistry | N
                     UI.status("error", "最大重规划次数必须为 -1 或更大")
         except ValueError:
             UI.status("error", "无效的数字")
-
-    new_loop_break = ask_bool_setting(
-        "启用重复失败跳出实验", config.enable_repeated_failure_policy_experiment
-    )
-    if new_loop_break != config.enable_repeated_failure_policy_experiment:
-        config.enable_repeated_failure_policy_experiment = new_loop_break
-        config_changed = True
-    if config.enable_repeated_failure_policy_experiment and not config.enable_adaptive_replanning:
-        config.enable_adaptive_replanning = True
-        config_changed = True
-        UI.status("info", "已同步启用自适应重规划", "重复失败跳出实验依赖重规划")
-
-    new_evolution = ask_bool_setting("启用进化恢复模式", config.enable_evolution)
-    if new_evolution != config.enable_evolution:
-        config.enable_evolution = new_evolution
-        config_changed = True
-    if config.enable_evolution and not config.enable_adaptive_replanning:
-        UI.status("info", "进化恢复会在运行时自动启用自适应重规划和重复失败跳出")
 
     # 保存配置
     if config_changed:

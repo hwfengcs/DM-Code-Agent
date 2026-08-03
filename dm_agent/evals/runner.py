@@ -158,7 +158,6 @@ RECOVERY_SIGNAL_KEYS = (
     "unknown_tool_count",
     "argument_error_count",
     "replan_count",
-    "critic_reject_count",
     "edit_guard_block_count",
 )
 

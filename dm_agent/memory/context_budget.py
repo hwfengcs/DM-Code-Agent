@@ -174,6 +174,3 @@ class FileLedger:
         if write_step is not None and write_step > read_step:
             return "stale_read"
         return None
-
-    def last_write_step(self, path: str) -> int | None:
-        return self._last_write.get(_normalize_path(path))

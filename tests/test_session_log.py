@@ -241,7 +241,6 @@ def _legacy_compress(compressor, history):
             older,
             scope=compressor.scope,
             turn=1,
-            invalidate_on_success=compressor.enable_hygiene,
         )
     query = "\n".join(message.get("content", "") for message in recent[-4:])
     block = compressor.memory.render(

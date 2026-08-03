@@ -50,7 +50,7 @@ CLI 子进程**，不把 CLI 当库用。这样 Web 界面永远和命令行做�
 | `dm_agent/extensions/` | 注册表、三来源发现、项目信任、内置能力 |
 | `dm_agent/skills/` | 领域技能与选择器 |
 | `dm_agent/mcp/` | MCP 配置、客户端、管理器 |
-| `dm_agent/benchmarks/` | coding / maintenance / swebench-lite 套件与经济学核算 |
+| `dm_agent/benchmarks/` | coding / maintenance 套件与经济学核算 |
 | `dm_agent/evals/` | 确定性与真实模型 eval |
 | `dm_agent/cli/` | argparse、Config、UI、报告、运行装配 |
 | `dm_agent/server/` | Web 控制台：只读审计 API、子进程执行器、SSE 实时流（需 `[web]` extra） |
@@ -79,7 +79,7 @@ CLI 子进程**，不把 CLI 当库用。这样 Web 界面永远和命令行做�
 | `events.py` | 事件总线、事件对象、按 phase 包装的 LLM 客户端 |
 | `capabilities.py` | `AgentCapability` 协议与 `CapabilityContext` |
 | `guards.py` | read-before-edit 守卫（作为钩子处理器实现） |
-| `critic.py` / `reflexion.py` / `circuit_breaker.py` / `planner.py` | 各自的算法实现 |
+| `planner.py` | 计划生成与重规划决策策略 |
 
 > `RunContext` **必须原地改、不能整体替换**——`LLMRequestClient` 在构造期就绑定了它的
 > 取值回调，换新实例会让它继续读旧对象。

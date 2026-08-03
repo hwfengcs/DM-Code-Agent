@@ -12,13 +12,12 @@ import tempfile
 import time
 from collections.abc import Iterable, Sequence
 from contextlib import contextmanager, redirect_stdout
-from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from typing import Any, cast
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
-from dm_agent.core import CriticAgent, ReactAgent
+from dm_agent.core import ReactAgent
 from dm_agent.evals.real_runner import PROVIDER_API_KEY_ENV, UsageTrackingClient
 from dm_agent.skills import SkillManager
 from dm_agent.tools import default_tools
@@ -107,23 +106,9 @@ def run_benchmark_suite(
         "model": config.model or defaults.get("model"),
         "base_url": config.base_url or defaults.get("base_url"),
         "repeat": config.repeat,
-        "reflexion": {
-            "enabled": config.enable_reflexion,
-            "max_trials": config.max_trials,
-        },
         "adaptive_replanning": {
             "enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
-            "repeated_failure_policy_experiment": (
-                config.enable_repeated_failure_policy_experiment
-            ),
-        },
-        "critic": {
-            "enabled": config.enable_critic,
-        },
-        "self_consistency": {
-            "runs": config.self_consistency_runs,
-            "strategy": config.self_consistency_strategy,
         },
         "token_economics": {
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
@@ -149,14 +134,6 @@ def run_benchmark_task(
     suite: str = "coding",
 ) -> CodingBenchResult:
     _validate_benchmark_config(config)
-    if config.self_consistency_runs > 1:
-        return _run_self_consistency_benchmark_task(
-            task,
-            variant,
-            config,
-            repeat_index=repeat_index,
-            suite=suite,
-        )
 
     if config.keep_workspaces:
         root = Path(config.workspace_root) if config.workspace_root else None
@@ -299,7 +276,6 @@ BENCH_RECOVERY_SIGNAL_KEYS = (
     "unknown_tool_count",
     "argument_error_count",
     "tool_error_count",
-    "critic_reject_count",
     "replan_count",
     "edit_guard_block_count",
 )
@@ -679,14 +655,8 @@ def _run_benchmark_task_in_workspace(
         enable_compression=variant.enable_compression,
         skill_manager=skill_manager,
         trace_writer=trace_writer,
-        enable_reflexion=config.enable_reflexion,
-        max_trials=config.max_trials,
         enable_adaptive_replanning=config.enable_adaptive_replanning,
         max_replans=config.max_replans,
-        enable_repeated_failure_policy_experiment=(
-            config.enable_repeated_failure_policy_experiment
-        ),
-        critic=CriticAgent(client) if config.enable_critic else None,
     )
 
     with chdir(workspace):
@@ -741,17 +711,9 @@ def _run_benchmark_task_in_workspace(
             "changed_files": changed_files,
             "patch_fingerprint": patch_fingerprint,
             "trace_path": str(trace_path) if trace_path else "",
-            "reflexion_enabled": config.enable_reflexion,
-            "max_trials": config.max_trials,
             "adaptive_replanning_enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
-            "repeated_failure_policy_experiment_enabled": (
-                config.enable_repeated_failure_policy_experiment
-            ),
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
-            "critic_enabled": config.enable_critic,
-            "self_consistency_runs": config.self_consistency_runs,
-            "self_consistency_strategy": config.self_consistency_strategy,
         }
     )
     if per_node_result is not None:
@@ -788,201 +750,6 @@ def _run_benchmark_task_in_workspace(
         changed_files=changed_files,
         workspace_path=str(workspace) if not cleanup else "",
     )
-
-
-def _run_self_consistency_benchmark_task(
-    task: BenchmarkTask,
-    variant: BenchmarkVariant,
-    config: BenchmarkRunConfig,
-    *,
-    repeat_index: int,
-    suite: str,
-) -> CodingBenchResult:
-    single_config = replace(config, self_consistency_runs=1)
-    candidates = [
-        run_benchmark_task(
-            task,
-            variant,
-            single_config,
-            repeat_index=repeat_index * config.self_consistency_runs + index,
-            suite=suite,
-        )
-        for index in range(config.self_consistency_runs)
-    ]
-    selected = _select_self_consistency_candidate(candidates, config.self_consistency_strategy)
-    selected_index = next(
-        index for index, candidate in enumerate(candidates, start=1) if candidate is selected
-    )
-    metadata = dict(selected.metadata)
-    metadata["self_consistency"] = {
-        "runs": config.self_consistency_runs,
-        "strategy": config.self_consistency_strategy,
-        "selected_index": selected_index,
-        "uncertainty": _benchmark_self_consistency_uncertainty(
-            candidates,
-            selected,
-            strategy=config.self_consistency_strategy,
-        ),
-        "candidates": [
-            {
-                "run_index": index,
-                "success": candidate.success,
-                "failure_reason": candidate.failure_reason,
-                "final_answer": candidate.final_answer,
-                "vote_key": _benchmark_vote_key(candidate),
-                "vote_key_source": _benchmark_vote_key_source(candidate),
-                "patch_fingerprint": candidate.metadata.get("patch_fingerprint", ""),
-                "estimated_tokens": candidate.estimated_tokens,
-                "estimated_cost_usd": candidate.estimated_cost_usd,
-                "steps_count": candidate.steps_count,
-            }
-            for index, candidate in enumerate(candidates, start=1)
-        ],
-    }
-
-    return replace(
-        selected,
-        actions=[action for candidate in candidates for action in candidate.actions],
-        steps_count=sum(candidate.steps_count for candidate in candidates),
-        tool_calls=sum(candidate.tool_calls for candidate in candidates),
-        duration_seconds=sum(candidate.duration_seconds for candidate in candidates),
-        prompt_chars=sum(candidate.prompt_chars for candidate in candidates),
-        completion_chars=sum(candidate.completion_chars for candidate in candidates),
-        estimated_tokens=sum(candidate.estimated_tokens for candidate in candidates),
-        estimated_cost_usd=sum(candidate.estimated_cost_usd for candidate in candidates),
-        request_count=sum(candidate.request_count for candidate in candidates),
-        metadata=metadata,
-    )
-
-
-def _select_self_consistency_candidate(
-    candidates: Sequence[CodingBenchResult],
-    strategy: str,
-) -> CodingBenchResult:
-    if not candidates:
-        raise ValueError("self-consistency produced no candidates")
-    if strategy == "test_pass":
-        return max(candidates, key=lambda item: (item.success, -item.estimated_tokens))
-    if strategy == "critic_score":
-        return max(
-            candidates,
-            key=lambda item: (
-                float(item.metadata.get("critic_last_score", 0.0)),
-                item.success,
-                -item.estimated_tokens,
-            ),
-        )
-    if strategy == "majority_vote":
-        groups: dict[str, list[CodingBenchResult]] = {}
-        for candidate in candidates:
-            key = _benchmark_vote_key(candidate)
-            groups.setdefault(key, []).append(candidate)
-        ranked_groups = sorted(
-            groups.values(),
-            key=lambda group: (
-                len(group),
-                sum(1 for candidate in group if candidate.success),
-                -sum(candidate.estimated_tokens for candidate in group),
-            ),
-            reverse=True,
-        )
-        return max(ranked_groups[0], key=lambda item: (item.success, -item.estimated_tokens))
-    raise ValueError(f"Unsupported self-consistency strategy: {strategy}")
-
-
-def _benchmark_self_consistency_uncertainty(
-    candidates: Sequence[CodingBenchResult],
-    selected: CodingBenchResult,
-    *,
-    strategy: str,
-) -> dict[str, Any]:
-    vote_distribution = _benchmark_vote_distribution(candidates)
-    selected_key = _display_vote_key(_benchmark_vote_key(selected))
-    selected_support = vote_distribution.get(selected_key, 0)
-    support_fraction = selected_support / len(candidates) if candidates else 0.0
-    selected_score = _benchmark_candidate_score(selected, strategy)
-    runner_up_score = max(
-        (
-            _benchmark_candidate_score(candidate, strategy)
-            for candidate in candidates
-            if candidate is not selected
-        ),
-        default=None,
-    )
-    margin = selected_score - runner_up_score if runner_up_score is not None else None
-    top_support = max(vote_distribution.values(), default=0)
-    tie_detected = sum(1 for count in vote_distribution.values() if count == top_support) > 1
-    confidence_score = support_fraction
-    if margin is not None and margin > 0:
-        confidence_score = max(confidence_score, min(1.0, 0.5 + (margin / 2)))
-    return {
-        "strategy": strategy,
-        "num_candidates": len(candidates),
-        "unique_votes": len(vote_distribution),
-        "vote_distribution": vote_distribution,
-        "selected_vote_key": selected_key,
-        "selected_vote_key_source": _benchmark_vote_key_source(selected),
-        "selected_support": selected_support,
-        "support_fraction": support_fraction,
-        "selected_score": selected_score,
-        "margin_to_runner_up": margin,
-        "tie_detected": tie_detected,
-        "disagreement_reason": _benchmark_disagreement_reason(
-            unique_votes=len(vote_distribution),
-            tie_detected=tie_detected,
-        ),
-        "runner_confidence": _benchmark_confidence_label(confidence_score),
-    }
-
-
-def _benchmark_vote_distribution(candidates: Sequence[CodingBenchResult]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for candidate in candidates:
-        key = _display_vote_key(_benchmark_vote_key(candidate))
-        counts[key] = counts.get(key, 0) + 1
-    return dict(sorted(counts.items()))
-
-
-def _benchmark_vote_key(candidate: CodingBenchResult) -> str:
-    patch_fingerprint = str(candidate.metadata.get("patch_fingerprint", "")).strip()
-    if patch_fingerprint:
-        return patch_fingerprint
-    return candidate.final_answer.strip()
-
-
-def _benchmark_vote_key_source(candidate: CodingBenchResult) -> str:
-    if str(candidate.metadata.get("patch_fingerprint", "")).strip():
-        return "patch_fingerprint"
-    return "final_answer" if candidate.final_answer.strip() else "empty"
-
-
-def _display_vote_key(value: str) -> str:
-    text = str(value or "").strip()
-    return text if text else "<empty>"
-
-
-def _benchmark_candidate_score(candidate: CodingBenchResult, strategy: str) -> float:
-    if strategy == "critic_score":
-        return float(candidate.metadata.get("critic_last_score", 0.0))
-    if strategy == "test_pass":
-        return 1.0 if candidate.success else 0.0
-    return 1.0 if candidate.success else 0.0
-
-
-def _benchmark_disagreement_reason(*, unique_votes: int, tie_detected: bool) -> str:
-    if tie_detected:
-        return "selection_tie"
-    if unique_votes > 1:
-        return "candidate_outputs_disagree"
-    return "none"
-
-
-def _benchmark_confidence_label(score: float) -> str:
-    if score >= 0.8:
-        return "high"
-    if score >= 0.5:
-        return "medium"
-    return "low"
 
 
 def _score_run(
@@ -1032,18 +799,8 @@ def _build_tracking_client(config: BenchmarkRunConfig) -> UsageTrackingClient:
 
 
 def _validate_benchmark_config(config: BenchmarkRunConfig) -> None:
-    if config.max_trials < 1:
-        raise ValueError("max_trials must be at least 1")
     if config.max_replans < -1:
         raise ValueError("max_replans must be -1 or greater")
-    if config.self_consistency_runs < 1:
-        raise ValueError("self_consistency_runs must be at least 1")
-    if config.self_consistency_strategy not in {"majority_vote", "critic_score", "test_pass"}:
-        raise ValueError(
-            "self_consistency_strategy must be one of: majority_vote, critic_score, test_pass"
-        )
-    if config.self_consistency_strategy == "critic_score" and not config.enable_critic:
-        raise ValueError("critic_score self-consistency requires --enable-critic")
 
 
 def _write_files(workspace: Path, files: dict[str, str]) -> None:

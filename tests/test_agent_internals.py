@@ -238,65 +238,6 @@ def test_token_budget_compression_is_traced(tmp_path):
     assert result["metadata"]["memory_compression_count"] == 1
 
 
-def test_llm_compression_counters_are_reported():
-    agent = _budget_agent(
-        [
-            _action("echo", {"text": "x" * 400}),
-            "旧上下文摘要：读过一个文件。",
-            _action("finish", {"answer": "done"}),
-        ],
-        enable_llm_compression=True,
-    )
-
-    result = agent.run("compress with an llm summary", max_steps=2)
-
-    assert result["metadata"]["llm_compression_enabled"] is True
-    assert result["metadata"]["llm_summary_count"] == 1
-    assert result["metadata"]["llm_summary_error_count"] == 0
-
-
-def test_memory_hygiene_invalidation_is_traced(tmp_path):
-    trace_path = tmp_path / "hygiene.jsonl"
-    writer = TraceWriter(trace_path)
-    agent = ReactAgent(
-        FakeRespondClient(
-            [
-                _action(
-                    "echo",
-                    {"text": "pytest returncode: 1 AssertionError in retry.py " + "x" * 800},
-                ),
-                _action(
-                    "echo",
-                    {"text": "retry.py tests completed successfully returncode: 0 " + "y" * 800},
-                ),
-                _action("echo", {"text": "wrap up"}),
-                _action("finish", {"answer": "done"}),
-            ]
-        ),
-        _tools(),
-        enable_planning=False,
-        enable_compression=True,
-        enable_memory_hygiene=True,
-        trace_writer=writer,
-    )
-    assert agent.compressor is not None
-    agent.compressor.compress_every = 1
-    agent.compressor.keep_recent = 1
-
-    result = agent.run("supersede a failure memory after success", max_steps=4)
-    writer.close()
-
-    invalidations = [
-        event for event in load_trace_events(trace_path) if event["event"] == "memory_invalidation"
-    ]
-    assert invalidations
-    assert invalidations[0]["payload"]["superseded"] >= 1
-    assert result["metadata"]["memory_invalidation_count"] >= 1
-
-
-# --- 记忆状态日志节流 -----------------------------------------------------------
-
-
 def test_memory_status_log_throttle_branches():
     def should_log(**kwargs):
         base = {

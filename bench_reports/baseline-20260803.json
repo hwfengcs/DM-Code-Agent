@@ -1,0 +1,2687 @@
+{
+  "mode": "all_benchmark",
+  "suite": "all",
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "base_url": "https://api.deepseek.com",
+  "repeat": 1,
+  "adaptive_replanning": {
+    "enabled": false,
+    "max_replans": -1
+  },
+  "token_economics": {
+    "cost_per_1k_tokens": 0.0
+  },
+  "summary": {
+    "total_runs": 13,
+    "overall_pass_rate": 0.38461538461538464,
+    "overall_pass_rate_ci_95": {
+      "low": 0.17709446581236818,
+      "high": 0.6447751902773147
+    },
+    "overall_hidden_test_pass_rate": 0.7692307692307693,
+    "overall_hidden_test_pass_rate_ci_95": {
+      "low": 0.49743126004873084,
+      "high": 0.918206209075343
+    },
+    "overall_agent_completion_rate": 0.6153846153846154,
+    "overall_agent_completion_rate_ci_95": {
+      "low": 0.3552248097226855,
+      "high": 0.8229055341876319
+    },
+    "avg_trials": 1.0,
+    "total_estimated_tokens": 750672,
+    "tokens_per_success": 150134.4,
+    "estimated_cost_usd": 0.0,
+    "cost_per_success_usd": 0.0,
+    "variants": {
+      "full": {
+        "tasks": 13,
+        "successes": 5,
+        "pass_rate": 0.38461538461538464,
+        "pass_rate_ci_95": {
+          "low": 0.17709446581236818,
+          "high": 0.6447751902773147
+        },
+        "hidden_test_pass_rate": 0.7692307692307693,
+        "hidden_test_pass_rate_ci_95": {
+          "low": 0.49743126004873084,
+          "high": 0.918206209075343
+        },
+        "agent_completion_rate": 0.6153846153846154,
+        "agent_completion_rate_ci_95": {
+          "low": 0.3552248097226855,
+          "high": 0.8229055341876319
+        },
+        "avg_steps": 13.538461538461538,
+        "avg_tool_calls": 12.846153846153847,
+        "avg_changed_files": 1.6923076923076923,
+        "avg_estimated_tokens": 57744.0,
+        "total_estimated_tokens": 750672,
+        "tokens_per_success": 150134.4,
+        "estimated_cost_usd": 0.0,
+        "cost_per_success_usd": 0.0,
+        "total_requests": 211,
+        "avg_duration_seconds": 32.71506145386061,
+        "hidden_test_passes": 10,
+        "avg_trials": 1.0,
+        "runs_with_failures": 11,
+        "recovered_runs": 4,
+        "recovery_success_rate": 0.36363636363636365
+      }
+    },
+    "by_tag": {
+      "algorithm": {
+        "runs": 2,
+        "successes": 1,
+        "success_rate": 0.5
+      },
+      "bugfix": {
+        "runs": 2,
+        "successes": 2,
+        "success_rate": 1.0
+      },
+      "business-logic": {
+        "runs": 2,
+        "successes": 1,
+        "success_rate": 0.5
+      },
+      "ci": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "cli": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "code-understanding": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "config": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "cross-file": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "data-cleaning": {
+        "runs": 1,
+        "successes": 1,
+        "success_rate": 1.0
+      },
+      "dedupe": {
+        "runs": 1,
+        "successes": 1,
+        "success_rate": 1.0
+      },
+      "docs": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "edge-cases": {
+        "runs": 4,
+        "successes": 3,
+        "success_rate": 0.75
+      },
+      "filesystem": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "git": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "hidden-tests": {
+        "runs": 2,
+        "successes": 1,
+        "success_rate": 0.5
+      },
+      "maintenance": {
+        "runs": 7,
+        "successes": 1,
+        "success_rate": 0.14285714285714285
+      },
+      "multi-file": {
+        "runs": 2,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "networking": {
+        "runs": 1,
+        "successes": 1,
+        "success_rate": 1.0
+      },
+      "packaging": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "regression": {
+        "runs": 4,
+        "successes": 1,
+        "success_rate": 0.25
+      },
+      "reporting": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "security": {
+        "runs": 1,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "stateful": {
+        "runs": 2,
+        "successes": 0,
+        "success_rate": 0.0
+      },
+      "string": {
+        "runs": 1,
+        "successes": 1,
+        "success_rate": 1.0
+      },
+      "tests": {
+        "runs": 1,
+        "successes": 1,
+        "success_rate": 1.0
+      }
+    }
+  },
+  "manifest": {
+    "suite": "all",
+    "task_count": 13,
+    "task_ids": [
+      "cli_config_docs_contract",
+      "config_precedence",
+      "cross_file_user_contract",
+      "inventory_reservations",
+      "normalize_users",
+      "order_total_edges",
+      "packaging_ci_contract",
+      "patch_summary_name_status",
+      "retry_regression_tests",
+      "safe_workspace_join",
+      "slugify_cleanup",
+      "stats_summary",
+      "ttl_cache_lru"
+    ],
+    "task_fingerprints": {
+      "cli_config_docs_contract": "823a40d03b67947e",
+      "config_precedence": "4dfe0afeab978e30",
+      "cross_file_user_contract": "0643ba4f350d59d6",
+      "inventory_reservations": "43c061578fbdb4e9",
+      "normalize_users": "fb2a9ef1fbe1e69c",
+      "order_total_edges": "7c49203d5a852abf",
+      "packaging_ci_contract": "49d9fb24f3cc4ddb",
+      "patch_summary_name_status": "58f902d5a48181b4",
+      "retry_regression_tests": "7712d2b94da801b0",
+      "safe_workspace_join": "38c9521ab244d249",
+      "slugify_cleanup": "e046880a7e0c8931",
+      "stats_summary": "60a0bf5a030da529",
+      "ttl_cache_lru": "dbf22b2c61856221"
+    },
+    "variant_names": [
+      "full"
+    ],
+    "suite_signature": "5686b3e1fe54ab63"
+  },
+  "results": [
+    {
+      "task_id": "slugify_cleanup",
+      "task_name": "Robust slugify cleanup",
+      "variant": "full",
+      "success": true,
+      "failure_reason": "",
+      "final_answer": "已完成 text_utils.slugify 的修复。实现现在会: 1) 将文本转为小写; 2) 将非字母数字字符的连续运行替换为单个连字符; 3) 折叠重复分隔符; 4) 去除首尾连字符。可见测试(2个)全部通过,并额外验证了空字符串、混合分隔符、首尾连字符、连续非字母数字字符等边缘情况,均符合预期。",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "list_directory",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "run_python",
+        "finish"
+      ],
+      "steps_count": 8,
+      "tool_calls": 7,
+      "duration_seconds": 16.460635900031775,
+      "prompt_chars": 63216,
+      "completion_chars": 3885,
+      "estimated_tokens": 21007,
+      "estimated_cost_usd": 0.0,
+      "request_count": 9,
+      "metadata": {
+        "status": "success",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [],
+        "initial_plan_steps": 7,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 0,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "",
+        "llm_retry_count": 0,
+        "backup_count": 1,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\7dd02d5affed449fbc286cb58245ba06",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 16.460635900031775,
+        "completion_summary": "已完成 text_utils.slugify 的修复。实现现在会: 1) 将文本转为小写; 2) 将非字母数字字符的连续运行替换为单个连字符; 3) 折叠重复分隔符; 4) 去除首尾连字符。可见测试(2个)全部通过,并额外验证了空字符串、混合分隔符、首尾连字符、连续非字母数字字符等边缘情况,均符合预期。",
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 9,
+        "prompt_tokens": 19700,
+        "completion_tokens": 1307,
+        "total_tokens": 21007,
+        "repeat_index": 0,
+        "changed_files": [
+          "text_utils.py"
+        ],
+        "patch_fingerprint": "336a1378f39e43fb",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-slugify_cleanup-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "none",
+          "final_failure_stage": "none",
+          "signals": [],
+          "recovery": {
+            "failure_event_count": 0,
+            "first_failure_step": null,
+            "first_failure_event": null,
+            "replan_count": 0,
+            "replanned_after_failure": false,
+            "recovered": false
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 6,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 7,
+                "action": "run_python"
+              }
+            ],
+            "count": 2,
+            "finish_step": 8,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 1.0,
+            "grade": "good",
+            "issues": []
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": "....                                                                     [100%]\n4 passed in 0.02s\n",
+        "stderr": "",
+        "duration_seconds": 0.3974497999297455
+      },
+      "changed_files": [
+        "text_utils.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "order_total_edges",
+      "task_name": "Order total business rules",
+      "variant": "full",
+      "success": true,
+      "failure_reason": "",
+      "final_answer": "已完成 orders.order_total 和 apply_discount 的修复：apply_discount 现在按百分比计算折扣（subtotal * (1 - discount_percent/100)），对 0-100 之外的折扣百分比抛出 ValueError；order_total 中 quantity 默认 1，折扣在税前应用，结果四舍五入到两位小数。可见测试（2 个）全部通过，black 格式检查通过，边界情况（0/100/无效值/默认数量）手动验证均正确。",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "run_linter",
+        "run_linter",
+        "run_linter",
+        "run_python",
+        "finish"
+      ],
+      "steps_count": 9,
+      "tool_calls": 8,
+      "duration_seconds": 26.509236600017175,
+      "prompt_chars": 78061,
+      "completion_chars": 5109,
+      "estimated_tokens": 25869,
+      "estimated_cost_usd": 0.0,
+      "request_count": 13,
+      "metadata": {
+        "status": "success",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [],
+        "initial_plan_steps": 6,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 3,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "",
+        "llm_retry_count": 0,
+        "backup_count": 1,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\a23a1be7fa734134b9b1bb25bbc10ea1",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 26.509236600017175,
+        "completion_summary": "已完成 orders.order_total 和 apply_discount 的修复：apply_discount 现在按百分比计算折扣（subtotal * (1 - discount_percent/100)），对 0-100 之外的折扣百分比抛出 ValueError；order_total 中 quantity 默认 1，折扣在税前应用，结果四舍五入到两位小数。可见测试（2 个）全部通过，black 格式检查通过，边界情况（0/100/无效值/默认数量）手动验证均正确。",
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 13,
+        "prompt_tokens": 24015,
+        "completion_tokens": 1854,
+        "total_tokens": 25869,
+        "repeat_index": 0,
+        "changed_files": [
+          "orders.py"
+        ],
+        "patch_fingerprint": "b0207c40f36a66bf",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-order_total_edges-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "verification",
+          "final_failure_stage": "none",
+          "signals": [
+            "primary_failure:verification",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 3,
+            "first_failure_step": 5,
+            "first_failure_event": "tool_call",
+            "replan_count": 3,
+            "replanned_after_failure": true,
+            "recovered": true
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 4,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 5,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 6,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 7,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 8,
+                "action": "run_python"
+              }
+            ],
+            "count": 5,
+            "finish_step": 9,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 1.0,
+            "grade": "good",
+            "issues": []
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": "....                                                                     [100%]\n4 passed in 0.02s\n",
+        "stderr": "",
+        "duration_seconds": 0.39463330002035946
+      },
+      "changed_files": [
+        "orders.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "ttl_cache_lru",
+      "task_name": "TTL cache with LRU eviction",
+      "variant": "full",
+      "success": false,
+      "failure_reason": "Response is not a valid JSON object.",
+      "final_answer": "Reached step limit without completion.",
+      "actions": [
+        "read_file",
+        "run_tests",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "error",
+        "create_file",
+        "run_tests",
+        "run_python",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "run_python",
+        "run_tests",
+        "read_file"
+      ],
+      "steps_count": 18,
+      "tool_calls": 17,
+      "duration_seconds": 63.82541620009579,
+      "prompt_chars": 445496,
+      "completion_chars": 24739,
+      "estimated_tokens": 134539,
+      "estimated_cost_usd": 0.0,
+      "request_count": 23,
+      "metadata": {
+        "status": "max_steps_exceeded",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [
+          "python_expert"
+        ],
+        "initial_plan_steps": 6,
+        "parse_error_count": 1,
+        "parse_repair_count": 8,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 4,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 18,
+        "memory_compression_count": 1,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 1,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 1,
+        "memory_items": 14,
+        "memory_injection_count": 1,
+        "failure_reason": "Response is not a valid JSON object.",
+        "llm_retry_count": 0,
+        "backup_count": 4,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\ace438e3232c452db0f42182b19e40b7",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 63.82541620009579,
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 23,
+        "prompt_tokens": 127337,
+        "completion_tokens": 7202,
+        "total_tokens": 134539,
+        "repeat_index": 0,
+        "changed_files": [
+          "cache.py"
+        ],
+        "patch_fingerprint": "e14fdaf72f2c9fde",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-ttl_cache_lru-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "verification",
+          "final_failure_stage": "max_steps",
+          "signals": [
+            "primary_failure:verification",
+            "final_failure:max_steps",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 4,
+            "first_failure_step": 2,
+            "first_failure_event": "tool_call",
+            "replan_count": 4,
+            "replanned_after_failure": true,
+            "recovered": false
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 2,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 5,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 11,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 12,
+                "action": "run_python"
+              },
+              {
+                "step_number": 16,
+                "action": "run_python"
+              },
+              {
+                "step_number": 17,
+                "action": "run_tests"
+              }
+            ],
+            "count": 6,
+            "finish_step": null,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 0.65,
+            "grade": "warning",
+            "issues": [
+              "final_failure:max_steps",
+              "unrecovered_parse_errors"
+            ]
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": "....                                                                     [100%]\n4 passed in 0.02s\n",
+        "stderr": "",
+        "duration_seconds": 0.4167522999923676
+      },
+      "changed_files": [
+        "cache.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "normalize_users",
+      "task_name": "Normalize imported user records",
+      "variant": "full",
+      "success": true,
+      "failure_reason": "",
+      "final_answer": "已完成 users.normalize_users 的修复：\n\n修改内容：\n- 只返回 active 用户（active 为 True，未指定时默认视为 active）\n- 跳过无效邮箱（空邮箱或不含 @ 的邮箱）\n- 修剪 name 字段（strip）\n- 邮箱小写并修剪（strip + lower）\n- 按邮箱去重，保留第一个 active 记录\n- 按邮箱排序结果\n\n验证：\n- 可见测试 tests/test_public_users.py 通过（1 passed）\n- black 格式检查通过（1 file would be left unchanged）\n\n实现已满足任务描述中的所有要求，并处理了边界情况（无效邮箱、重复邮箱、非 active 用户）。",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "list_directory",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "run_linter",
+        "run_linter",
+        "run_linter",
+        "finish"
+      ],
+      "steps_count": 10,
+      "tool_calls": 9,
+      "duration_seconds": 25.43836710008327,
+      "prompt_chars": 88423,
+      "completion_chars": 5997,
+      "estimated_tokens": 29723,
+      "estimated_cost_usd": 0.0,
+      "request_count": 13,
+      "metadata": {
+        "status": "success",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [
+          "db_expert"
+        ],
+        "initial_plan_steps": 7,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 2,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "",
+        "llm_retry_count": 0,
+        "backup_count": 1,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\f55c9b832a91445da4fb2e8a828ff440",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 25.43836710008327,
+        "completion_summary": "已完成 users.normalize_users 的修复：\n\n修改内容：\n- 只返回 active 用户（active 为 True，未指定时默认视为 active）\n- 跳过无效邮箱（空邮箱或不含 @ 的邮箱）\n- 修剪 name 字段（strip）\n- 邮箱小写并修剪（strip + lower）\n- 按邮箱去重，保留第一个 active 记录\n- 按邮箱排序结果\n\n验证：\n- 可见测试 tests/test_public_users.py 通过（1 passed）\n- black 格式检查通过（1 file would be left unchanged）\n\n实现已满足任务描述中的所有要求，并处理了边界情况（无效邮箱、重复邮箱、非 active 用户）。",
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 13,
+        "prompt_tokens": 27708,
+        "completion_tokens": 2015,
+        "total_tokens": 29723,
+        "repeat_index": 0,
+        "changed_files": [
+          "users.py"
+        ],
+        "patch_fingerprint": "50c5d707d034a626",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-normalize_users-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "verification",
+          "final_failure_stage": "none",
+          "signals": [
+            "primary_failure:verification",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 2,
+            "first_failure_step": 7,
+            "first_failure_event": "tool_call",
+            "replan_count": 2,
+            "replanned_after_failure": true,
+            "recovered": true
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 6,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 7,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 8,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 9,
+                "action": "run_linter"
+              }
+            ],
+            "count": 4,
+            "finish_step": 10,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 1.0,
+            "grade": "good",
+            "issues": []
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": "..                                                                       [100%]\n2 passed in 0.02s\n",
+        "stderr": "",
+        "duration_seconds": 0.398509299964644
+      },
+      "changed_files": [
+        "users.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "stats_summary",
+      "task_name": "Statistics summary edge cases",
+      "variant": "full",
+      "success": true,
+      "failure_reason": "",
+      "final_answer": "已完成 stats.summarize 函数的修复。修改后的函数返回包含 count、min、max、mean、median 的字典;空输入返回 count 0 且数值字段为 None;支持奇数和偶数长度的输入;使用 sorted() 创建副本,不修改调用者的列表。可见测试通过,额外边界检查(空列表、偶数长度、输入不可变性)均验证通过。",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "list_directory",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "run_tests",
+        "run_python",
+        "finish"
+      ],
+      "steps_count": 12,
+      "tool_calls": 11,
+      "duration_seconds": 24.57528189988807,
+      "prompt_chars": 132177,
+      "completion_chars": 4634,
+      "estimated_tokens": 42438,
+      "estimated_cost_usd": 0.0,
+      "request_count": 14,
+      "metadata": {
+        "status": "success",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [],
+        "initial_plan_steps": 6,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 1,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "",
+        "llm_retry_count": 0,
+        "backup_count": 2,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\d2cac3016aac4a73ba0637654dcca7be",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 24.57528189988807,
+        "completion_summary": "已完成 stats.summarize 函数的修复。修改后的函数返回包含 count、min、max、mean、median 的字典;空输入返回 count 0 且数值字段为 None;支持奇数和偶数长度的输入;使用 sorted() 创建副本,不修改调用者的列表。可见测试通过,额外边界检查(空列表、偶数长度、输入不可变性)均验证通过。",
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 14,
+        "prompt_tokens": 40947,
+        "completion_tokens": 1491,
+        "total_tokens": 42438,
+        "repeat_index": 0,
+        "changed_files": [
+          "stats.py"
+        ],
+        "patch_fingerprint": "fe29073281d037a5",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-stats_summary-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "verification",
+          "final_failure_stage": "none",
+          "signals": [
+            "primary_failure:verification",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 1,
+            "first_failure_step": 6,
+            "first_failure_event": "tool_call",
+            "replan_count": 1,
+            "replanned_after_failure": true,
+            "recovered": true
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 6,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 10,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 11,
+                "action": "run_python"
+              }
+            ],
+            "count": 3,
+            "finish_step": 12,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 1.0,
+            "grade": "good",
+            "issues": []
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": "...                                                                      [100%]\n3 passed in 0.01s\n",
+        "stderr": "",
+        "duration_seconds": 0.3808624999364838
+      },
+      "changed_files": [
+        "stats.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "inventory_reservations",
+      "task_name": "Inventory reservation semantics",
+      "variant": "full",
+      "success": false,
+      "failure_reason": "Max steps exceeded",
+      "final_answer": "Reached step limit without completion.",
+      "actions": [
+        "list_directory",
+        "list_directory",
+        "read_file",
+        "read_file",
+        "edit_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "run_tests"
+      ],
+      "steps_count": 14,
+      "tool_calls": 14,
+      "duration_seconds": 29.322578600025736,
+      "prompt_chars": 123252,
+      "completion_chars": 4371,
+      "estimated_tokens": 43317,
+      "estimated_cost_usd": 0.0,
+      "request_count": 15,
+      "metadata": {
+        "status": "max_steps_exceeded",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [],
+        "initial_plan_steps": 6,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 0,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 1,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "Max steps exceeded",
+        "llm_retry_count": 0,
+        "backup_count": 4,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\660e09eb359041d7ae139651f8335df5",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 29.322578600025736,
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 15,
+        "prompt_tokens": 41579,
+        "completion_tokens": 1738,
+        "total_tokens": 43317,
+        "repeat_index": 0,
+        "changed_files": [
+          "inventory.py"
+        ],
+        "patch_fingerprint": "2224aacfdac2d7c8",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-inventory_reservations-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "max_steps",
+          "final_failure_stage": "max_steps",
+          "signals": [
+            "primary_failure:max_steps",
+            "final_failure:max_steps",
+            "no_replan_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 1,
+            "first_failure_step": null,
+            "first_failure_event": "run_end",
+            "replan_count": 0,
+            "replanned_after_failure": false,
+            "recovered": false
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 14,
+                "action": "run_tests"
+              }
+            ],
+            "count": 1,
+            "finish_step": null,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 0.55,
+            "grade": "risky",
+            "issues": [
+              "final_failure:max_steps",
+              "failure_without_replan"
+            ]
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 1,
+        "stdout": ".F.                                                                      [100%]\n================================== FAILURES ===================================\n__________________ test_invalid_and_insufficient_quantities ___________________\n\n    def test_invalid_and_insufficient_quantities():\n        inv = Inventory()\n        inv.add(\"bag\", 1)\n        assert inv.reserve(\"missing\", 1) is False\n        assert inv.reserve(\"bag\", 2) is False\n>       with pytest.raises(ValueError):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE ValueError\n\ntests\\test_hidden_inventory.py:19: Failed\n=========================== short test summary info ===========================\nFAILED tests/test_hidden_inventory.py::test_invalid_and_insufficient_quantities\n1 failed, 2 passed in 0.13s\n",
+        "stderr": "",
+        "duration_seconds": 0.5037548000691459
+      },
+      "changed_files": [
+        "inventory.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "config_precedence",
+      "task_name": "Configuration precedence and type coercion",
+      "variant": "full",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_config_loader.py",
+      "final_answer": "已完成 config_loader.load_config 的修复:1) 修正配置优先级为 defaults < file_config < environment variables < CLI args(原实现中 file_config 错误地覆盖了 cli_args);2) 对来自 env(DM_TIMEOUT/DM_DEBUG)和 CLI(timeout/debug)的值分别做 int 和 bool 类型转换,并添加了辅助函数 _coerce_timeout 和 _coerce_debug 处理边界情况(如 bool 值直接返回、字符串 'true'/'1'/'yes'/'on' 视为 True)。同时新增了 4 个回归测试覆盖优先级顺序和类型转换,运行全部 6 个测试均通过。",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "list_directory",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "finish"
+      ],
+      "steps_count": 9,
+      "tool_calls": 8,
+      "duration_seconds": 19.080268600024283,
+      "prompt_chars": 81181,
+      "completion_chars": 4922,
+      "estimated_tokens": 27084,
+      "estimated_cost_usd": 0.0,
+      "request_count": 10,
+      "metadata": {
+        "status": "success",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [],
+        "initial_plan_steps": 7,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 0,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "",
+        "llm_retry_count": 0,
+        "backup_count": 2,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\e60a0bd2682d488e92a763f7245d198f",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 19.080268600024283,
+        "completion_summary": "已完成 config_loader.load_config 的修复:1) 修正配置优先级为 defaults < file_config < environment variables < CLI args(原实现中 file_config 错误地覆盖了 cli_args);2) 对来自 env(DM_TIMEOUT/DM_DEBUG)和 CLI(timeout/debug)的值分别做 int 和 bool 类型转换,并添加了辅助函数 _coerce_timeout 和 _coerce_debug 处理边界情况(如 bool 值直接返回、字符串 'true'/'1'/'yes'/'on' 视为 True)。同时新增了 4 个回归测试覆盖优先级顺序和类型转换,运行全部 6 个测试均通过。",
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 10,
+        "prompt_tokens": 25476,
+        "completion_tokens": 1608,
+        "total_tokens": 27084,
+        "repeat_index": 0,
+        "changed_files": [
+          "config_loader.py",
+          "tests/test_public_config_loader.py"
+        ],
+        "patch_fingerprint": "3592a33be2266025",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-config_precedence-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "none",
+          "final_failure_stage": "none",
+          "signals": [],
+          "recovery": {
+            "failure_event_count": 0,
+            "first_failure_step": null,
+            "first_failure_event": null,
+            "replan_count": 0,
+            "replanned_after_failure": false,
+            "recovered": false
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 8,
+                "action": "run_tests"
+              }
+            ],
+            "count": 1,
+            "finish_step": 9,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 1.0,
+            "grade": "good",
+            "issues": []
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": "........                                                                 [100%]\n8 passed in 0.02s\n",
+        "stderr": "",
+        "duration_seconds": 0.40457839996088296
+      },
+      "changed_files": [
+        "config_loader.py",
+        "tests/test_public_config_loader.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "patch_summary_name_status",
+      "task_name": "Git name-status patch summary",
+      "variant": "full",
+      "success": false,
+      "failure_reason": "Max steps exceeded",
+      "final_answer": "Reached step limit without completion.",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "list_directory",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "read_file",
+        "read_file",
+        "create_file",
+        "run_tests",
+        "read_file"
+      ],
+      "steps_count": 16,
+      "tool_calls": 16,
+      "duration_seconds": 37.054433900048025,
+      "prompt_chars": 224189,
+      "completion_chars": 10732,
+      "estimated_tokens": 71490,
+      "estimated_cost_usd": 0.0,
+      "request_count": 18,
+      "metadata": {
+        "status": "max_steps_exceeded",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [],
+        "initial_plan_steps": 8,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 1,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "Max steps exceeded",
+        "llm_retry_count": 0,
+        "backup_count": 4,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\7362db4130c748bfa7cc84d1e40a6a47",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 37.054433900048025,
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 18,
+        "prompt_tokens": 68289,
+        "completion_tokens": 3201,
+        "total_tokens": 71490,
+        "repeat_index": 0,
+        "changed_files": [
+          "patch_summary.py",
+          "tests/test_public_patch_summary.py"
+        ],
+        "patch_fingerprint": "f3c19e52f6a1108c",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-patch_summary_name_status-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "verification",
+          "final_failure_stage": "max_steps",
+          "signals": [
+            "primary_failure:verification",
+            "final_failure:max_steps",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 1,
+            "first_failure_step": 11,
+            "first_failure_event": "tool_call",
+            "replan_count": 1,
+            "replanned_after_failure": true,
+            "recovered": false
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 8,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 11,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 15,
+                "action": "run_tests"
+              }
+            ],
+            "count": 3,
+            "finish_step": null,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 0.7,
+            "grade": "warning",
+            "issues": [
+              "final_failure:max_steps"
+            ]
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 1,
+        "stdout": "FF...                                                                    [100%]\n================================== FAILURES ===================================\n_________________ test_renames_and_blank_lines_are_supported __________________\n\n    def test_renames_and_blank_lines_are_supported():\n        result = summarize_name_status([\n            \"\",\n            \"R100\\told_name.py\\tnew_name.py\",\n            \"M\\tz_last.py\",\n            \"M\\ta_first.py\",\n        ])\n>       assert result[\"renamed\"] == [\n            {\"from\": \"old_name.py\", \"to\": \"new_name.py\"}\n        ]\nE       AssertionError: assert [('old_name.p...new_name.py')] == [{'from': 'ol...new_name.py'}]\nE         \nE         At index 0 diff: ('old_name.py', 'new_name.py') != {'from': 'old_name.py', 'to': 'new_name.py'}\nE         Use -v to get more diff\n\ntests\\test_hidden_patch_summary.py:11: AssertionError\n_______________________ test_unknown_status_is_reported _______________________\n\n    def test_unknown_status_is_reported():\n        result = summarize_name_status([\"??\\tuntracked.txt\"])\n>       assert result[\"unknown\"] == [{\"status\": \"??\", \"path\": \"untracked.txt\"}]\n               ^^^^^^^^^^^^^^^^^\nE       KeyError: 'unknown'\n\ntests\\test_hidden_patch_summary.py:19: KeyError\n=========================== short test summary info ===========================\nFAILED tests/test_hidden_patch_summary.py::test_renames_and_blank_lines_are_supported\nFAILED tests/test_hidden_patch_summary.py::test_unknown_status_is_reported - ...\n2 failed, 3 passed in 0.12s\n",
+        "stderr": "",
+        "duration_seconds": 0.5316956000169739
+      },
+      "changed_files": [
+        "patch_summary.py",
+        "tests/test_public_patch_summary.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "retry_regression_tests",
+      "task_name": "Retry policy fix with regression tests",
+      "variant": "full",
+      "success": true,
+      "failure_reason": "",
+      "final_answer": "已完成任务：修复 retry.should_retry 并添加回归测试。\n\n关键改动：\n1. 修复了 retry.py 中的 should_retry 函数，使其正确支持：\n   - 异常重试\n   - HTTP 408（请求超时）重试\n   - HTTP 429（请求过多）重试\n   - 5xx 服务器错误重试\n   - 仅在 attempt < max_attempts 时重试\n   - 普通 4xx 错误不重试\n\n2. 在 tests/test_retry.py 中添加了 9 个回归测试，覆盖所有要求场景。\n\n验证结果：\n- 9 个测试全部通过（pytest）\n- black 代码格式检查通过（retry.py 无需修改，test_retry.py 已格式化）\n- flake8 和 pylint 未安装，改用 black 完成格式检查",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "list_directory",
+        "read_file",
+        "edit_file",
+        "edit_file",
+        "run_tests",
+        "run_linter",
+        "run_linter",
+        "run_linter",
+        "run_linter",
+        "run_shell",
+        "run_tests",
+        "read_file",
+        "finish"
+      ],
+      "steps_count": 15,
+      "tool_calls": 14,
+      "duration_seconds": 45.821812300011516,
+      "prompt_chars": 173010,
+      "completion_chars": 11572,
+      "estimated_tokens": 60055,
+      "estimated_cost_usd": 0.0,
+      "request_count": 21,
+      "metadata": {
+        "status": "success",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [
+          "python_expert"
+        ],
+        "initial_plan_steps": 7,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 5,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 17,
+        "memory_compression_count": 1,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 1,
+        "memory_items": 21,
+        "memory_injection_count": 1,
+        "failure_reason": "",
+        "llm_retry_count": 0,
+        "backup_count": 2,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\c1543a78012f4f4ea4cc39ba9aaf8b8a",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 45.821812300011516,
+        "completion_summary": "已完成任务：修复 retry.should_retry 并添加回归测试。\n\n关键改动：\n1. 修复了 retry.py 中的 should_retry 函数，使其正确支持：\n   - 异常重试\n   - HTTP 408（请求超时）重试\n   - HTTP 429（请求过多）重试\n   - 5xx 服务器错误重试\n   - 仅在 attempt < max_attempts 时重试\n   - 普通 4xx 错误不重试\n\n2. 在 tests/test_retry.py 中添加了 9 个回归测试，覆盖所有要求场景。\n\n验证结果：\n- 9 个测试全部通过（pytest）\n- black 代码格式检查通过（retry.py 无需修改，test_retry.py 已格式化）\n- flake8 和 pylint 未安装，改用 black 完成格式检查",
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 21,
+        "prompt_tokens": 56256,
+        "completion_tokens": 3799,
+        "total_tokens": 60055,
+        "repeat_index": 0,
+        "changed_files": [
+          "retry.py",
+          "tests/test_retry.py"
+        ],
+        "patch_fingerprint": "d999ef4fd35d0327",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-retry_regression_tests-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "tool",
+          "final_failure_stage": "none",
+          "signals": [
+            "primary_failure:tool",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 5,
+            "first_failure_step": 4,
+            "first_failure_event": "tool_call",
+            "replan_count": 5,
+            "replanned_after_failure": true,
+            "recovered": true
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 7,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 8,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 9,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 10,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 11,
+                "action": "run_linter"
+              },
+              {
+                "step_number": 13,
+                "action": "run_tests"
+              }
+            ],
+            "count": 6,
+            "finish_step": 15,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 1.0,
+            "grade": "good",
+            "issues": []
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": "............                                                             [100%]\n12 passed in 0.02s\n",
+        "stderr": "",
+        "duration_seconds": 0.4204821999883279
+      },
+      "changed_files": [
+        "retry.py",
+        "tests/test_retry.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "safe_workspace_join",
+      "task_name": "Workspace path traversal guard",
+      "variant": "full",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_workspace.py",
+      "final_answer": "已完成 workspace.safe_join 修复：\n\n1. **修改 workspace.py**：\n   - 显式拒绝绝对路径（`requested_path.is_absolute()` 时抛出 ValueError）\n   - 使用 `Path.relative_to()` 替代字符串 `startswith` 检查，正确处理 sibling 前缀（如 `/workspace` 与 `/workspace2`）\n   - 通过 `(root_path / requested_path).resolve()` 规范化路径后，用 `relative_to` 验证候选路径仍在 workspace 根内，防止 `../` 目录穿越\n\n2. **更新 tests/test_public_workspace.py**：\n   - 保留原有两个测试\n   - 新增 `test_blocks_absolute_path`：验证绝对路径被拒绝\n   - 新增 `test_blocks_sibling_prefix`：验证 sibling 前缀路径（如 `../workspace2/escape.txt`）被正确拒绝\n\n3. **验证结果**：\n   - 全部 4 个测试通过（pytest）\n   - `py_compile` 语法检查通过\n   - flake8 未安装，但代码遵循 PEP8 风格\n\n实现保持最小改动，保留原有公共行为（返回 Path 对象、对非法路径抛 ValueError）。",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "read_file",
+        "edit_file",
+        "edit_file",
+        "run_tests",
+        "run_linter",
+        "run_shell",
+        "finish"
+      ],
+      "steps_count": 9,
+      "tool_calls": 8,
+      "duration_seconds": 31.21679829992354,
+      "prompt_chars": 93714,
+      "completion_chars": 7495,
+      "estimated_tokens": 30275,
+      "estimated_cost_usd": 0.0,
+      "request_count": 13,
+      "metadata": {
+        "status": "success",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [],
+        "initial_plan_steps": 8,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 3,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "",
+        "llm_retry_count": 0,
+        "backup_count": 2,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\3f0b8c3da9b248ae9c09e061c30940b0",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 31.21679829992354,
+        "completion_summary": "已完成 workspace.safe_join 修复：\n\n1. **修改 workspace.py**：\n   - 显式拒绝绝对路径（`requested_path.is_absolute()` 时抛出 ValueError）\n   - 使用 `Path.relative_to()` 替代字符串 `startswith` 检查，正确处理 sibling 前缀（如 `/workspace` 与 `/workspace2`）\n   - 通过 `(root_path / requested_path).resolve()` 规范化路径后，用 `relative_to` 验证候选路径仍在 workspace 根内，防止 `../` 目录穿越\n\n2. **更新 tests/test_public_workspace.py**：\n   - 保留原有两个测试\n   - 新增 `test_blocks_absolute_path`：验证绝对路径被拒绝\n   - 新增 `test_blocks_sibling_prefix`：验证 sibling 前缀路径（如 `../workspace2/escape.txt`）被正确拒绝\n\n3. **验证结果**：\n   - 全部 4 个测试通过（pytest）\n   - `py_compile` 语法检查通过\n   - flake8 未安装，但代码遵循 PEP8 风格\n\n实现保持最小改动，保留原有公共行为（返回 Path 对象、对非法路径抛 ValueError）。",
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 13,
+        "prompt_tokens": 27740,
+        "completion_tokens": 2535,
+        "total_tokens": 30275,
+        "repeat_index": 0,
+        "changed_files": [
+          "tests/test_public_workspace.py",
+          "workspace.py"
+        ],
+        "patch_fingerprint": "808735c1af69933d",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-safe_workspace_join-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "tool",
+          "final_failure_stage": "none",
+          "signals": [
+            "primary_failure:tool",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 3,
+            "first_failure_step": 2,
+            "first_failure_event": "tool_call",
+            "replan_count": 3,
+            "replanned_after_failure": true,
+            "recovered": true
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 6,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 7,
+                "action": "run_linter"
+              }
+            ],
+            "count": 2,
+            "finish_step": 9,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 1.0,
+            "grade": "good",
+            "issues": []
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": ".......                                                                  [100%]\n7 passed in 0.65s\n",
+        "stderr": "",
+        "duration_seconds": 1.0474127000197768
+      },
+      "changed_files": [
+        "tests/test_public_workspace.py",
+        "workspace.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "cross_file_user_contract",
+      "task_name": "Cross-file user serialization contract",
+      "variant": "full",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_user_serializers.py",
+      "final_answer": "已修复用户序列化流程：1) 修复了测试文件中的语法错误（重写为正确内容）；2) 修复了 users.py 中 display_name 方法，先对每个名字部分 strip 再 join，正确处理多余空白。所有 3 个测试均通过。",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "read_file",
+        "list_directory",
+        "read_file",
+        "edit_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "read_file",
+        "create_file",
+        "run_tests",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "run_tests",
+        "finish"
+      ],
+      "steps_count": 18,
+      "tool_calls": 17,
+      "duration_seconds": 37.35601840005256,
+      "prompt_chars": 270137,
+      "completion_chars": 9204,
+      "estimated_tokens": 85697,
+      "estimated_cost_usd": 0.0,
+      "request_count": 21,
+      "metadata": {
+        "status": "success",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [
+          "python_expert"
+        ],
+        "initial_plan_steps": 8,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 2,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 20,
+        "memory_compression_count": 1,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 1,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 1,
+        "memory_items": 15,
+        "memory_injection_count": 1,
+        "failure_reason": "",
+        "llm_retry_count": 0,
+        "backup_count": 5,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\2c2034cdb446415ca7f7b37761d63be3",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 37.35601840005256,
+        "completion_summary": "已修复用户序列化流程：1) 修复了测试文件中的语法错误（重写为正确内容）；2) 修复了 users.py 中 display_name 方法，先对每个名字部分 strip 再 join，正确处理多余空白。所有 3 个测试均通过。",
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 21,
+        "prompt_tokens": 82970,
+        "completion_tokens": 2727,
+        "total_tokens": 85697,
+        "repeat_index": 0,
+        "changed_files": [
+          "serializers.py",
+          "tests/test_public_user_serializers.py",
+          "users.py"
+        ],
+        "patch_fingerprint": "86a41f3d886f0df8",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-cross_file_user_contract-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "verification",
+          "final_failure_stage": "none",
+          "signals": [
+            "primary_failure:verification",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 2,
+            "first_failure_step": 10,
+            "first_failure_event": "tool_call",
+            "replan_count": 2,
+            "replanned_after_failure": true,
+            "recovered": true
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 10,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 13,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 17,
+                "action": "run_tests"
+              }
+            ],
+            "count": 3,
+            "finish_step": 18,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 1.0,
+            "grade": "good",
+            "issues": []
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": ".....                                                                    [100%]\n5 passed in 0.03s\n",
+        "stderr": "",
+        "duration_seconds": 0.40294709999579936
+      },
+      "changed_files": [
+        "serializers.py",
+        "tests/test_public_user_serializers.py",
+        "users.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "cli_config_docs_contract",
+      "task_name": "CLI configuration docs contract",
+      "variant": "full",
+      "success": false,
+      "failure_reason": "Max steps exceeded",
+      "final_answer": "Reached step limit without completion.",
+      "actions": [
+        "list_directory",
+        "list_directory",
+        "list_directory",
+        "read_file",
+        "read_file",
+        "read_file",
+        "edit_file",
+        "edit_file",
+        "edit_file",
+        "run_tests",
+        "read_file",
+        "create_file",
+        "run_tests",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "read_file",
+        "create_file"
+      ],
+      "steps_count": 18,
+      "tool_calls": 18,
+      "duration_seconds": 36.70176159997936,
+      "prompt_chars": 291087,
+      "completion_chars": 10139,
+      "estimated_tokens": 92517,
+      "estimated_cost_usd": 0.0,
+      "request_count": 20,
+      "metadata": {
+        "status": "max_steps_exceeded",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [
+          "python_expert"
+        ],
+        "initial_plan_steps": 9,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 1,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 0,
+        "memory_compression_count": 0,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 0,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 0,
+        "memory_items": 0,
+        "memory_injection_count": 0,
+        "failure_reason": "Max steps exceeded",
+        "llm_retry_count": 0,
+        "backup_count": 6,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\a1fa6c9d08e049e1bd68a30c6f579e1d",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 36.70176159997936,
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 20,
+        "prompt_tokens": 89441,
+        "completion_tokens": 3076,
+        "total_tokens": 92517,
+        "repeat_index": 0,
+        "changed_files": [
+          "cli_docs.py",
+          "docs/configuration.md",
+          "tests/test_public_cli_docs.py"
+        ],
+        "patch_fingerprint": "24cd51dd98db2564",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-cli_config_docs_contract-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "verification",
+          "final_failure_stage": "max_steps",
+          "signals": [
+            "primary_failure:verification",
+            "final_failure:max_steps",
+            "replanned_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 1,
+            "first_failure_step": 10,
+            "first_failure_event": "tool_call",
+            "replan_count": 1,
+            "replanned_after_failure": true,
+            "recovered": false
+          },
+          "verification": {
+            "actions": [
+              {
+                "step_number": 10,
+                "action": "run_tests"
+              },
+              {
+                "step_number": 13,
+                "action": "run_tests"
+              }
+            ],
+            "count": 2,
+            "finish_step": null,
+            "before_finish": true,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 0.7,
+            "grade": "warning",
+            "issues": [
+              "final_failure:max_steps"
+            ]
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 0,
+        "stdout": "......                                                                   [100%]\n6 passed in 0.03s\n",
+        "stderr": "",
+        "duration_seconds": 0.41164160007610917
+      },
+      "changed_files": [
+        "cli_docs.py",
+        "docs/configuration.md",
+        "tests/test_public_cli_docs.py"
+      ],
+      "workspace_path": ""
+    },
+    {
+      "task_id": "packaging_ci_contract",
+      "task_name": "Packaging metadata and CI contract repair",
+      "variant": "full",
+      "success": false,
+      "failure_reason": "Max steps exceeded",
+      "final_answer": "Reached step limit without completion.",
+      "actions": [
+        "list_directory",
+        "read_file",
+        "read_file",
+        "read_file",
+        "read_file",
+        "edit_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "edit_file",
+        "read_file",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "edit_file",
+        "read_file",
+        "edit_file"
+      ],
+      "steps_count": 20,
+      "tool_calls": 20,
+      "duration_seconds": 31.933189500006847,
+      "prompt_chars": 256579,
+      "completion_chars": 7257,
+      "estimated_tokens": 86661,
+      "estimated_cost_usd": 0.0,
+      "request_count": 21,
+      "metadata": {
+        "status": "max_steps_exceeded",
+        "planning_enabled": true,
+        "compression_enabled": true,
+        "skills_enabled": true,
+        "activated_skills": [
+          "python_expert"
+        ],
+        "initial_plan_steps": 7,
+        "parse_error_count": 0,
+        "parse_repair_count": 0,
+        "tool_error_count": 0,
+        "unknown_tool_count": 0,
+        "argument_error_count": 0,
+        "replan_count": 0,
+        "replan_budget_exhausted_count": 0,
+        "compressed_messages": 22,
+        "memory_compression_count": 1,
+        "budget_compression_count": 0,
+        "truncation_count": 0,
+        "truncated_chars_saved": 0,
+        "edit_guard_enabled": true,
+        "edit_guard_block_count": 2,
+        "memory_invalidation_count": 0,
+        "llm_summary_count": 0,
+        "llm_summary_error_count": 0,
+        "memory_log_count": 1,
+        "memory_items": 12,
+        "memory_injection_count": 1,
+        "failure_reason": "Max steps exceeded",
+        "llm_retry_count": 0,
+        "backup_count": 7,
+        "backup_dir": "C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm_agent_backups\\9dd038f7a7574882a406dd307cadb2ae",
+        "adaptive_replanning_enabled": false,
+        "max_replans": -1,
+        "replan_decision_count": 0,
+        "replan_skipped_count": 0,
+        "replan_maxed_count": 0,
+        "replan_strategy": "",
+        "replan_strategy_counts": {},
+        "replan_signals": [],
+        "last_failure_signature": "",
+        "repeated_failure_count": 0,
+        "repeated_failures": [],
+        "terminal_action_alias_count": 0,
+        "terminal_action_aliases": [],
+        "trial": 1,
+        "duration_seconds": 31.933189500006847,
+        "mode": "all_benchmark",
+        "suite": "all",
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "request_count": 21,
+        "prompt_tokens": 84137,
+        "completion_tokens": 2524,
+        "total_tokens": 86661,
+        "repeat_index": 0,
+        "changed_files": [
+          "packaging_contract.py",
+          "pyproject.toml"
+        ],
+        "patch_fingerprint": "ba9f16fd9cae57cd",
+        "trace_path": "bench_reports\\baseline-traces\\all-full-packaging_ci_contract-r0.jsonl",
+        "cost_per_1k_tokens": 0.0,
+        "trace_analysis": {
+          "primary_failure_stage": "max_steps",
+          "final_failure_stage": "max_steps",
+          "signals": [
+            "primary_failure:max_steps",
+            "final_failure:max_steps",
+            "no_replan_after_failure"
+          ],
+          "recovery": {
+            "failure_event_count": 1,
+            "first_failure_step": null,
+            "first_failure_event": "run_end",
+            "replan_count": 0,
+            "replanned_after_failure": false,
+            "recovered": false
+          },
+          "verification": {
+            "actions": [],
+            "count": 0,
+            "finish_step": null,
+            "before_finish": false,
+            "gap": false
+          },
+          "trace_health": {
+            "score": 0.55,
+            "grade": "risky",
+            "issues": [
+              "final_failure:max_steps",
+              "failure_without_replan"
+            ]
+          }
+        }
+      },
+      "hidden_test": {
+        "command": [
+          "C:\\Users\\ECNU\\Desktop\\DM\\DM-Code-Agent\\.venv\\Scripts\\python.exe",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "returncode": 4,
+        "stdout": "",
+        "stderr": "ERROR: C:\\Users\\ECNU\\AppData\\Local\\Temp\\dm-agent-bench-packaging_ci_contract-r27heyf0\\pyproject.toml: Cannot overwrite a value (at line 14, column 22)\n\n",
+        "duration_seconds": 0.23513839999213815
+      },
+      "changed_files": [
+        "packaging_contract.py",
+        "pyproject.toml"
+      ],
+      "workspace_path": ""
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "slugify_cleanup",
+      "name": "Robust slugify cleanup",
+      "prompt": "Fix text_utils.slugify. It should lowercase text, replace every run of non-alphanumeric characters with one hyphen, collapse repeated separators, and strip leading/trailing hyphens.\n\nYou are in a temporary benchmark workspace. Inspect the files, modify the implementation, and run the visible tests. Hidden tests will be added after you finish, so handle edge cases from the task description rather than hard-coding the visible tests. Finish only when the implementation is ready.",
+      "setup_files": [
+        "tests/test_public_slugify.py",
+        "text_utils.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 12,
+      "tags": [
+        "bugfix",
+        "string",
+        "hidden-tests"
+      ],
+      "allowed_changed_files": [],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "order_total_edges",
+      "name": "Order total business rules",
+      "prompt": "Fix orders.order_total and apply_discount. Discount is a percentage from 0 to 100, applied before tax. Quantity defaults to 1. Return totals rounded to two decimals. Raise ValueError for invalid discount percentages.\n\nYou are in a temporary benchmark workspace. Inspect the files, modify the implementation, and run the visible tests. Hidden tests will be added after you finish, so handle edge cases from the task description rather than hard-coding the visible tests. Finish only when the implementation is ready.",
+      "setup_files": [
+        "orders.py",
+        "tests/test_public_orders.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 14,
+      "tags": [
+        "bugfix",
+        "business-logic",
+        "edge-cases"
+      ],
+      "allowed_changed_files": [],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "ttl_cache_lru",
+      "name": "TTL cache with LRU eviction",
+      "prompt": "Complete TTLCache in cache.py. get should return the default for missing or expired keys. Entries older than ttl_seconds expire. When max_size is exceeded, evict the least recently used live entry. A successful get should update recency.\n\nYou are in a temporary benchmark workspace. Inspect the files, modify the implementation, and run the visible tests. Hidden tests will be added after you finish, so handle edge cases from the task description rather than hard-coding the visible tests. Finish only when the implementation is ready.",
+      "setup_files": [
+        "cache.py",
+        "tests/test_public_cache.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 18,
+      "tags": [
+        "stateful",
+        "algorithm",
+        "hidden-tests"
+      ],
+      "allowed_changed_files": [],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "normalize_users",
+      "name": "Normalize imported user records",
+      "prompt": "Fix users.normalize_users. It should return active users only, skip rows with invalid emails, trim names, lowercase and trim emails, deduplicate by email keeping the first active record, and sort the result by email.\n\nYou are in a temporary benchmark workspace. Inspect the files, modify the implementation, and run the visible tests. Hidden tests will be added after you finish, so handle edge cases from the task description rather than hard-coding the visible tests. Finish only when the implementation is ready.",
+      "setup_files": [
+        "tests/test_public_users.py",
+        "users.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 14,
+      "tags": [
+        "data-cleaning",
+        "dedupe",
+        "edge-cases"
+      ],
+      "allowed_changed_files": [],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "stats_summary",
+      "name": "Statistics summary edge cases",
+      "prompt": "Fix stats.summarize. Return a dictionary with count, min, max, mean, and median. For an empty input, return count 0 and None for the numeric fields. Support odd and even sized inputs without mutating the caller's list.\n\nYou are in a temporary benchmark workspace. Inspect the files, modify the implementation, and run the visible tests. Hidden tests will be added after you finish, so handle edge cases from the task description rather than hard-coding the visible tests. Finish only when the implementation is ready.",
+      "setup_files": [
+        "stats.py",
+        "tests/test_public_stats.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 14,
+      "tags": [
+        "algorithm",
+        "edge-cases",
+        "regression"
+      ],
+      "allowed_changed_files": [],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "inventory_reservations",
+      "name": "Inventory reservation semantics",
+      "prompt": "Fix inventory.Inventory. add should accumulate stock. reserve should return True and decrement stock when enough units exist, including exact matches. It should return False for unknown or insufficient stock. Negative quantities are invalid.\n\nYou are in a temporary benchmark workspace. Inspect the files, modify the implementation, and run the visible tests. Hidden tests will be added after you finish, so handle edge cases from the task description rather than hard-coding the visible tests. Finish only when the implementation is ready.",
+      "setup_files": [
+        "inventory.py",
+        "tests/test_public_inventory.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 14,
+      "tags": [
+        "stateful",
+        "business-logic",
+        "edge-cases"
+      ],
+      "allowed_changed_files": [],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "config_precedence",
+      "name": "Configuration precedence and type coercion",
+      "prompt": "Fix config_loader.load_config. Configuration precedence must be defaults < file_config < environment variables < CLI args. Coerce timeout to int and debug to bool for values from env or CLI.\n\nYou are in a temporary repository that mimics a real maintenance task. Inspect the files, make the smallest production-quality change, update tests when the task asks for a regression test, and run the visible tests. Hidden tests will be added after you finish, so preserve public behavior and handle edge cases.",
+      "setup_files": [
+        "config_loader.py",
+        "tests/test_public_config_loader.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 16,
+      "tags": [
+        "maintenance",
+        "config",
+        "regression"
+      ],
+      "allowed_changed_files": [
+        "config_loader.py"
+      ],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "patch_summary_name_status",
+      "name": "Git name-status patch summary",
+      "prompt": "Fix patch_summary.summarize_name_status so it can be used in a run report. It should parse git diff --name-status style lines, group added/modified/deleted/renamed files, ignore blank lines, and keep deterministic ordering.\n\nYou are in a temporary repository that mimics a real maintenance task. Inspect the files, make the smallest production-quality change, update tests when the task asks for a regression test, and run the visible tests. Hidden tests will be added after you finish, so preserve public behavior and handle edge cases.",
+      "setup_files": [
+        "patch_summary.py",
+        "tests/test_public_patch_summary.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 16,
+      "tags": [
+        "maintenance",
+        "git",
+        "reporting"
+      ],
+      "allowed_changed_files": [
+        "patch_summary.py"
+      ],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "retry_regression_tests",
+      "name": "Retry policy fix with regression tests",
+      "prompt": "Fix retry.should_retry and add regression coverage in tests/test_retry.py. Retry should be allowed for exceptions, HTTP 408, HTTP 429, and 5xx responses, but only while attempt < max_attempts. Do not retry ordinary 4xx responses.\n\nYou are in a temporary repository that mimics a real maintenance task. Inspect the files, make the smallest production-quality change, update tests when the task asks for a regression test, and run the visible tests. Hidden tests will be added after you finish, so preserve public behavior and handle edge cases.",
+      "setup_files": [
+        "retry.py",
+        "tests/test_retry.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 18,
+      "tags": [
+        "maintenance",
+        "tests",
+        "networking"
+      ],
+      "allowed_changed_files": [
+        "retry.py",
+        "tests/test_retry.py"
+      ],
+      "required_changed_files": [
+        "retry.py",
+        "tests/test_retry.py"
+      ]
+    },
+    {
+      "task_id": "safe_workspace_join",
+      "name": "Workspace path traversal guard",
+      "prompt": "Fix workspace.safe_join. It should resolve a user-supplied relative path inside the workspace root and raise ValueError for absolute paths or traversal outside the root. The implementation must work for sibling paths with similar prefixes.\n\nYou are in a temporary repository that mimics a real maintenance task. Inspect the files, make the smallest production-quality change, update tests when the task asks for a regression test, and run the visible tests. Hidden tests will be added after you finish, so preserve public behavior and handle edge cases.",
+      "setup_files": [
+        "tests/test_public_workspace.py",
+        "workspace.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 16,
+      "tags": [
+        "maintenance",
+        "security",
+        "filesystem"
+      ],
+      "allowed_changed_files": [
+        "workspace.py"
+      ],
+      "required_changed_files": []
+    },
+    {
+      "task_id": "cross_file_user_contract",
+      "name": "Cross-file user serialization contract",
+      "prompt": "Fix the user serialization flow across users.py and serializers.py. serialize_user should return id, display_name, and email. display_name should come from a User.display_name method that joins first and last names, trims extra whitespace, and falls back to email when both names are blank. Preserve the public output keys.\n\nYou are in a temporary repository that mimics a real maintenance task. Inspect the files, make the smallest production-quality change, update tests when the task asks for a regression test, and run the visible tests. Hidden tests will be added after you finish, so preserve public behavior and handle edge cases.",
+      "setup_files": [
+        "serializers.py",
+        "tests/test_public_user_serializers.py",
+        "users.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 18,
+      "tags": [
+        "maintenance",
+        "cross-file",
+        "code-understanding"
+      ],
+      "allowed_changed_files": [
+        "users.py",
+        "serializers.py"
+      ],
+      "required_changed_files": [
+        "users.py",
+        "serializers.py"
+      ]
+    },
+    {
+      "task_id": "cli_config_docs_contract",
+      "name": "CLI configuration docs contract",
+      "prompt": "Fix the CLI configuration documentation flow across cli_docs.py, docs/configuration.md, and tests/test_public_cli_docs.py. render_config_table should include every CONFIG_OPTIONS entry, sorted by flag, with option/env/default values rendered as code. The docs page must embed the same generated table under the CONFIG_TABLE marker. Add regression coverage in tests/test_public_cli_docs.py so future config options cannot silently disappear.\n\nYou are in a temporary repository that mimics a real maintenance task. Inspect the files, make the smallest production-quality change, update tests when the task asks for a regression test, and run the visible tests. Hidden tests will be added after you finish, so preserve public behavior and handle edge cases.",
+      "setup_files": [
+        "cli_docs.py",
+        "docs/configuration.md",
+        "tests/test_public_cli_docs.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 18,
+      "tags": [
+        "maintenance",
+        "docs",
+        "cli",
+        "regression",
+        "multi-file"
+      ],
+      "allowed_changed_files": [
+        "cli_docs.py",
+        "docs/configuration.md",
+        "tests/test_public_cli_docs.py"
+      ],
+      "required_changed_files": [
+        "cli_docs.py",
+        "docs/configuration.md",
+        "tests/test_public_cli_docs.py"
+      ]
+    },
+    {
+      "task_id": "packaging_ci_contract",
+      "name": "Packaging metadata and CI contract repair",
+      "prompt": "Fix the packaging and CI contract across packaging_contract.py, pyproject.toml, .github/workflows/ci.yml, and tests/test_public_packaging.py. The project must consistently support Python 3.10, 3.11, and 3.12; expose a >=3.10 requires-python floor; define a dev extra with pytest, ruff, and black; install that dev extra in CI; and run pytest, ruff, and black checks in CI. Add regression coverage in tests/test_public_packaging.py so future packaging or CI drift is caught.\n\nYou are in a temporary repository that mimics a real maintenance task. Inspect the files, make the smallest production-quality change, update tests when the task asks for a regression test, and run the visible tests. Hidden tests will be added after you finish, so preserve public behavior and handle edge cases.",
+      "setup_files": [
+        ".github/workflows/ci.yml",
+        "packaging_contract.py",
+        "pyproject.toml",
+        "tests/test_public_packaging.py"
+      ],
+      "hidden_test_count": 1,
+      "visible_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "hidden_test_command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "max_steps": 20,
+      "tags": [
+        "maintenance",
+        "packaging",
+        "ci",
+        "regression",
+        "multi-file"
+      ],
+      "allowed_changed_files": [
+        "packaging_contract.py",
+        "pyproject.toml",
+        ".github/workflows/ci.yml",
+        "tests/test_public_packaging.py"
+      ],
+      "required_changed_files": [
+        "packaging_contract.py",
+        "pyproject.toml",
+        ".github/workflows/ci.yml",
+        "tests/test_public_packaging.py"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "name": "full",
+      "enable_planning": true,
+      "enable_skills": true,
+      "enable_compression": true
+    }
+  ]
+}

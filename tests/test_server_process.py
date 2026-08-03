@@ -72,7 +72,6 @@ def test_rejects_bad_model_names(model: str) -> None:
         ("temperature", -0.1),
         ("temperature", 2.1),
         ("llm_max_retries", 11),
-        ("max_trials", 0),
         ("max_replans", -2),
     ],
 )
@@ -83,7 +82,7 @@ def test_rejects_out_of_range_numbers(key: str, value: float) -> None:
 
 def test_rejects_wrong_types() -> None:
     with pytest.raises(SpecError, match="必须是布尔值"):
-        spec(options={"enable_critic": "yes"}).validate(PROVIDERS)
+        spec(options={"enable_adaptive_replanning": "yes"}).validate(PROVIDERS)
     with pytest.raises(SpecError, match="必须是数值"):
         spec(options={"max_steps": "many"}).validate(PROVIDERS)
     # bool 是 int 的子类，但 --max-steps True 显然是错的，必须拒绝。
@@ -133,10 +132,12 @@ def test_shell_metacharacters_stay_in_one_argv_element() -> None:
 
 
 def test_boolean_flags_only_appear_when_true() -> None:
-    off = build_argv(spec(options={"enable_critic": False}), trace_path=Path("t.jsonl"))
-    assert "--enable-critic" not in off
-    on = build_argv(spec(options={"enable_critic": True}), trace_path=Path("t.jsonl"))
-    assert "--enable-critic" in on
+    off = build_argv(
+        spec(options={"enable_adaptive_replanning": False}), trace_path=Path("t.jsonl")
+    )
+    assert "--enable-adaptive-replanning" not in off
+    on = build_argv(spec(options={"enable_adaptive_replanning": True}), trace_path=Path("t.jsonl"))
+    assert "--enable-adaptive-replanning" in on
 
 
 def test_edit_guard_is_a_reverse_flag() -> None:
@@ -156,19 +157,13 @@ def test_model_omitted_when_empty() -> None:
 
 
 ALL_OPTIONS: dict[str, object] = {
-    "enable_reflexion": True,
-    "enable_critic": True,
     "enable_adaptive_replanning": True,
-    "enable_memory_hygiene": True,
-    "enable_llm_compression": True,
-    "enable_circuit_breaker": True,
     "enable_edit_guard": False,
     "max_steps": 10,
     "temperature": 0.5,
     "max_observation_chars": 1000,
     "context_token_budget": 2000,
     "llm_max_retries": 1,
-    "max_trials": 2,
     "max_replans": 3,
 }
 
@@ -199,8 +194,6 @@ def test_generated_argv_is_accepted_by_the_real_cli_parser() -> None:
     assert parsed.temperature == pytest.approx(0.5)
     assert parsed.max_replans == 3
     # 布尔开关生效。
-    assert parsed.enable_critic is True
-    assert parsed.enable_circuit_breaker is True
     # --disable-edit-guard 的 dest 是 enable_edit_guard + store_false，
     # 所以「传了这个开关」在解析结果里表现为 enable_edit_guard=False。
     assert parsed.enable_edit_guard is False
@@ -230,8 +223,7 @@ def test_conversation_argv_has_no_positional_task() -> None:
 
 def test_conversation_argv_keeps_the_same_switch_whitelist() -> None:
     """两条入口共用一份开关翻译——对话模式不该有自己的一套开关语义。"""
-    options = {key: value for key, value in ALL_OPTIONS.items() if key != "enable_reflexion"}
-    request = spec("", model="m", options=options)
+    request = spec("", model="m", options=ALL_OPTIONS)
     run_argv = build_argv(request, trace_path=Path("sessions/t.jsonl"))
     chat_argv = build_conversation_argv(request, trace_path=Path("sessions/t.jsonl"))
     # 一次性运行的尾巴是 ["--", task]，对话的尾巴是 ["--conversation-stdin"]。
@@ -242,13 +234,12 @@ def test_conversation_argv_is_accepted_by_the_real_cli_parser() -> None:
     """同样的防漂移断言：对话 argv 必须过真解析器 **且** 过真的互斥校验。
 
     只测 parse_args 不够——``--conversation-stdin`` 的前置条件（必须配 --trace、
-    不能带位置任务、不能开 Reflexion）住在 ``validate_feature_args`` 里，那才是子进程
-    真正会执行的检查。这条断言最初就抓到了「server 会拼出一个子进程直接 exit 2 的 argv」。
+    不能带位置任务）住在 ``validate_feature_args`` 里，那才是子进程真正会执行的检查。
+    这条断言最初就抓到了「server 会拼出一个子进程直接 exit 2 的 argv」。
     """
     from dm_agent.cli.args import parse_args, validate_feature_args
 
-    options = {key: value for key, value in ALL_OPTIONS.items() if key != "enable_reflexion"}
-    request = spec("", model="m", options=options)
+    request = spec("", model="m", options=ALL_OPTIONS)
     request.validate(PROVIDERS, for_conversation=True)
     argv = build_conversation_argv(request, trace_path=Path("sessions/c.jsonl"))
 
@@ -259,17 +250,6 @@ def test_conversation_argv_is_accepted_by_the_real_cli_parser() -> None:
     assert parsed.max_steps == 10
     assert parsed.enable_edit_guard is False
     assert validate_feature_args(parsed) == ""
-
-
-def test_conversation_rejects_reflexion_instead_of_silently_dropping_it() -> None:
-    """Reflexion 会回滚对话历史，与多轮累积冲突。
-
-    悄悄不加这个开关是最坏的选择——用户以为开着，实际没开。这里必须硬拒。
-    """
-    with pytest.raises(SpecError, match="Reflexion"):
-        RunSpec(task="", provider="deepseek", options={"enable_reflexion": True}).validate(
-            PROVIDERS, for_conversation=True
-        )
 
 
 def test_conversation_spec_may_skip_task_validation() -> None:

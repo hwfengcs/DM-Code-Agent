@@ -51,6 +51,7 @@ these entries.
 | [30](30-compaction-economics.md) | Compaction economics: benefit guard and positive sticky windows | post-v2 | implementation landed |
 | [31](31-web-conversation-mode.md) | Web console multi-turn chat: long-lived CLI subprocess over stdin | post-v2 | implementation landed |
 | [32](32-user-level-config-and-env.md) | User-level config and `.env`: making a global install actually work | post-v2 | implementation landed |
+| [33](33-scope-reduction.md) | Subtraction: removing what the frozen evaluation can never falsify | v2.1 | implementation landed |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

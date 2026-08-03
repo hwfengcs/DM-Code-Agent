@@ -19,7 +19,6 @@ from .capabilities import AgentCapability, CapabilityContext
 from .checkpoint import RunCheckpoint
 from .completion import CompletionGate, build_run_result, format_final_answer
 from .context_window import ContextWindow
-from .critic import CriticAgent
 from .events import (
     EventBus,
     HookFailure,
@@ -41,7 +40,6 @@ from .persistence import (
 )
 from .planner import AdaptiveReplanPolicy, PlanStep, TaskPlanner
 from .prompting import activate_skills, build_user_prompt
-from .reflexion import EpisodicMemory, Reflector
 from .replan import FailureContext, ReplanCoordinator
 from .response_parser import normalize_action, parse_agent_response
 from .run_state import RunContext, Step, initial_run_metadata
@@ -63,7 +61,7 @@ class ReactAgent:
     - ``core.replan``：失败后的重规划与失败签名
     - ``core.persistence``：checkpoint 存取与写前备份
 
-    可选能力（Critic、熔断、Reflexion）不住在这里，而是通过 ``core.events``
+    可选能力（熔断等）不住在这里，而是通过 ``core.events``
     的生命周期钩子接入，见 ``core.capabilities``。
     """
 
@@ -84,23 +82,12 @@ class ReactAgent:
         skill_manager: Any | None = None,  # 技能管理器
         trace_writer: Any | None = None,
         capabilities: Sequence[AgentCapability] = (),
-        enable_reflexion: bool = False,
-        max_trials: int = 3,
-        reflector: Reflector | None = None,
-        reflexion_memory: EpisodicMemory | None = None,
-        critic: CriticAgent | None = None,
         enable_adaptive_replanning: bool = False,
         replan_policy: AdaptiveReplanPolicy | None = None,
         max_replans: int = -1,
-        enable_repeated_failure_policy_experiment: bool = False,
         max_observation_chars: int = 8000,
         context_token_budget: int = 24000,
         enable_edit_guard: bool = True,
-        enable_memory_hygiene: bool = False,
-        enable_llm_compression: bool = False,
-        enable_circuit_breaker: bool = False,
-        circuit_breaker_threshold: int = 3,
-        circuit_breaker_cooldown: int = 5,
         event_bus: EventBus | None = None,
     ) -> None:
         """初始化 ReactAgent。
@@ -110,12 +97,10 @@ class ReactAgent:
         取值口径与 ``dm-agent`` CLI 的同名参数一致。
 
         Raises:
-            ValueError: 工具列表为空，或 ``max_trials`` 小于 1
+            ValueError: 工具列表为空
         """
         if not tools:
             raise ValueError("必须为 ReactAgent 提供至少一个工具。")
-        if max_trials < 1:
-            raise ValueError("max_trials must be at least 1.")
         self.client = client
         self.trace_writer = (
             trace_writer if isinstance(trace_writer, SessionWriter) else SessionWriter(trace_writer)
@@ -152,16 +137,12 @@ class ReactAgent:
         # token 预算超限时也会提前触发压缩（0 表示只按消息节奏压缩）。
         self.enable_compression = enable_compression
         self.context_token_budget = max(0, int(context_token_budget))
-        self.enable_memory_hygiene = enable_memory_hygiene
-        self.enable_llm_compression = enable_llm_compression
         self.compressor = (
             ContextCompressor(
                 client_for("compression"),
                 compress_every=20,
                 keep_recent=8,
                 token_budget=self.context_token_budget,
-                enable_hygiene=enable_memory_hygiene,
-                use_llm_summary=enable_llm_compression,
             )
             if enable_compression
             else None
@@ -169,8 +150,6 @@ class ReactAgent:
         self._context_window = ContextWindow(
             compressor=self.compressor,
             enabled=enable_compression,
-            memory_hygiene=enable_memory_hygiene,
-            llm_compression=enable_llm_compression,
             trace_writer=self.trace_writer,
         )
         # 单条工具观察的字符上限；0 表示不截断。
@@ -190,58 +169,23 @@ class ReactAgent:
         self._edit_guard = ReadBeforeEditGuard(
             enabled=enable_edit_guard, trace_writer=self.trace_writer
         )
-        # 工具熔断器（默认关）：同一 action+error 连续失败达到阈值后临时禁用。
-        self.enable_circuit_breaker = enable_circuit_breaker
-        self.circuit_breaker_threshold = circuit_breaker_threshold
-        self.circuit_breaker_cooldown = circuit_breaker_cooldown
-
         # 技能管理器
         self.skill_manager = skill_manager
         self._base_system_prompt = self.system_prompt
         self._base_tools = dict(self.tools)
-        self.enable_reflexion = enable_reflexion
-        self.max_trials = max_trials
-        # 经验记忆是需要随 checkpoint 存取、随 --reflexion-memory-file 落盘的状态，
-        # 因此留在 Agent 上；ReflexionLoop 与它共享同一个实例。
-        # 显式判 None：空 EpisodicMemory 是 falsy，`or` 会丢弃注入的实例
-        # （如 --reflexion-memory-file 加载出的空记忆）。
-        self.reflexion_memory = (
-            reflexion_memory if reflexion_memory is not None else EpisodicMemory()
-        )
-        # reflector / critic 的 client 由对应能力在 install 时接到 phase 包装客户端上。
-        self.reflector = reflector
-        self.critic = critic
         self.enable_adaptive_replanning = enable_adaptive_replanning
         self.replan_policy = replan_policy or AdaptiveReplanPolicy()
         self.max_replans = max_replans
-        self.enable_repeated_failure_policy_experiment = enable_repeated_failure_policy_experiment
         self._replan_coordinator = ReplanCoordinator(
             planner=self.planner,
             policy=self.replan_policy,
             trace_writer=self.trace_writer,
             adaptive=enable_adaptive_replanning,
             max_replans=max_replans,
-            repeated_failure_experiment=enable_repeated_failure_policy_experiment,
         )
 
-        # 可选能力装配：显式传入的 capabilities 之后，追加旧开关等价的内置能力。
-        # 注册顺序即钩子执行顺序，能力先于内核内置守卫注册，与迁移前的判定次序一致。
-        # 延迟导入：extensions 会反向 import core，模块级导入会与 core.agent 相互缠绕。
-        from dm_agent.extensions.capabilities import builtin_capabilities_for
-
+        # 可选能力装配：注册顺序即钩子执行顺序，能力先于内核内置守卫注册。
         self.capabilities: list[AgentCapability] = list(capabilities)
-        self.capabilities.extend(
-            builtin_capabilities_for(
-                enable_circuit_breaker=enable_circuit_breaker,
-                circuit_breaker_threshold=circuit_breaker_threshold,
-                circuit_breaker_cooldown=circuit_breaker_cooldown,
-                critic=critic,
-                enable_reflexion=enable_reflexion,
-                reflexion_memory=self.reflexion_memory,
-                max_trials=max_trials,
-                reflector=self.reflector,
-            )
-        )
         capability_context = CapabilityContext(
             event_bus=self.event_bus,
             client_for=client_for,
@@ -249,8 +193,6 @@ class ReactAgent:
         )
         for capability in self.capabilities:
             capability.install(capability_context)
-            # ReflexionLoop 在 install 时可能补建了默认 Reflector，同步回来保持可观察。
-            self.reflector = getattr(capability, "reflector", None) or self.reflector
 
         self.event_bus.on(
             "before_tool_call",
@@ -274,8 +216,7 @@ class ReactAgent:
         """跑一次任务，并让 ``on_run_end`` 处理器决定是否重试。
 
         重试时对话历史恢复到调用前的快照，因此每次尝试都是干净的一轮；
-        ``on_run_start`` 处理器可以借 ``prompt_suffix`` 把上一轮的经验带进来
-        （内置 Reflexion 多 trial 就是这么实现的）。
+        ``on_run_start`` 处理器可以借 ``prompt_suffix`` 把上一轮的经验带进来。
         """
         if not isinstance(task, str) or not task.strip():
             raise ValueError("任务必须是非空字符串。")
@@ -339,7 +280,7 @@ class ReactAgent:
         """让会话日志补齐「这一轮开始前就在历史里」的消息。
 
         ``conversation_history`` 可能在 ``_run_once`` 之前就非空（交互式多轮、
-        reflexion 重试恢复的快照、resume 恢复的历史）。会话日志要能独立复现上下文，
+        on_run_end 重试恢复的快照、resume 恢复的历史）。会话日志要能独立复现上下文，
         所以把这些消息补记成 ``message`` 条目，顺带把 ``history_entry_ids``
         对齐回 ``len(conversation_history)``。历史为空时这是个空操作。
         """
@@ -407,16 +348,8 @@ class ReactAgent:
             compression_enabled=self.enable_compression,
             skills_enabled=bool(self.skill_manager),
             edit_guard_enabled=self.enable_edit_guard,
-            memory_hygiene_enabled=self.enable_memory_hygiene,
-            llm_compression_enabled=self.enable_llm_compression,
-            circuit_breaker_enabled=self.enable_circuit_breaker,
-            critic_enabled=self.critic is not None,
             adaptive_replanning_enabled=self.enable_adaptive_replanning,
             max_replans=self.max_replans,
-            repeated_failure_policy_experiment_enabled=(
-                self.enable_repeated_failure_policy_experiment
-            ),
-            reflexion_lesson_count=len(self.reflexion_memory),
         )
         self._run_context.begin(run_id=run_token, metadata=metadata)
         start_event = RunStartEvent(
@@ -427,13 +360,11 @@ class ReactAgent:
         )
         prompt_suffix = self.event_bus.emit_run_start(start_event, on_error=self._record_hook_error)
 
-        # resume 必须先恢复持久化状态，再落 trace 的 run_start；否则会记录恢复前的
-        # reflexion lesson 数，而最终 metadata / run_end 使用恢复后的值。
+        # resume 必须先恢复持久化状态，再落 trace 的 run_start。
         plan: list[PlanStep] = []
         resume_from = 0
         if resume_state is not None:
             plan, resume_from = self._restore_from_checkpoint(resume_state, steps, metadata)
-            metadata["reflexion_lesson_count"] = len(self.reflexion_memory)
 
         if self.trace_writer:
             self.trace_writer.start_run(
@@ -447,16 +378,9 @@ class ReactAgent:
                     "context_token_budget": self.context_token_budget,
                     "edit_guard_enabled": self.enable_edit_guard,
                     "skills_enabled": bool(self.skill_manager),
-                    "reflexion_enabled": metadata["reflexion_enabled"],
-                    "critic_enabled": metadata["critic_enabled"],
                     "adaptive_replanning_enabled": self.enable_adaptive_replanning,
                     "max_replans": self.max_replans,
-                    "repeated_failure_policy_experiment_enabled": (
-                        self.enable_repeated_failure_policy_experiment
-                    ),
                     "trial": metadata["trial"],
-                    "max_trials": metadata["max_trials"],
-                    "reflexion_lesson_count": metadata["reflexion_lesson_count"],
                     "tools": [
                         {"name": tool.name, "description": tool.description}
                         for tool in self.tools_list
@@ -844,8 +768,6 @@ class ReactAgent:
                 self.compressor.reset()
             else:
                 self.compressor.restore_state(resume_state.compressor_state)
-        if resume_state.reflexion_memory:
-            self.reflexion_memory = EpisodicMemory.from_dict(resume_state.reflexion_memory)
         warn_on_config_mismatch(resume_state.agent_config, self._config_snapshot())
         return plan, resume_from
 
@@ -869,9 +791,6 @@ class ReactAgent:
             metadata=json_safe_metadata(metadata),
             plan=plan_to_checkpoint(plan),
             compressor_state=self.compressor.export_state() if self.compressor else None,
-            reflexion_memory=(
-                self.reflexion_memory.to_dict() if len(self.reflexion_memory) else None
-            ),
             agent_config=self._config_snapshot(max_steps=limit),
             cwd=str(Path.cwd()),
         )

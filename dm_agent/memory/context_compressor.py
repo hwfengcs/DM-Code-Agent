@@ -457,8 +457,6 @@ class _CompressorRuntimeState:
     turn_count: int
     compression_count: int
     last_compressed_turn_count: int
-    llm_summary_count: int
-    llm_summary_error_count: int
     last_beneficial_compaction: Compaction | None
     last_trigger: str
     last_estimated_tokens: int
@@ -534,8 +532,6 @@ class ContextCompressor:
         memory_limit: int = 5,
         scope: dict[str, str] | None = None,
         token_budget: int = 24000,
-        enable_hygiene: bool = False,
-        use_llm_summary: bool = False,
     ) -> None:
         if compress_every < 1:
             raise ValueError("compress_every must be at least 1")
@@ -552,12 +548,6 @@ class ContextCompressor:
         # Estimated-token ceiling for the pending history; 0 disables the
         # size-based trigger and falls back to pure message-count cadence.
         self.token_budget = max(0, int(token_budget))
-        # Hygiene（默认关）：成功消息使相关失败记忆降权 + 召回 query 锚定任务原文。
-        self.enable_hygiene = enable_hygiene
-        # LLM 摘要（默认关）：折叠旧消息时额外生成一条语义摘要记忆，出错时静默回退。
-        self.use_llm_summary = use_llm_summary
-        self.llm_summary_count = 0
-        self.llm_summary_error_count = 0
         self.last_trigger: str = ""
         self.last_estimated_tokens: int = 0
         self.turn_count = 0
@@ -576,8 +566,6 @@ class ContextCompressor:
         self.turn_count = 0
         self._compression_count = 0
         self._last_compressed_turn_count = 0
-        self.llm_summary_count = 0
-        self.llm_summary_error_count = 0
         self.last_trigger = ""
         self.last_estimated_tokens = 0
         self.last_beneficial_compaction = None
@@ -593,8 +581,6 @@ class ContextCompressor:
             turn_count=self.turn_count,
             compression_count=self._compression_count,
             last_compressed_turn_count=self._last_compressed_turn_count,
-            llm_summary_count=self.llm_summary_count,
-            llm_summary_error_count=self.llm_summary_error_count,
             last_beneficial_compaction=self.last_beneficial_compaction,
             last_trigger=self.last_trigger,
             last_estimated_tokens=self.last_estimated_tokens,
@@ -606,8 +592,6 @@ class ContextCompressor:
         self.turn_count = state.turn_count
         self._compression_count = state.compression_count
         self._last_compressed_turn_count = state.last_compressed_turn_count
-        self.llm_summary_count = state.llm_summary_count
-        self.llm_summary_error_count = state.llm_summary_error_count
         self.last_beneficial_compaction = state.last_beneficial_compaction
         self.last_trigger = state.last_trigger
         self.last_estimated_tokens = state.last_estimated_tokens
@@ -667,16 +651,9 @@ class ContextCompressor:
                 older_messages,
                 scope=self.scope,
                 turn=self._compression_count,
-                invalidate_on_success=self.enable_hygiene,
             )
-            if self.use_llm_summary and self.client is not None:
-                self._add_llm_summary(older_messages)
 
         query = "\n".join(message.get("content", "") for message in recent_messages[-4:])
-        if self.enable_hygiene:
-            task_anchor = _first_user_content(history)
-            if task_anchor:
-                query = task_anchor[:400] + "\n" + query
         memory_block = self.memory.render(
             query,
             scope=self.scope,
@@ -696,44 +673,6 @@ class ContextCompressor:
         """旧 API：等价于「先规划折叠、再按折叠重建消息」，输出逐字节不变。"""
         return apply_compaction(history, self.plan_compaction(history))
 
-    def _add_llm_summary(self, older_messages: list[dict[str, str]]) -> None:
-        """Fold older messages into one LLM-written semantic memory (best effort)."""
-        digest_lines = [
-            f"[{message.get('role', '')}] {_compact(str(message.get('content', '')), limit=400)}"
-            for message in older_messages
-        ]
-        digest = "\n".join(digest_lines)[:6000]
-        prompt = [
-            {
-                "role": "system",
-                "content": (
-                    "你负责压缩智能体的旧对话上下文。用不超过500字总结以下旧消息中的"
-                    "关键事实、涉及文件、已做决定和未解决问题。只输出摘要正文。"
-                ),
-            },
-            {"role": "user", "content": digest},
-        ]
-        try:
-            # 调用点已用 `self.client is not None` 守卫，这里仅为收窄类型。
-            client = self.client
-            if client is None:
-                return
-            summary = str(client.respond(prompt, temperature=0.0)).strip()
-        except Exception:
-            self.llm_summary_error_count += 1
-            return
-        if not summary:
-            return
-        self.memory.add(
-            "Summary of earlier context: " + summary[:500],
-            type="semantic",
-            scope=self.scope,
-            metadata={"source": "llm_summary"},
-            importance=0.75,
-            turn=self._compression_count,
-        )
-        self.llm_summary_count += 1
-
     def get_compression_stats(
         self, original: list[dict[str, str]], compressed: list[dict[str, str]]
     ) -> dict[str, Any]:
@@ -752,8 +691,6 @@ class ContextCompressor:
             "turn_count": self.turn_count,
             "compression_count": self._compression_count,
             "last_compressed_turn_count": self._last_compressed_turn_count,
-            "llm_summary_count": self.llm_summary_count,
-            "llm_summary_error_count": self.llm_summary_error_count,
             "last_beneficial_compaction": _compaction_to_dict(self.last_beneficial_compaction),
         }
 
@@ -762,8 +699,6 @@ class ContextCompressor:
         self.turn_count = int(state.get("turn_count", 0))
         self._compression_count = int(state.get("compression_count", 0))
         self._last_compressed_turn_count = int(state.get("last_compressed_turn_count", 0))
-        self.llm_summary_count = int(state.get("llm_summary_count", 0))
-        self.llm_summary_error_count = int(state.get("llm_summary_error_count", 0))
         self.last_beneficial_compaction = _compaction_from_dict(
             state.get("last_beneficial_compaction")
         )

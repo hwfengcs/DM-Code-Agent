@@ -361,11 +361,7 @@ function SettingsBar({
   onOptions: (update: (old: RunOptions) => RunOptions) => void
   missingKey: string
 }) {
-  // Reflexion 的多次尝试会回滚对话历史，与跨轮累积冲突，后端直接拒。
-  // 这里就不该把它摆出来诱导用户去点。
-  const behaviors = meta.capabilities.filter(
-    (item) => item.category === 'behavior' && item.key !== 'enable_reflexion',
-  )
+  const behaviors = meta.capabilities.filter((item) => item.category === 'behavior')
   const guardrails = meta.capabilities.filter((item) => item.category === 'guardrail')
   const tunings = meta.capabilities.filter((item) => item.category === 'tuning')
 

@@ -141,43 +141,24 @@ def test_cli_advanced_features_default_off(monkeypatch):
 
     args = parse_args(["do maintenance"])
 
-    assert args.enable_reflexion is False
-    assert args.max_trials == 3
-    assert args.enable_critic is False
     assert args.enable_adaptive_replanning is False
     assert args.max_replans == -1
-    assert args.enable_repeated_failure_policy_experiment is False
-    assert args.enable_evolution is False
     assert validate_feature_args(args) == ""
 
 
 def test_cli_advanced_features_wire_into_agent(monkeypatch):
     monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
-    args = parse_args(
-        [
-            "do maintenance",
-            "--enable-reflexion",
-            "--max-trials",
-            "2",
-            "--enable-critic",
-            "--enable-evolution",
-        ]
-    )
+    args = parse_args(["do maintenance", "--enable-adaptive-replanning", "--max-replans", "2"])
     assert validate_feature_args(args) == ""
 
     config = Config(
         api_key="test-key",
-        enable_reflexion=args.enable_reflexion,
-        max_trials=args.max_trials,
-        enable_critic=args.enable_critic,
-        enable_evolution=args.enable_evolution,
+        enable_adaptive_replanning=args.enable_adaptive_replanning,
+        max_replans=args.max_replans,
     )
 
     advanced = resolve_advanced_features(config)
-    assert advanced["reflexion"] is True
-    assert advanced["critic"] is True
     assert advanced["adaptive_replanning"] is True
-    assert advanced["repeated_failure_policy_experiment"] is True
 
     agent = create_agent(
         config,
@@ -185,23 +166,21 @@ def test_cli_advanced_features_wire_into_agent(monkeypatch):
         [Tool("noop", "No operation.", lambda arguments: "ok")],
     )
 
-    assert agent.enable_reflexion is True
-    assert agent.max_trials == 2
-    assert agent.critic is not None
     assert agent.enable_adaptive_replanning is True
-    assert agent.enable_repeated_failure_policy_experiment is True
+    assert agent.max_replans == 2
 
 
 def test_cli_advanced_feature_validation(monkeypatch):
     monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
 
-    bad_trials = parse_args(["task", "--max-trials", "0"])
-    assert "--max-trials" in validate_feature_args(bad_trials)
+    bad_replans = parse_args(["task", "--max-replans", "-2"])
+    assert "--max-replans" in validate_feature_args(bad_replans)
 
-    bad_replans = parse_args(["task", "--enable-repeated-failure-policy-experiment"])
-    assert "--enable-adaptive-replanning" in validate_feature_args(bad_replans)
+    bad_observation = parse_args(["task", "--max-observation-chars", "10"])
+    assert "--max-observation-chars" in validate_feature_args(bad_observation)
 
-    evolution_preset = parse_args(
-        ["task", "--enable-repeated-failure-policy-experiment", "--enable-evolution"]
-    )
-    assert validate_feature_args(evolution_preset) == ""
+    bad_retries = parse_args(["task", "--llm-max-retries", "-1"])
+    assert "--llm-max-retries" in validate_feature_args(bad_retries)
+
+    ok = parse_args(["task", "--enable-adaptive-replanning"])
+    assert validate_feature_args(ok) == ""

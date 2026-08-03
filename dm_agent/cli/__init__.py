@@ -50,11 +50,9 @@ from .report import collect_git_status, default_report_path, write_run_report
 from .runner import (
     create_agent,
     format_agent_context_status,
-    load_reflexion_memory_file,
     review_completed_run,
     run_conversation_stdin,
     run_single_task,
-    save_reflexion_memory_file,
 )
 from .ui import (
     UI,
@@ -102,7 +100,6 @@ __all__ = [
     "get_api_key_for_provider",
     "interactive_mode",
     "load_config_from_file",
-    "load_reflexion_memory_file",
     "main",
     "multi_turn_conversation",
     "parse_args",
@@ -115,7 +112,6 @@ __all__ = [
     "run_conversation_stdin",
     "run_single_task",
     "save_config_to_file",
-    "save_reflexion_memory_file",
     "show_skills",
     "show_tools",
     "validate_feature_args",
@@ -208,19 +204,8 @@ def main(argv: Any = None) -> int:
         context_token_budget=args.context_token_budget,
         enable_edit_guard=args.enable_edit_guard,
         llm_max_retries=args.llm_max_retries,
-        enable_reflexion=args.enable_reflexion,
-        max_trials=args.max_trials,
-        enable_critic=args.enable_critic,
         enable_adaptive_replanning=args.enable_adaptive_replanning,
         max_replans=args.max_replans,
-        enable_repeated_failure_policy_experiment=(args.enable_repeated_failure_policy_experiment),
-        enable_evolution=args.enable_evolution,
-        enable_memory_hygiene=args.enable_memory_hygiene,
-        enable_llm_compression=args.enable_llm_compression,
-        enable_circuit_breaker=args.enable_circuit_breaker,
-        circuit_breaker_threshold=args.circuit_breaker_threshold,
-        circuit_breaker_cooldown=args.circuit_breaker_cooldown,
-        reflexion_memory_file=str(args.reflexion_memory_file or ""),
     )
 
     # --resume：从 checkpoint 恢复任务（任务参数可省略）

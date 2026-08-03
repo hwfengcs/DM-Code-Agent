@@ -81,8 +81,8 @@ trace directories.
 Compare two traces without replaying tools:
 
 ```bash
-dm-agent-trace diff traces/baseline.jsonl traces/critic-enabled.jsonl
-dm-agent-trace diff traces/baseline.jsonl traces/critic-enabled.jsonl --json
+dm-agent-trace diff traces/baseline.jsonl traces/replan-enabled.jsonl
+dm-agent-trace diff traces/baseline.jsonl traces/replan-enabled.jsonl --json
 ```
 
 Trace diff reports status changes, step/tool/replan deltas, action-sequence divergence, tool-usage
@@ -189,14 +189,13 @@ The current schema records these event types:
   (`phase=post_compress_still_over`).
 - `edit_guard`: an `edit_file` call was blocked (`reason=never_read` or `stale_read`) until the
   target range is re-read.
-- `memory_invalidation`: memory hygiene superseded failure memories after a later success
-  (only with `--enable-memory-hygiene`).
+- `memory_invalidation`: memory hygiene superseded failure memories after a later success.
+  **Historical only** — the `--enable-memory-hygiene` switch was removed in v2.1, so new runs
+  never emit this event; it is documented because old session logs still contain it.
 - `file_backup`: the original file was copied to the per-run backup directory before a
   write-class tool ran.
 - `checkpoint_saved`: run state was snapshotted to the `--checkpoint` file after a step.
 - `run_resumed`: a run continued from a `--resume` checkpoint (records the resume step).
-- `circuit_breaker`: a repeatedly failing tool was disabled (`phase=opened`) or a call to it
-  was intercepted during cooldown (`phase=blocked`); only with `--enable-circuit-breaker`.
 - `step`: ReAct step with thought, action, input, and observation.
 - `replan`: regenerated plan after a failure.
 - `run_end`: final answer, status, duration, and agent metadata.

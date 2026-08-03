@@ -8,10 +8,11 @@
 | --- | --- | --- |
 | `dm-agent` | `dm_agent.cli:main` | 主 CLI：跑任务、交互模式 |
 | `dm-agent-trace` | `dm_agent.tracing.cli:main` | `view` / `analyze` / `analyze-dir` / `replay` / `diff` / `fork` |
-| `dm-agent-bench` | `dm_agent.benchmarks.cli:main` | coding / maintenance / swebench-lite benchmark |
+| `dm-agent-bench` | `dm_agent.benchmarks.cli:main` | coding / maintenance benchmark |
 | `dm-agent-eval` | `dm_agent.evals.cli:main` | 确定性 eval（无需 API key） |
 | `dm-agent-economics` | `dm_agent.benchmarks.economics:main` | 离线 token 成本核算 |
 | `dm-agent-manifest-diff` | `dm_agent.benchmarks.manifest_diff:main` | benchmark 任务集漂移检测 |
+| `dm-agent-score-diff` | `dm_agent.benchmarks.score_diff:main` | 两份 benchmark 报告的分数差、逐题翻转与成本对照 |
 | `dm-agent-web` | `dm_agent.server.cli:main` | Web 控制台（需 `[web]` extra），见 [Web 控制台](web.md) |
 
 根目录 `main.py` 是 `python main.py` 的兼容转发，不会作为顶级 `main` 模块安装。
@@ -66,9 +67,8 @@ printf '%s\n' \
   （`run_start` / `run_end`），调用方跟读那个文件即可；stdout 保持人类可读日志。
 * 读到 EOF 正常退出。单轮失败只记一条 `run_error` 并继续等下一轮，不会杀掉整个会话。
 
-四条前置校验（不满足直接退出码 2）：必须配 `--trace`、不能带位置参数任务、
-不能与 `--resume` 同用、不能与 `--enable-reflexion` 同用（后者每次 trial 会把对话
-历史回滚到本轮开始前的快照，与跨轮累积正好相反）。
+三条前置校验（不满足直接退出码 2）：必须配 `--trace`、不能带位置参数任务、
+不能与 `--resume` 同用（resume 恢复的是同一任务的中断点）。
 
 ## 基础设施护栏（默认**开**）
 
@@ -87,20 +87,14 @@ printf '%s\n' \
 
 | 参数 | 附带参数 | 说明 |
 | --- | --- | --- |
-| `--enable-critic` | — | 完成前加一道 peer-review 门禁 |
-| `--enable-reflexion` | `--max-trials 3`、`--reflexion-memory-file` | 失败 trial 反思成 lesson 注入下一轮 |
 | `--enable-adaptive-replanning` | `--max-replans -1` | 错误信号映射到重规划策略 |
-| `--enable-circuit-breaker` | `--circuit-breaker-threshold 3`、`--circuit-breaker-cooldown 5` | 连续失败的工具临时禁用 |
-| `--enable-memory-hygiene` | — | 后续成功让相关失败记忆降权 |
-| `--enable-llm-compression` | — | 折叠旧消息时额外生成一条 LLM 摘要记忆 |
-| `--enable-repeated-failure-policy-experiment` | 需要 adaptive-replanning 或 evolution | 重复失败策略实验 |
-| `--enable-evolution` | — | 隐式打开 adaptive-replan + 重复失败策略 |
 
 Planning 与上下文折叠**默认开启**，但没有暴露成 `dm-agent` 开关；它们只在 bench/eval
 里作为 ablation 变体存在（`no_planning` / `no_compression`）。
 
-**Self-consistency 只在 benchmark 侧**（`dm-agent-bench --self-consistency-runs N`），
-没有接进 `dm-agent`。
+> v2.1 移除了 Reflexion / Critic / Self-Consistency / 工具熔断 / 记忆卫生 /
+> LLM 摘要压缩及其全部开关——它们的毕业标准依赖已冻结的真实评测。
+> 见 [devlog 33](research-log/33-scope-reduction.md)。
 
 这些开关是过渡写法：它们内部等价于「加载对应的内置扩展」，实现见
 [生命周期事件](lifecycle-events.md#内置能力也是事件处理器)。
@@ -116,7 +110,7 @@ Planning 与上下文折叠**默认开启**，但没有暴露成 `dm-agent` 开�
 | `--resume-at ENTRY_ID` | 仅对 JSONL 会话日志有效，定位到某条 entry（支持唯一前缀） |
 
 `--trace` 与 `--checkpoint` 不能指向同一个文件（前者默认脱敏，后者含完整对话）。
-`--checkpoint`/`--resume` 与 `--enable-reflexion` 互斥。细节见 [会话与 trace](tracing.md)。
+细节见 [会话与 trace](tracing.md)。
 
 ## 扩展开关
 

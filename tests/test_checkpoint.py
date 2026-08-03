@@ -325,20 +325,8 @@ def test_resume_without_compressor_state_clears_existing_compressor_state():
     assert agent.compressor.last_beneficial_compaction is None
 
 
-def test_run_rejects_resume_with_reflexion(tmp_path):
-    agent = ReactAgent(
-        FakeRespondClient([]),
-        _tools(),
-        enable_planning=False,
-        enable_compression=False,
-        enable_reflexion=True,
-    )
-    with pytest.raises(ValueError):
-        agent.run("task", checkpoint_path=tmp_path / "cp.json")
-
-
-def test_resume_restores_plan_and_reflexion_memory(tmp_path):
-    trace_path = tmp_path / "resume-reflexion-memory.jsonl"
+def test_resume_restores_plan(tmp_path):
+    trace_path = tmp_path / "resume-plan.jsonl"
     checkpoint = RunCheckpoint(
         task="resume with plan",
         step_count=1,
@@ -361,10 +349,6 @@ def test_resume_restores_plan_and_reflexion_memory(tmp_path):
             },
             {"step_number": 2, "action": "task_complete", "reason": "finish"},
         ],
-        reflexion_memory={
-            "max_lessons": 5,
-            "lessons": [{"text": "prefer the smallest fix", "source": "agent_failure"}],
-        },
     )
     writer = TraceWriter(trace_path)
     agent = ReactAgent(
@@ -374,8 +358,6 @@ def test_resume_restores_plan_and_reflexion_memory(tmp_path):
         enable_compression=False,
         trace_writer=writer,
     )
-    assert len(agent.reflexion_memory) == 0
-
     result = agent.run(checkpoint.task, max_steps=4, resume_state=checkpoint)
     writer.close()
 
@@ -384,15 +366,10 @@ def test_resume_restores_plan_and_reflexion_memory(tmp_path):
     # 计划连同完成状态一起回到 planner，resume 后不会重跑已完成的步骤。
     assert [step.action for step in agent.planner.current_plan] == ["echo", "task_complete"]
     assert agent.planner.current_plan[0].completed is True
-    assert len(agent.reflexion_memory) == 1
-    assert agent.reflexion_memory.lessons[0].text == "prefer the smallest fix"
-    assert result["metadata"]["reflexion_lesson_count"] == 1
 
     events = load_trace_events(trace_path)
-    run_start = next(event for event in events if event["event"] == "run_start")
-    run_end = next(event for event in events if event["event"] == "run_end")
-    assert run_start["payload"]["metadata"]["reflexion_lesson_count"] == 1
-    assert run_end["payload"]["metadata"]["reflexion_lesson_count"] == 1
+    assert any(event["event"] == "run_start" for event in events)
+    assert any(event["event"] == "run_end" for event in events)
 
 
 def test_resume_warns_on_config_mismatch(capsys):

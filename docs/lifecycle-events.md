@@ -45,8 +45,6 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 
 - `agent`
 - `planner`
-- `critic`
-- `reflexion`
 - `compression`
 
 消息处理发生在一次逻辑 `respond()` 调用前，不会因 provider 内部重试重复触发。主循环的
@@ -61,9 +59,13 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 - 返回 `{"block": True, "reason": "..."}` 会否决这次完成：`reason` 成为该步骤的
   observation，写回对话历史并参与失败判定，Agent 继续下一步。第一个否决生效，后续处理器不再执行。
 
-内置的 Critic 门禁（`--enable-critic`）就是注册在这个事件上的处理器。注意它在自身
-内部捕获异常并转成否决——事件总线的异常隔离会跳过失败的处理器，那等价于「放行」，
-与 Critic「审查失败即否决」的语义相反，所以这类守卫必须自己兜底。
+注意异常处理：事件总线的异常隔离会跳过抛异常的处理器，那等价于**放行**。
+对「审查失败即否决」语义的守卫来说这是反的，所以这类处理器必须自己捕获异常
+并转成显式否决，不能依赖总线兜底。
+
+被否决时内核记的失败标识是 `critic_rejected`——这是历史字段名（当年只有内置
+Critic 用这条路），会话日志与 planner 的重规划策略都按它对齐，不随内置 Critic
+的移除而改名。
 
 ### `on_run_start`
 
@@ -82,8 +84,7 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 
 返回 `{"retry": True}` 会让内核**丢弃本次尝试并重跑一轮**：对话历史恢复到 `run()`
 调用前的快照，`attempt` 加一，下一轮的 `on_run_start` 可以借 `prompt_suffix` 把上一轮
-的经验带进去。第一个要求重试的处理器生效。内置的 Reflexion 多 trial
-（`--enable-reflexion`）就是这么实现的。
+的经验带进去。第一个要求重试的处理器生效。
 
 > `--checkpoint` / `--resume` 与 `on_run_end` 重试互斥：断点续跑记录的是单轮的线性
 > 状态，重跑会让它失去意义，因此同时使用会直接抛 `ValueError`。
@@ -110,20 +111,13 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 `edit_file`，并在 `after_tool_result` 中维护成功读写的文件台账。`--disable-edit-guard`
 只关闭拦截，保持既有 CLI 语义不变。
 
-默认关闭的可选能力同样如此。它们实现 `dm_agent.core.capabilities.AgentCapability`
-协议，在 Agent 构造末尾通过 `install(context)` 把自己挂到事件总线上：
+可选能力同样如此：实现 `dm_agent.core.capabilities.AgentCapability` 协议，
+在 Agent 构造末尾通过 `install(context)` 把自己挂到事件总线上，经
+`ReactAgent(capabilities=[...])` 传入。
 
-| 能力 | CLI 开关 | 挂载事件 | 实现位置 |
-|---|---|---|---|
-| Critic 完成门禁 | `--enable-critic` | `before_finish` | `dm_agent/extensions/capabilities/critic_gate.py` |
-| 工具熔断 | `--enable-circuit-breaker` | `before_tool_call` + `after_tool_result` | `dm_agent/extensions/capabilities/circuit_breaker_gate.py` |
-| Reflexion 多 trial | `--enable-reflexion` | `on_run_start` + `on_run_end` | `dm_agent/extensions/capabilities/reflexion_loop.py` |
-
-同目录下还有 `self_consistency.py`。它是个例外：**不挂任何钩子**，也没有接进
-`dm-agent` CLI，只是一个在 Agent 之外把同一任务跑多遍再选候选的编排器（目前只有
-`dm-agent-bench --self-consistency-runs N` 用到 self-consistency）。放在这里是为了让
-`dm_agent/core/` 只留 ReAct 主循环需要的东西；`dm_agent.SelfConsistencyRunner` 与
-`dm_agent.core.SelfConsistencyRunner` 两条旧导入路径保持可用。
+> v2.1 移除了全部内置可选能力（Critic / 工具熔断 / Reflexion）与
+> `dm_agent/extensions/capabilities/` 子包。协议本身保留——它是公开扩展点，
+> 要复活任何一个能力，按 [扩展开发](extensions.md) 写成外部扩展即可。
 
 `CapabilityContext` 只暴露 `event_bus`、`client_for`（按 phase 包装的 LLM 客户端工厂）
 和 `trace_writer`，不会把 `ReactAgent` 交给能力实现。也可以在构造 Agent 时直接传入

@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Scope reduction: removing what the frozen evaluation can never falsify (2026-08)
+
+An AST scan found essentially **no traditional dead code** (one 2-line unreferenced function
+in the whole package). The redundancy was architectural: entire subsystems with tests and docs
+that could never produce value, because their graduation criteria depended on the real
+evaluation — which is frozen. Rationale, boundaries, and the recovery path are in
+[`docs/research-log/33-scope-reduction.md`](docs/research-log/33-scope-reduction.md).
+
+**Do not reintroduce these into the kernel.** The `AgentCapability` protocol and all six
+lifecycle hooks are unchanged, so any of them can come back as an external extension.
+
+#### Removed (breaking)
+- **SWE-bench Lite suite** — `dm_agent/benchmarks/swebench_lite/`, its tests, 202 lines of CLI
+  glue, the `--suite swebench_lite` branch and eight suite-specific flags
+  (`--instance-id`, `--max-instances`, `--use-docker`, `--snapshot-path`,
+  `--instance-test-timeout`, `--resume`, `--resume-from-output`), plus the
+  `dm-code-agent[swebench]` extra. It never worked: Tier-1 baseline was 0.0% resolved and
+  polluted by host verifier noise, the Tier-2 verifier raised `NotImplementedError`, and CI
+  never ran it. Historical evidence stays in `bench_reports/swebench_lite_*`.
+- **Reflexion** — `--enable-reflexion`, `--max-trials`, `--reflexion-memory-file`,
+  `core/reflexion.py`, `capabilities/reflexion_loop.py`, and the checkpoint `reflexion_memory`
+  field.
+- **Critic** — `--enable-critic` (both `dm-agent` and `dm-agent-bench`), `core/critic.py`,
+  `capabilities/critic_gate.py`.
+- **Self-Consistency** — `--self-consistency-runs`, `--self-consistency-strategy`,
+  `capabilities/self_consistency.py`, and 195 lines of candidate selection / voting /
+  uncertainty logic in the benchmark runner. It was never wired into the main CLI.
+- **Circuit breaker** — `--enable-circuit-breaker`, `--circuit-breaker-threshold`,
+  `--circuit-breaker-cooldown`, `core/circuit_breaker.py`, `capabilities/circuit_breaker_gate.py`.
+- **`--enable-repeated-failure-policy-experiment`** and the `break_repeated_failure_loop`
+  strategy. Repeated-failure *detection and bookkeeping* are kept — only the experimental
+  escape strategy is gone.
+- **`--enable-evolution`** — it was only a meta-switch over the two above.
+- **`--enable-memory-hygiene`** and **`--enable-llm-compression`**, plus the compressor's
+  `_add_llm_summary`. The latter called an LLM during compaction, which contradicts the
+  "context compaction is locally deterministic" design.
+- **`dm_agent/extensions/capabilities/`** and `builtin_capabilities_for()` — with the built-in
+  capability count at zero, this translation layer had no purpose. `ReactAgent(capabilities=[...])`
+  is now the single entry point for optional capabilities.
+- Public exports: `CriticAgent`, `CriticReview`, `EpisodicMemory`, `Lesson`, `Reflector`,
+  `SelfConsistencyCandidate`, `SelfConsistencyResult`, `SelfConsistencyRunner` (from both
+  `dm_agent` and `dm_agent.core`).
+- Dead code and cruft: `context_budget.last_write_step`, the `benchmarks/` and `evals/`
+  root-level thin wrappers, the stale hand-written `evals/tasks.json`, `check_mcp_env.py`.
+
+#### Changed
+- `dm-agent` CLI flags: **35 → 23**.
+- Removing the `swebench` extra dropped 26 transitive dependencies and 1393 lines from `uv.lock`.
+- Three restrictions that existed only for Reflexion are gone: `--conversation-stdin` no longer
+  rejects it, `--checkpoint`/`--resume` are no longer mutually exclusive with it, and the
+  server-side conversation-mode special case was removed. Two server argv tests now exercise
+  the full option set instead of excluding Reflexion, which strengthens them.
+- The scoreboard is now the bundled coding + maintenance benchmark (13 hidden-test tasks,
+  `overall_pass_rate`). Measured: DeepSeek `pass_rate 0.5 (3/6)` on the coding suite.
+
+#### Kept deliberately
+- `CompletionGate` — it never depended on Critic; an empty `before_finish` chain simply passes.
+- The `on_run_end` retry orchestration in `run()` — a general mechanism, not Reflexion's.
+- `error_kind="critic_rejected"`, the planner strategy keyed on it, and the observation failure
+  markers — these are the completion-gate veto path that third-party extensions still use.
+- Read-side compatibility for historical sessions: `tracing/analysis.py` critic classification
+  and the frontend's `critic_review` rendering. Old session logs contain those entries, and
+  "raw data is never deleted" applies to reading them back.
+- `Mem0StyleMemory.add_messages(invalidate_on_success=...)` — a public component's capability
+  parameter; its tests were rewritten against the memory layer directly.
+
+#### Verification
+427 tests pass. Across all four batches the deterministic eval (56 runs) lost exactly 15
+metadata keys — all belonging to removed features — with **no new keys and no changed values**;
+the summary is field-for-field identical with `overall_success_rate` at 1.0. Both benchmark
+manifest signatures are unchanged, historical sessions still `analyze`/`view` correctly, and
+ruff / black / mypy / `uv lock --check` / the frontend build all pass.
+
 ### Installability: user-level config and `.env` (2026-08)
 
 Three bugs that made `pip install dm-code-agent` unusable outside a cloned repo. All three

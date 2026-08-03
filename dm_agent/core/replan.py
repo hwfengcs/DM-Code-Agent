@@ -68,14 +68,12 @@ class ReplanCoordinator:
         trace_writer: Any | None = None,
         adaptive: bool = False,
         max_replans: int = -1,
-        repeated_failure_experiment: bool = False,
     ) -> None:
         self.planner = planner
         self.policy = policy
         self.trace_writer = trace_writer
         self.adaptive = adaptive
         self.max_replans = max_replans
-        self.repeated_failure_experiment = repeated_failure_experiment
 
     def try_replan(
         self,
@@ -152,12 +150,7 @@ class ReplanCoordinator:
             replan_count=int(metadata.get("replan_count", 0)),
             max_replans=self.max_replans,
             repeated_failure=repeated_failure,
-            use_repeated_failure_escape=self.repeated_failure_experiment,
         )
-        if repeated_failure and self.repeated_failure_experiment:
-            metadata["repeated_failure_policy_applied_count"] = (
-                int(metadata.get("repeated_failure_policy_applied_count", 0)) + 1
-            )
         metadata["replan_decision_count"] += 1
         metadata["replan_strategy"] = decision.strategy
         strategy_counts = metadata.setdefault("replan_strategy_counts", {})
