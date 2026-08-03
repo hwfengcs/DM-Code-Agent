@@ -85,15 +85,9 @@ class ReactAgent:
         enable_adaptive_replanning: bool = False,
         replan_policy: AdaptiveReplanPolicy | None = None,
         max_replans: int = -1,
-        enable_repeated_failure_policy_experiment: bool = False,
         max_observation_chars: int = 8000,
         context_token_budget: int = 24000,
         enable_edit_guard: bool = True,
-        enable_memory_hygiene: bool = False,
-        enable_llm_compression: bool = False,
-        enable_circuit_breaker: bool = False,
-        circuit_breaker_threshold: int = 3,
-        circuit_breaker_cooldown: int = 5,
         event_bus: EventBus | None = None,
     ) -> None:
         """初始化 ReactAgent。
@@ -143,16 +137,12 @@ class ReactAgent:
         # token 预算超限时也会提前触发压缩（0 表示只按消息节奏压缩）。
         self.enable_compression = enable_compression
         self.context_token_budget = max(0, int(context_token_budget))
-        self.enable_memory_hygiene = enable_memory_hygiene
-        self.enable_llm_compression = enable_llm_compression
         self.compressor = (
             ContextCompressor(
                 client_for("compression"),
                 compress_every=20,
                 keep_recent=8,
                 token_budget=self.context_token_budget,
-                enable_hygiene=enable_memory_hygiene,
-                use_llm_summary=enable_llm_compression,
             )
             if enable_compression
             else None
@@ -160,8 +150,6 @@ class ReactAgent:
         self._context_window = ContextWindow(
             compressor=self.compressor,
             enabled=enable_compression,
-            memory_hygiene=enable_memory_hygiene,
-            llm_compression=enable_llm_compression,
             trace_writer=self.trace_writer,
         )
         # 单条工具观察的字符上限；0 表示不截断。
@@ -181,11 +169,6 @@ class ReactAgent:
         self._edit_guard = ReadBeforeEditGuard(
             enabled=enable_edit_guard, trace_writer=self.trace_writer
         )
-        # 工具熔断器（默认关）：同一 action+error 连续失败达到阈值后临时禁用。
-        self.enable_circuit_breaker = enable_circuit_breaker
-        self.circuit_breaker_threshold = circuit_breaker_threshold
-        self.circuit_breaker_cooldown = circuit_breaker_cooldown
-
         # 技能管理器
         self.skill_manager = skill_manager
         self._base_system_prompt = self.system_prompt
@@ -193,29 +176,16 @@ class ReactAgent:
         self.enable_adaptive_replanning = enable_adaptive_replanning
         self.replan_policy = replan_policy or AdaptiveReplanPolicy()
         self.max_replans = max_replans
-        self.enable_repeated_failure_policy_experiment = enable_repeated_failure_policy_experiment
         self._replan_coordinator = ReplanCoordinator(
             planner=self.planner,
             policy=self.replan_policy,
             trace_writer=self.trace_writer,
             adaptive=enable_adaptive_replanning,
             max_replans=max_replans,
-            repeated_failure_experiment=enable_repeated_failure_policy_experiment,
         )
 
-        # 可选能力装配：显式传入的 capabilities 之后，追加旧开关等价的内置能力。
-        # 注册顺序即钩子执行顺序，能力先于内核内置守卫注册，与迁移前的判定次序一致。
-        # 延迟导入：extensions 会反向 import core，模块级导入会与 core.agent 相互缠绕。
-        from dm_agent.extensions.capabilities import builtin_capabilities_for
-
+        # 可选能力装配：注册顺序即钩子执行顺序，能力先于内核内置守卫注册。
         self.capabilities: list[AgentCapability] = list(capabilities)
-        self.capabilities.extend(
-            builtin_capabilities_for(
-                enable_circuit_breaker=enable_circuit_breaker,
-                circuit_breaker_threshold=circuit_breaker_threshold,
-                circuit_breaker_cooldown=circuit_breaker_cooldown,
-            )
-        )
         capability_context = CapabilityContext(
             event_bus=self.event_bus,
             client_for=client_for,
@@ -378,14 +348,8 @@ class ReactAgent:
             compression_enabled=self.enable_compression,
             skills_enabled=bool(self.skill_manager),
             edit_guard_enabled=self.enable_edit_guard,
-            memory_hygiene_enabled=self.enable_memory_hygiene,
-            llm_compression_enabled=self.enable_llm_compression,
-            circuit_breaker_enabled=self.enable_circuit_breaker,
             adaptive_replanning_enabled=self.enable_adaptive_replanning,
             max_replans=self.max_replans,
-            repeated_failure_policy_experiment_enabled=(
-                self.enable_repeated_failure_policy_experiment
-            ),
         )
         self._run_context.begin(run_id=run_token, metadata=metadata)
         start_event = RunStartEvent(
@@ -416,9 +380,6 @@ class ReactAgent:
                     "skills_enabled": bool(self.skill_manager),
                     "adaptive_replanning_enabled": self.enable_adaptive_replanning,
                     "max_replans": self.max_replans,
-                    "repeated_failure_policy_experiment_enabled": (
-                        self.enable_repeated_failure_policy_experiment
-                    ),
                     "trial": metadata["trial"],
                     "tools": [
                         {"name": tool.name, "description": tool.description}

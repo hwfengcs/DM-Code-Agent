@@ -107,14 +107,8 @@ def create_agent(
         max_observation_chars=config.max_observation_chars,
         context_token_budget=config.context_token_budget,
         enable_edit_guard=config.enable_edit_guard,
-        enable_memory_hygiene=advanced["memory_hygiene"],
-        enable_llm_compression=advanced["llm_compression"],
-        enable_circuit_breaker=advanced["circuit_breaker"],
-        circuit_breaker_threshold=config.circuit_breaker_threshold,
-        circuit_breaker_cooldown=config.circuit_breaker_cooldown,
         enable_adaptive_replanning=advanced["adaptive_replanning"],
         max_replans=config.max_replans,
-        enable_repeated_failure_policy_experiment=(advanced["repeated_failure_policy_experiment"]),
         event_bus=(
             extension_registry.create_event_bus() if extension_registry is not None else None
         ),
@@ -193,10 +187,6 @@ def _assemble_agent(
                 "trace_llm_io": trace_llm_io,
                 "adaptive_replanning_enabled": advanced["adaptive_replanning"],
                 "max_replans": config.max_replans,
-                "repeated_failure_policy_experiment_enabled": (
-                    advanced["repeated_failure_policy_experiment"]
-                ),
-                "evolution_enabled": advanced["evolution"],
             },
         )
 

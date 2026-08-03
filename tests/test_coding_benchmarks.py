@@ -61,13 +61,6 @@ def test_benchmark_feature_flags_parse_without_api_key():
     )
 
 
-def test_repeated_failure_policy_experiment_requires_adaptive_replanning(
-    capsys: pytest.CaptureFixture[str],
-):
-    assert bench_main(["--list", "--enable-repeated-failure-policy-experiment"]) == 2
-    assert "requires --enable-adaptive-replanning" in capsys.readouterr().err
-
-
 def test_maintenance_benchmark_manifest_is_realistic_and_keyless():
     tasks = get_maintenance_tasks()
 
@@ -131,11 +124,9 @@ def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest
         tasks=[task],
         config=BenchmarkRunConfig(
             enable_adaptive_replanning=True,
-            enable_repeated_failure_policy_experiment=True,
         ),
     )
 
-    assert report["adaptive_replanning"]["repeated_failure_policy_experiment"] is True
     assert report["manifest"]["task_fingerprints"][task.task_id]
     assert report["manifest"]["suite_signature"]
 

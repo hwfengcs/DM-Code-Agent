@@ -59,12 +59,8 @@ def initial_run_metadata(
     compression_enabled: bool,
     skills_enabled: bool,
     edit_guard_enabled: bool,
-    memory_hygiene_enabled: bool,
-    llm_compression_enabled: bool,
-    circuit_breaker_enabled: bool,
     adaptive_replanning_enabled: bool,
     max_replans: int,
-    repeated_failure_policy_experiment_enabled: bool,
 ) -> dict[str, Any]:
     """构造一次 run 的遥测 metadata 初值。
 
@@ -91,11 +87,6 @@ def initial_run_metadata(
         "truncated_chars_saved": 0,
         "edit_guard_enabled": edit_guard_enabled,
         "edit_guard_block_count": 0,
-        "memory_hygiene_enabled": memory_hygiene_enabled,
-        "llm_compression_enabled": llm_compression_enabled,
-        "circuit_breaker_enabled": circuit_breaker_enabled,
-        "circuit_breaker_block_count": 0,
-        "circuit_breaker_trip_count": 0,
         "memory_invalidation_count": 0,
         "llm_summary_count": 0,
         "llm_summary_error_count": 0,
@@ -117,8 +108,6 @@ def initial_run_metadata(
         "last_failure_signature": "",
         "repeated_failure_count": 0,
         "repeated_failures": [],
-        "repeated_failure_policy_experiment_enabled": repeated_failure_policy_experiment_enabled,
-        "repeated_failure_policy_applied_count": 0,
         "terminal_action_alias_count": 0,
         "terminal_action_aliases": [],
         # 本次尝试序号；``on_run_end`` 处理器请求重试时由 ``run()`` 递增。

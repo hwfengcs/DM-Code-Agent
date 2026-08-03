@@ -39,8 +39,6 @@ def _window_metadata():
         "memory_log_count": 0,
         "budget_compression_count": 0,
         "memory_invalidation_count": 0,
-        "llm_summary_count": 0,
-        "llm_summary_error_count": 0,
     }
 
 
@@ -203,8 +201,6 @@ def test_context_compressor_reset_clears_all_conversation_scoped_state():
     compressor.turn_count = 5
     compressor._compression_count = 2
     compressor._last_compressed_turn_count = 4
-    compressor.llm_summary_count = 2
-    compressor.llm_summary_error_count = 1
     compressor.last_trigger = "token_budget"
     compressor.last_estimated_tokens = 321
     compressor.accept_beneficial_compaction(
@@ -222,8 +218,6 @@ def test_context_compressor_reset_clears_all_conversation_scoped_state():
     assert compressor.turn_count == 0
     assert compressor.export_state()["compression_count"] == 0
     assert compressor.export_state()["last_compressed_turn_count"] == 0
-    assert compressor.llm_summary_count == 0
-    assert compressor.llm_summary_error_count == 0
     assert compressor.last_trigger == ""
     assert compressor.last_estimated_tokens == 0
     assert compressor.last_beneficial_compaction is None
@@ -265,8 +259,6 @@ def test_token_budget_rejection_is_traced_without_counting_an_accepted_compressi
     window = ContextWindow(
         compressor=compressor,
         enabled=True,
-        memory_hygiene=False,
-        llm_compression=False,
         trace_writer=recorder,
     )
     context = RunContext(step_number=1, metadata=_window_metadata())
@@ -287,8 +279,6 @@ def test_context_window_rejects_negative_candidates_then_accepts_and_reuses_stic
     window = ContextWindow(
         compressor=compressor,
         enabled=True,
-        memory_hygiene=False,
-        llm_compression=False,
         trace_writer=recorder,
     )
     context = RunContext(step_number=1, metadata=_window_metadata())
@@ -317,7 +307,7 @@ def test_context_window_rejects_negative_candidates_then_accepts_and_reuses_stic
     assert len(recorder.compactions) == 1
 
 
-def test_context_window_rejects_zero_saving_and_rolls_back_llm_summary_state(monkeypatch):
+def test_context_window_rejects_zero_saving_and_rolls_back_candidate_state(monkeypatch):
     class TrackingMemory(Mem0StyleMemory):
         def __init__(self):
             super().__init__()
@@ -337,25 +327,18 @@ def test_context_window_rejects_zero_saving_and_rolls_back_llm_summary_state(mon
             super().restore_rollback_state(state["base"])
             self.render_count = state["render_count"]
 
-    class SummaryClient:
-        def respond(self, messages, **extra):
-            return "summary"
-
     memory = TrackingMemory()
     compressor = ContextCompressor(
-        SummaryClient(),
         compress_every=1,
         keep_recent=1,
         memory=memory,
         token_budget=0,
-        use_llm_summary=True,
     )
     history = _growing_history(5, payload_chars=20)
     empty = Compaction(first_kept_index=0, folded_indexes=(), summary="")
 
     def zero_saving(_history):
         compressor._compression_count += 1
-        compressor.llm_summary_count += 1
         compressor.memory.add("temporary memory")
         memory.render_count += 1
         return empty
@@ -364,8 +347,6 @@ def test_context_window_rejects_zero_saving_and_rolls_back_llm_summary_state(mon
     window = ContextWindow(
         compressor=compressor,
         enabled=True,
-        memory_hygiene=False,
-        llm_compression=True,
     )
 
     sent = window.build_messages(
@@ -375,7 +356,6 @@ def test_context_window_rejects_zero_saving_and_rolls_back_llm_summary_state(mon
     assert sent[1:] == history
     assert compressor.memory_count == 0
     assert compressor.export_state()["compression_count"] == 0
-    assert compressor.llm_summary_count == 0
     assert compressor.last_beneficial_compaction is None
     assert compressor.memory is memory
     assert memory.render_count == 0
@@ -410,8 +390,6 @@ def test_sticky_reuse_syncs_memory_gauges_without_counting_a_new_compression():
     compressor = ContextCompressor(compress_every=100, keep_recent=1, token_budget=0)
     compressor.memory.add("remember app.py")
     compressor.memory.superseded_count = 2
-    compressor.llm_summary_count = 3
-    compressor.llm_summary_error_count = 1
     sticky = Compaction(
         first_kept_index=1,
         folded_indexes=(0,),
@@ -423,8 +401,6 @@ def test_sticky_reuse_syncs_memory_gauges_without_counting_a_new_compression():
     window = ContextWindow(
         compressor=compressor,
         enabled=True,
-        memory_hygiene=True,
-        llm_compression=True,
     )
 
     sent = window.build_messages(
@@ -435,39 +411,8 @@ def test_sticky_reuse_syncs_memory_gauges_without_counting_a_new_compression():
 
     assert sent[1:] == apply_compaction(_growing_history(3), sticky)
     assert metadata["memory_items"] == 1
-    assert metadata["memory_invalidation_count"] == 2
-    assert metadata["llm_summary_count"] == 3
-    assert metadata["llm_summary_error_count"] == 1
     assert metadata["memory_injection_count"] == 0
     assert metadata["memory_compression_count"] == 0
-
-
-def test_existing_hygiene_invalidations_are_not_reemitted_as_new_events():
-    compressor = ContextCompressor(
-        compress_every=1,
-        keep_recent=1,
-        token_budget=0,
-        enable_hygiene=True,
-    )
-    compressor.memory.superseded_count = 2
-    recorder = _CompactionRecorder()
-    metadata = _window_metadata()
-    window = ContextWindow(
-        compressor=compressor,
-        enabled=True,
-        memory_hygiene=True,
-        llm_compression=False,
-        trace_writer=recorder,
-    )
-
-    window.build_messages(
-        "system",
-        _growing_history(17, payload_chars=180),
-        context=RunContext(step_number=1, metadata=metadata),
-    )
-
-    assert metadata["memory_invalidation_count"] == 2
-    assert not any(event["event"] == "memory_invalidation" for event in recorder.events)
 
 
 def test_context_window_rolls_back_candidate_state_when_planning_raises(monkeypatch):
@@ -483,8 +428,6 @@ def test_context_window_rolls_back_candidate_state_when_planning_raises(monkeypa
     window = ContextWindow(
         compressor=compressor,
         enabled=True,
-        memory_hygiene=False,
-        llm_compression=False,
     )
 
     with pytest.raises(RuntimeError, match="custom memory failed"):
@@ -565,97 +508,22 @@ def _hygiene_history():
     ]
 
 
-def test_memory_hygiene_supersedes_failure_after_success():
-    compressor = ContextCompressor(compress_every=2, keep_recent=1, enable_hygiene=True)
-    compressed = compressor.compress(_hygiene_history())
+def test_memory_invalidate_on_success_supersedes_earlier_failure():
+    """``Mem0StyleMemory`` 仍公开 invalidate_on_success：成功消息让同文件的失败记忆变陈旧。"""
+    memory = Mem0StyleMemory()
+    memory.add_messages(_hygiene_history(), turn=1, invalidate_on_success=True)
 
-    assert compressor.memory.superseded_count >= 1
-    failure_items = [
-        item for item in compressor.memory.items if item.text.startswith("Observed failure")
-    ]
+    assert memory.superseded_count >= 1
+    failure_items = [item for item in memory.items if item.text.startswith("Observed failure")]
     assert failure_items
     assert all(item.metadata.get("superseded_at_turn") is not None for item in failure_items)
-    memory_block = compressed[0]["content"]
-    if "Observed failure" in memory_block:
-        assert "possibly stale" in memory_block
 
 
-def test_memory_hygiene_disabled_keeps_failure_memories_fresh():
-    compressor = ContextCompressor(compress_every=2, keep_recent=1)
-    compressor.compress(_hygiene_history())
+def test_memory_without_invalidate_on_success_keeps_failures_fresh():
+    memory = Mem0StyleMemory()
+    memory.add_messages(_hygiene_history(), turn=1)
 
-    assert compressor.memory.superseded_count == 0
-    failure_items = [
-        item for item in compressor.memory.items if item.text.startswith("Observed failure")
-    ]
+    assert memory.superseded_count == 0
+    failure_items = [item for item in memory.items if item.text.startswith("Observed failure")]
     assert failure_items
     assert all(item.metadata.get("superseded_at_turn") is None for item in failure_items)
-
-
-def test_memory_hygiene_off_render_matches_legacy_output():
-    # Guard the default path: with hygiene off, compression output is identical
-    # to the legacy pipeline (no stale suffixes, no anchored query changes).
-    history = _hygiene_history()
-    legacy = ContextCompressor(compress_every=2, keep_recent=1)
-    current = ContextCompressor(compress_every=2, keep_recent=1, enable_hygiene=False)
-
-    assert legacy.compress(list(history)) == current.compress(list(history))
-
-
-def test_hygiene_query_is_anchored_to_task_text():
-    class RecordingMemory(Mem0StyleMemory):
-        def __init__(self):
-            super().__init__()
-            self.last_query = ""
-
-        def render(self, query, **kwargs):
-            self.last_query = query
-            return super().render(query, **kwargs)
-
-    memory = RecordingMemory()
-    compressor = ContextCompressor(
-        compress_every=2, keep_recent=1, memory=memory, enable_hygiene=True
-    )
-    compressor.compress(_hygiene_history())
-
-    assert memory.last_query.startswith("任务：Fix retry.should_retry")
-
-
-class _SummaryClient:
-    def __init__(self, *, fail=False):
-        self.fail = fail
-        self.calls = 0
-
-    def respond(self, messages, **extra):
-        self.calls += 1
-        if self.fail:
-            raise RuntimeError("summary backend unavailable")
-        return "修复了 retry.py 的重试边界；测试已通过；无未解决问题。"
-
-
-def test_llm_summary_adds_semantic_memory():
-    client = _SummaryClient()
-    compressor = ContextCompressor(client, compress_every=2, keep_recent=1, use_llm_summary=True)
-    compressor.compress(_hygiene_history())
-
-    assert client.calls == 1
-    assert compressor.llm_summary_count == 1
-    assert compressor.llm_summary_error_count == 0
-    summaries = [
-        item for item in compressor.memory.items if item.metadata.get("source") == "llm_summary"
-    ]
-    assert len(summaries) == 1
-    assert summaries[0].type == "semantic"
-    assert summaries[0].text.startswith("Summary of earlier context:")
-
-
-def test_llm_summary_failure_falls_back_silently():
-    client = _SummaryClient(fail=True)
-    compressor = ContextCompressor(client, compress_every=2, keep_recent=1, use_llm_summary=True)
-    compressed = compressor.compress(_hygiene_history())
-
-    assert compressor.llm_summary_count == 0
-    assert compressor.llm_summary_error_count == 1
-    # Rule-based compression still produced a usable result.
-    assert compressed
-    assert compressor.memory_count > 0

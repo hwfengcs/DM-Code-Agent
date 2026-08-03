@@ -60,14 +60,6 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         help="Maximum replans when adaptive replanning is enabled; -1 means unlimited.",
     )
     parser.add_argument(
-        "--enable-repeated-failure-policy-experiment",
-        action="store_true",
-        help=(
-            "Enable an experimental loop-breaking strategy for repeated adaptive "
-            "replan failures. Default is off."
-        ),
-    )
-    parser.add_argument(
         "--cost-per-1k-tokens",
         type=float,
         default=0.0,
@@ -168,9 +160,6 @@ def main(argv: Any = None) -> int:
                 quiet=not args.show_agent_output,
                 enable_adaptive_replanning=args.enable_adaptive_replanning,
                 max_replans=args.max_replans,
-                enable_repeated_failure_policy_experiment=(
-                    args.enable_repeated_failure_policy_experiment
-                ),
                 cost_per_1k_tokens=args.cost_per_1k_tokens,
                 per_test_credit=args.per_test_credit,
             ),
@@ -189,10 +178,6 @@ def main(argv: Any = None) -> int:
 
 
 def _validate_feature_args(args: argparse.Namespace) -> str:
-    if args.enable_repeated_failure_policy_experiment and not args.enable_adaptive_replanning:
-        return (
-            "--enable-repeated-failure-policy-experiment requires " "--enable-adaptive-replanning."
-        )
     return ""
 
 

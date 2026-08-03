@@ -180,24 +180,6 @@ def configure_settings(config: Config, extension_registry: ExtensionRegistry | N
         except ValueError:
             UI.status("error", "无效的数字")
 
-    new_loop_break = ask_bool_setting(
-        "启用重复失败跳出实验", config.enable_repeated_failure_policy_experiment
-    )
-    if new_loop_break != config.enable_repeated_failure_policy_experiment:
-        config.enable_repeated_failure_policy_experiment = new_loop_break
-        config_changed = True
-    if config.enable_repeated_failure_policy_experiment and not config.enable_adaptive_replanning:
-        config.enable_adaptive_replanning = True
-        config_changed = True
-        UI.status("info", "已同步启用自适应重规划", "重复失败跳出实验依赖重规划")
-
-    new_evolution = ask_bool_setting("启用进化恢复模式", config.enable_evolution)
-    if new_evolution != config.enable_evolution:
-        config.enable_evolution = new_evolution
-        config_changed = True
-    if config.enable_evolution and not config.enable_adaptive_replanning:
-        UI.status("info", "进化恢复会在运行时自动启用自适应重规划和重复失败跳出")
-
     # 保存配置
     if config_changed:
         print()

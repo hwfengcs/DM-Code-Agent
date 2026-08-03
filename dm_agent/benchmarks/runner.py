@@ -109,9 +109,6 @@ def run_benchmark_suite(
         "adaptive_replanning": {
             "enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
-            "repeated_failure_policy_experiment": (
-                config.enable_repeated_failure_policy_experiment
-            ),
         },
         "token_economics": {
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
@@ -660,9 +657,6 @@ def _run_benchmark_task_in_workspace(
         trace_writer=trace_writer,
         enable_adaptive_replanning=config.enable_adaptive_replanning,
         max_replans=config.max_replans,
-        enable_repeated_failure_policy_experiment=(
-            config.enable_repeated_failure_policy_experiment
-        ),
     )
 
     with chdir(workspace):
@@ -719,9 +713,6 @@ def _run_benchmark_task_in_workspace(
             "trace_path": str(trace_path) if trace_path else "",
             "adaptive_replanning_enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
-            "repeated_failure_policy_experiment_enabled": (
-                config.enable_repeated_failure_policy_experiment
-            ),
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
         }
     )

@@ -19,10 +19,6 @@ def validate_feature_args(args: argparse.Namespace) -> str:
         return "--context-token-budget must be 0 (disabled) or greater."
     if args.llm_max_retries < 0:
         return "--llm-max-retries must be 0 or greater."
-    if args.circuit_breaker_threshold < 2:
-        return "--circuit-breaker-threshold must be at least 2."
-    if args.circuit_breaker_cooldown < 1:
-        return "--circuit-breaker-cooldown must be at least 1."
     if getattr(args, "resume_at", "") and not getattr(args, "resume", None):
         return "--resume-at 需要与 --resume 一起使用。"
     conversation_error = _validate_conversation_args(args)
@@ -34,15 +30,6 @@ def validate_feature_args(args: argparse.Namespace) -> str:
         # checkpoint 里有完整对话（含模型原始输出），trace 默认是可分享的脱敏档。
         # 指向同一个文件会让脱敏档被完整历史悄悄污染，直接拒绝。
         return "--trace 与 --checkpoint 不能指向同一个文件（前者默认脱敏，后者含完整对话）。"
-    if (
-        args.enable_repeated_failure_policy_experiment
-        and not args.enable_adaptive_replanning
-        and not args.enable_evolution
-    ):
-        return (
-            "--enable-repeated-failure-policy-experiment requires "
-            "--enable-adaptive-replanning or --enable-evolution."
-        )
     return ""
 
 
@@ -148,48 +135,6 @@ def parse_args(argv: Any) -> argparse.Namespace:
         type=int,
         default=saved_config.get("max_replans", -1),
         help="自适应重规划最多触发次数；-1 表示不限（默认：-1）。",
-    )
-    parser.add_argument(
-        "--enable-repeated-failure-policy-experiment",
-        action="store_true",
-        default=saved_config.get("enable_repeated_failure_policy_experiment", False),
-        help="启用重复失败时的实验性跳出策略。默认关闭。",
-    )
-    parser.add_argument(
-        "--enable-evolution",
-        action="store_true",
-        default=saved_config.get("enable_evolution", False),
-        help="启用实验性进化恢复模式：自动打开自适应重规划和重复失败跳出策略。默认关闭。",
-    )
-    parser.add_argument(
-        "--enable-memory-hygiene",
-        action="store_true",
-        default=saved_config.get("enable_memory_hygiene", False),
-        help="启用记忆卫生：成功后降权相关失败记忆，并把召回锚定到任务原文。默认关闭。",
-    )
-    parser.add_argument(
-        "--enable-llm-compression",
-        action="store_true",
-        default=saved_config.get("enable_llm_compression", False),
-        help="启用 LLM 摘要压缩：折叠旧上下文时额外生成一条摘要记忆（消耗模型调用）。默认关闭。",
-    )
-    parser.add_argument(
-        "--enable-circuit-breaker",
-        action="store_true",
-        default=saved_config.get("enable_circuit_breaker", False),
-        help="启用工具熔断：同一工具同类错误连续失败达到阈值后临时禁用并引导换路。默认关闭。",
-    )
-    parser.add_argument(
-        "--circuit-breaker-threshold",
-        type=int,
-        default=saved_config.get("circuit_breaker_threshold", 3),
-        help="触发熔断所需的连续失败次数（默认：3，最小 2）。",
-    )
-    parser.add_argument(
-        "--circuit-breaker-cooldown",
-        type=int,
-        default=saved_config.get("circuit_breaker_cooldown", 5),
-        help="熔断后允许探针重试前的冷却步数（默认：5，最小 1）。",
     )
     parser.add_argument(
         "--interactive",

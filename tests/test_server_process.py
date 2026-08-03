@@ -158,9 +158,6 @@ def test_model_omitted_when_empty() -> None:
 
 ALL_OPTIONS: dict[str, object] = {
     "enable_adaptive_replanning": True,
-    "enable_memory_hygiene": True,
-    "enable_llm_compression": True,
-    "enable_circuit_breaker": True,
     "enable_edit_guard": False,
     "max_steps": 10,
     "temperature": 0.5,
@@ -197,7 +194,6 @@ def test_generated_argv_is_accepted_by_the_real_cli_parser() -> None:
     assert parsed.temperature == pytest.approx(0.5)
     assert parsed.max_replans == 3
     # 布尔开关生效。
-    assert parsed.enable_circuit_breaker is True
     # --disable-edit-guard 的 dest 是 enable_edit_guard + store_false，
     # 所以「传了这个开关」在解析结果里表现为 enable_edit_guard=False。
     assert parsed.enable_edit_guard is False

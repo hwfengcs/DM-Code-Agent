@@ -96,33 +96,6 @@ CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
         "label": "Adaptive Replanning",
         "help": "扩展的重规划决策策略与限制。基础重规划本来就一直开着。",
     },
-    {
-        "flag": "--enable-memory-hygiene",
-        "key": "enable_memory_hygiene",
-        "kind": "bool",
-        "default": False,
-        "category": "behavior",
-        "label": "记忆卫生",
-        "help": "折叠时清理过期原子记忆。",
-    },
-    {
-        "flag": "--enable-llm-compression",
-        "key": "enable_llm_compression",
-        "kind": "bool",
-        "default": False,
-        "category": "behavior",
-        "label": "LLM 摘要压缩",
-        "help": "默认折叠是本地确定性的、不烧 LLM；打开这个才会额外调模型做摘要。",
-    },
-    {
-        "flag": "--enable-circuit-breaker",
-        "key": "enable_circuit_breaker",
-        "kind": "bool",
-        "default": False,
-        "category": "behavior",
-        "label": "工具熔断器",
-        "help": "同一 action+error 连续失败达阈值后临时禁用该工具。",
-    },
 )
 
 
