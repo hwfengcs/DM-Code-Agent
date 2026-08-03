@@ -73,25 +73,6 @@ def test_repeated_failure_policy_experiment_requires_adaptive_replanning(
     assert "requires --enable-adaptive-replanning" in capsys.readouterr().err
 
 
-def test_swebench_self_consistency_is_explicitly_frozen(
-    capsys: pytest.CaptureFixture[str],
-):
-    assert (
-        bench_main(
-            [
-                "--suite",
-                "swebench_lite",
-                "--self-consistency-runs",
-                "2",
-                "--snapshot-path",
-                "missing.jsonl",
-            ]
-        )
-        == 2
-    )
-    assert "self-consistency is intentionally not wired" in capsys.readouterr().err
-
-
 def test_maintenance_benchmark_manifest_is_realistic_and_keyless():
     tasks = get_maintenance_tasks()
 

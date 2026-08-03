@@ -70,9 +70,6 @@ web = [
   "fastapi>=0.115.0",
   "uvicorn>=0.30.0",
 ]
-swebench = [
-  "datasets>=2.14.0",
-]
 
 [project.urls]
 Homepage = "https://github.com/hwfengcs/DM-Code-Agent"
@@ -183,7 +180,6 @@ module = [
   "dm_agent.evals.runner",
   "dm_agent.evals.real_runner",
   "dm_agent.benchmarks.runner",
-  "dm_agent.benchmarks.swebench_lite.runner",
 ]
 disable_error_code = ["arg-type"]
 
