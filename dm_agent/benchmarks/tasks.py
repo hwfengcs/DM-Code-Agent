@@ -325,6 +325,504 @@ BUILTIN_CODING_TASKS: list[BenchmarkTask] = [
         max_steps=14,
         tags=["stateful", "business-logic", "edge-cases"],
     ),
+    BenchmarkTask(
+        task_id="parse_duration",
+        name="Human duration string parsing",
+        prompt=(
+            "Fix durations.parse_duration. It parses strings like '1h30m', '45s', "
+            "'2d', '1h 30m 15s' into whole seconds. Units are d/h/m/s and may appear "
+            "in any order but never repeat. Whitespace between parts is optional. "
+            "A bare integer means seconds. Raise ValueError on an empty string, an "
+            "unknown unit, a repeated unit, or a negative number." + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "durations.py": (
+                "UNITS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}\n\n\n"
+                "def parse_duration(text: str) -> int:\n"
+                '    """Parse a human duration string into seconds."""\n'
+                "    total = 0\n"
+                "    number = ''\n"
+                "    for char in text:\n"
+                "        if char.isdigit():\n"
+                "            number += char\n"
+                "        elif char in UNITS:\n"
+                "            total += int(number) * UNITS[char]\n"
+                "            number = ''\n"
+                "    return total\n"
+            ),
+            "tests/test_public_durations.py": (
+                "from durations import parse_duration\n\n\n"
+                "def test_single_unit():\n"
+                '    assert parse_duration("45s") == 45\n'
+                '    assert parse_duration("2d") == 172800\n\n\n'
+                "def test_combined_units():\n"
+                '    assert parse_duration("1h30m") == 5400\n'
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_durations.py": (
+                "import pytest\n\n"
+                "from durations import parse_duration\n\n\n"
+                "def test_spaces_and_three_parts():\n"
+                '    assert parse_duration("1h 30m 15s") == 5415\n'
+                '    assert parse_duration("  2m10s  ") == 130\n\n\n'
+                "def test_bare_integer_is_seconds():\n"
+                '    assert parse_duration("90") == 90\n\n\n'
+                "def test_units_may_appear_in_any_order():\n"
+                '    assert parse_duration("30m1h") == 5400\n\n\n'
+                "def test_rejects_bad_input():\n"
+                "    with pytest.raises(ValueError):\n"
+                '        parse_duration("")\n'
+                "    with pytest.raises(ValueError):\n"
+                '        parse_duration("10x")\n'
+                "    with pytest.raises(ValueError):\n"
+                '        parse_duration("1h2h")\n'
+                "    with pytest.raises(ValueError):\n"
+                '        parse_duration("-5s")\n'
+            )
+        },
+        max_steps=14,
+        tags=["parsing", "string", "edge-cases"],
+    ),
+    BenchmarkTask(
+        task_id="merge_intervals",
+        name="Interval merging with touching ranges",
+        prompt=(
+            "Fix intervals.merge. It takes a list of (start, end) tuples and returns a "
+            "new sorted list where overlapping AND touching intervals are merged: "
+            "(1, 3) and (3, 5) become (1, 5). The input may be unsorted and must not be "
+            "mutated. An empty list returns an empty list. Raise ValueError if any "
+            "interval has start > end." + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "intervals.py": (
+                "def merge(intervals):\n"
+                '    """Merge overlapping intervals."""\n'
+                "    if not intervals:\n"
+                "        return []\n"
+                "    intervals.sort()\n"
+                "    merged = [intervals[0]]\n"
+                "    for start, end in intervals[1:]:\n"
+                "        last_start, last_end = merged[-1]\n"
+                "        if start < last_end:\n"
+                "            merged[-1] = (last_start, max(last_end, end))\n"
+                "        else:\n"
+                "            merged.append((start, end))\n"
+                "    return merged\n"
+            ),
+            "tests/test_public_intervals.py": (
+                "from intervals import merge\n\n\n"
+                "def test_overlapping():\n"
+                "    assert merge([(1, 4), (2, 6)]) == [(1, 6)]\n\n\n"
+                "def test_disjoint():\n"
+                "    assert merge([(1, 2), (5, 6)]) == [(1, 2), (5, 6)]\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_intervals.py": (
+                "import pytest\n\n"
+                "from intervals import merge\n\n\n"
+                "def test_touching_intervals_are_merged():\n"
+                "    assert merge([(1, 3), (3, 5)]) == [(1, 5)]\n\n\n"
+                "def test_unsorted_input_is_handled():\n"
+                "    assert merge([(5, 6), (1, 3), (2, 4)]) == [(1, 4), (5, 6)]\n\n\n"
+                "def test_input_list_is_not_mutated():\n"
+                "    data = [(5, 6), (1, 3)]\n"
+                "    merge(data)\n"
+                "    assert data == [(5, 6), (1, 3)]\n\n\n"
+                "def test_fully_contained_interval():\n"
+                "    assert merge([(1, 10), (2, 3)]) == [(1, 10)]\n\n\n"
+                "def test_empty_and_invalid():\n"
+                "    assert merge([]) == []\n"
+                "    with pytest.raises(ValueError):\n"
+                "        merge([(5, 1)])\n"
+            )
+        },
+        max_steps=14,
+        tags=["algorithm", "edge-cases", "hidden-tests"],
+    ),
+    BenchmarkTask(
+        task_id="retry_backoff_schedule",
+        name="Exponential backoff schedule",
+        prompt=(
+            "Fix backoff.schedule. Given attempts, base and cap it returns the delay "
+            "list for each retry: base * 2**index, clamped at cap. attempts=0 returns "
+            "an empty list. The cap applies per-entry, so once the value reaches cap "
+            "every later entry is exactly cap. Raise ValueError for negative attempts, "
+            "non-positive base, or cap < base." + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "backoff.py": (
+                "def schedule(attempts: int, base: float = 1.0, cap: float = 60.0):\n"
+                '    """Return the backoff delay for each retry attempt."""\n'
+                "    delays = []\n"
+                "    for index in range(attempts):\n"
+                "        delays.append(base * 2 ** index)\n"
+                "    return delays\n"
+            ),
+            "tests/test_public_backoff.py": (
+                "from backoff import schedule\n\n\n"
+                "def test_growth():\n"
+                "    assert schedule(3, base=1.0, cap=60.0) == [1.0, 2.0, 4.0]\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_backoff.py": (
+                "import pytest\n\n"
+                "from backoff import schedule\n\n\n"
+                "def test_cap_is_applied():\n"
+                "    assert schedule(6, base=1.0, cap=8.0) == [1.0, 2.0, 4.0, 8.0, 8.0, 8.0]\n\n\n"
+                "def test_zero_attempts():\n"
+                "    assert schedule(0) == []\n\n\n"
+                "def test_base_equal_to_cap():\n"
+                "    assert schedule(3, base=5.0, cap=5.0) == [5.0, 5.0, 5.0]\n\n\n"
+                "def test_invalid_arguments():\n"
+                "    with pytest.raises(ValueError):\n"
+                "        schedule(-1)\n"
+                "    with pytest.raises(ValueError):\n"
+                "        schedule(3, base=0)\n"
+                "    with pytest.raises(ValueError):\n"
+                "        schedule(3, base=10.0, cap=5.0)\n"
+            )
+        },
+        max_steps=14,
+        tags=["algorithm", "resilience", "edge-cases"],
+    ),
+    BenchmarkTask(
+        task_id="csv_row_parser",
+        name="CSV row parsing with quotes",
+        prompt=(
+            "Fix csv_row.parse_row. It splits one CSV line into fields: comma separated, "
+            "a field may be wrapped in double quotes, a quoted field may contain commas, "
+            "and a doubled quote inside a quoted field is one literal quote character. "
+            "Unquoted fields keep their content as-is. An empty line yields ['']. "
+            "Raise ValueError when a quoted field is never closed." + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "csv_row.py": (
+                "def parse_row(line: str):\n"
+                '    """Split a single CSV line into fields."""\n'
+                '    return line.split(",")\n'
+            ),
+            "tests/test_public_csv_row.py": (
+                "from csv_row import parse_row\n\n\n"
+                "def test_plain_fields():\n"
+                '    assert parse_row("a,b,c") == ["a", "b", "c"]\n'
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_csv_row.py": (
+                "import pytest\n\n"
+                "from csv_row import parse_row\n\n\n"
+                "def test_quoted_field_with_comma():\n"
+                '    assert parse_row(\'a,"b,c",d\') == ["a", "b,c", "d"]\n\n\n'
+                "def test_escaped_quote_inside_quotes():\n"
+                '    assert parse_row(\'"say ""hi""",x\') == [\'say "hi"\', "x"]\n\n\n'
+                "def test_empty_fields_and_empty_line():\n"
+                '    assert parse_row("a,,b") == ["a", "", "b"]\n'
+                '    assert parse_row("") == [""]\n\n\n'
+                "def test_unterminated_quote_is_rejected():\n"
+                "    with pytest.raises(ValueError):\n"
+                "        parse_row('a,\"unclosed')\n"
+            )
+        },
+        max_steps=16,
+        tags=["parsing", "string", "edge-cases"],
+    ),
+    BenchmarkTask(
+        task_id="paginate_cursor",
+        name="Cursor pagination boundaries",
+        prompt=(
+            "Fix pagination.page. Given an ordered list of items, a cursor (an item id "
+            "or None for the first page) and a page size, return "
+            "(items_on_page, next_cursor). The cursor is exclusive: the page starts "
+            "after that id. next_cursor is the id of the last returned item, or None "
+            "when there is no further page. Raise ValueError for page_size < 1 or a "
+            "cursor that is not in the list." + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "pagination.py": (
+                "def page(items, cursor=None, page_size=2):\n"
+                '    """Return one page of items plus the cursor for the next page."""\n'
+                "    ids = [item['id'] for item in items]\n"
+                "    start = 0\n"
+                "    if cursor is not None:\n"
+                "        start = ids.index(cursor)\n"
+                "    window = items[start:start + page_size]\n"
+                "    return window, window[-1]['id']\n"
+            ),
+            "tests/test_public_pagination.py": (
+                "from pagination import page\n\n\n"
+                "ITEMS = [{'id': n} for n in range(1, 6)]\n\n\n"
+                "def test_first_page():\n"
+                "    window, cursor = page(ITEMS, None, 2)\n"
+                "    assert [item['id'] for item in window] == [1, 2]\n"
+                "    assert cursor == 2\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_pagination.py": (
+                "import pytest\n\n"
+                "from pagination import page\n\n\n"
+                "ITEMS = [{'id': n} for n in range(1, 6)]\n\n\n"
+                "def test_cursor_is_exclusive():\n"
+                "    window, cursor = page(ITEMS, 2, 2)\n"
+                "    assert [item['id'] for item in window] == [3, 4]\n"
+                "    assert cursor == 4\n\n\n"
+                "def test_last_page_reports_no_next_cursor():\n"
+                "    window, cursor = page(ITEMS, 4, 2)\n"
+                "    assert [item['id'] for item in window] == [5]\n"
+                "    assert cursor is None\n\n\n"
+                "def test_page_larger_than_remaining():\n"
+                "    window, cursor = page(ITEMS, None, 99)\n"
+                "    assert len(window) == 5\n"
+                "    assert cursor is None\n\n\n"
+                "def test_empty_items_and_bad_arguments():\n"
+                "    assert page([], None, 2) == ([], None)\n"
+                "    with pytest.raises(ValueError):\n"
+                "        page(ITEMS, None, 0)\n"
+                "    with pytest.raises(ValueError):\n"
+                "        page(ITEMS, 99, 2)\n"
+            )
+        },
+        max_steps=16,
+        tags=["stateful", "pagination", "edge-cases"],
+    ),
+    BenchmarkTask(
+        task_id="semver_compare",
+        name="Semantic version ordering",
+        prompt=(
+            "Fix semver.compare. It returns -1, 0 or 1 comparing two semantic versions "
+            "like '1.2.3' or '1.2.3-alpha.1'. Numeric parts compare numerically, so "
+            "1.10.0 is greater than 1.9.0. A version with a pre-release is LOWER than "
+            "the same version without one. Pre-release identifiers compare part by part: "
+            "numeric parts numerically, others lexically. Raise ValueError for a version "
+            "that is not three dot-separated numbers." + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "semver.py": (
+                "def compare(left: str, right: str) -> int:\n"
+                '    """Compare two semantic version strings."""\n'
+                "    if left == right:\n"
+                "        return 0\n"
+                "    return -1 if left < right else 1\n"
+            ),
+            "tests/test_public_semver.py": (
+                "from semver import compare\n\n\n"
+                "def test_equal_versions():\n"
+                '    assert compare("1.2.3", "1.2.3") == 0\n\n\n'
+                "def test_patch_difference():\n"
+                '    assert compare("1.2.3", "1.2.4") == -1\n'
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_semver.py": (
+                "import pytest\n\n"
+                "from semver import compare\n\n\n"
+                "def test_numeric_not_lexical():\n"
+                '    assert compare("1.10.0", "1.9.0") == 1\n'
+                '    assert compare("2.0.0", "10.0.0") == -1\n\n\n'
+                "def test_prerelease_is_lower_than_release():\n"
+                '    assert compare("1.0.0-alpha", "1.0.0") == -1\n'
+                '    assert compare("1.0.0", "1.0.0-beta") == 1\n\n\n'
+                "def test_prerelease_ordering():\n"
+                '    assert compare("1.0.0-alpha.1", "1.0.0-alpha.2") == -1\n'
+                '    assert compare("1.0.0-alpha", "1.0.0-beta") == -1\n\n\n'
+                "def test_invalid_versions():\n"
+                "    with pytest.raises(ValueError):\n"
+                '        compare("1.2", "1.2.3")\n'
+                "    with pytest.raises(ValueError):\n"
+                '        compare("x.y.z", "1.2.3")\n'
+            )
+        },
+        max_steps=16,
+        tags=["algorithm", "ordering", "parsing"],
+    ),
+    BenchmarkTask(
+        task_id="flatten_config",
+        name="Nested config flattening",
+        prompt=(
+            "Fix flatten.flatten_config. It turns a nested dict into a flat dict whose "
+            "keys are dot-joined paths: {'a': {'b': 1}} becomes {'a.b': 1}. Nesting can "
+            "be any depth. An EMPTY nested dict is kept as a leaf with its own path and "
+            "value {}. Lists are leaves and are not traversed. An empty input returns an "
+            "empty dict. Raise ValueError if any key is not a string or contains a dot."
+            + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "flatten.py": (
+                "def flatten_config(data: dict, prefix: str = '') -> dict:\n"
+                '    """Flatten a nested configuration dict into dotted keys."""\n'
+                "    flat = {}\n"
+                "    for key, value in data.items():\n"
+                "        path = f'{prefix}.{key}' if prefix else key\n"
+                "        if isinstance(value, dict):\n"
+                "            flat.update(flatten_config(value, path))\n"
+                "        else:\n"
+                "            flat[path] = value\n"
+                "    return flat\n"
+            ),
+            "tests/test_public_flatten.py": (
+                "from flatten import flatten_config\n\n\n"
+                "def test_nested():\n"
+                '    assert flatten_config({"a": {"b": 1}}) == {"a.b": 1}\n\n\n'
+                "def test_flat_input():\n"
+                '    assert flatten_config({"a": 1}) == {"a": 1}\n'
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_flatten.py": (
+                "import pytest\n\n"
+                "from flatten import flatten_config\n\n\n"
+                "def test_empty_nested_dict_is_a_leaf():\n"
+                '    assert flatten_config({"a": {}, "b": 1}) == {"a": {}, "b": 1}\n\n\n'
+                "def test_deep_nesting():\n"
+                '    data = {"a": {"b": {"c": {"d": 4}}}}\n'
+                '    assert flatten_config(data) == {"a.b.c.d": 4}\n\n\n'
+                "def test_lists_are_leaves():\n"
+                '    data = {"a": [{"b": 1}]}\n'
+                '    assert flatten_config(data) == {"a": [{"b": 1}]}\n\n\n'
+                "def test_empty_input_and_invalid_keys():\n"
+                "    assert flatten_config({}) == {}\n"
+                "    with pytest.raises(ValueError):\n"
+                '        flatten_config({"a.b": 1})\n'
+                "    with pytest.raises(ValueError):\n"
+                "        flatten_config({1: 2})\n"
+            )
+        },
+        max_steps=16,
+        tags=["recursion", "data-structure", "edge-cases"],
+    ),
+    BenchmarkTask(
+        task_id="rate_limiter_window",
+        name="Sliding window rate limiter",
+        prompt=(
+            "Fix ratelimit.SlidingWindowLimiter. allow(key, now) returns True and records "
+            "the call when the key has made fewer than limit calls within the last "
+            "window_seconds, otherwise returns False and records nothing. The window is "
+            "sliding and half-open: a call exactly window_seconds old has expired and no "
+            "longer counts. Keys are independent. Expired timestamps must be discarded so "
+            "memory does not grow without bound. Raise ValueError for limit < 1 or "
+            "window_seconds <= 0." + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "ratelimit.py": (
+                "class SlidingWindowLimiter:\n"
+                '    """Allow at most `limit` calls per key within a sliding window."""\n\n'
+                "    def __init__(self, limit: int = 3, window_seconds: float = 60.0):\n"
+                "        self.limit = limit\n"
+                "        self.window_seconds = window_seconds\n"
+                "        self.calls = []\n\n"
+                "    def allow(self, key: str, now: float) -> bool:\n"
+                "        if len(self.calls) >= self.limit:\n"
+                "            return False\n"
+                "        self.calls.append(now)\n"
+                "        return True\n"
+            ),
+            "tests/test_public_ratelimit.py": (
+                "from ratelimit import SlidingWindowLimiter\n\n\n"
+                "def test_allows_up_to_limit():\n"
+                "    limiter = SlidingWindowLimiter(limit=2, window_seconds=10)\n"
+                '    assert limiter.allow("a", 0.0) is True\n'
+                '    assert limiter.allow("a", 1.0) is True\n'
+                '    assert limiter.allow("a", 2.0) is False\n'
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_ratelimit.py": (
+                "import pytest\n\n"
+                "from ratelimit import SlidingWindowLimiter\n\n\n"
+                "def test_keys_are_independent():\n"
+                "    limiter = SlidingWindowLimiter(limit=1, window_seconds=10)\n"
+                '    assert limiter.allow("a", 0.0) is True\n'
+                '    assert limiter.allow("b", 0.0) is True\n'
+                '    assert limiter.allow("a", 1.0) is False\n\n\n'
+                "def test_window_slides_and_is_half_open():\n"
+                "    limiter = SlidingWindowLimiter(limit=1, window_seconds=10)\n"
+                '    assert limiter.allow("a", 0.0) is True\n'
+                '    assert limiter.allow("a", 9.9) is False\n'
+                '    assert limiter.allow("a", 10.0) is True\n\n\n'
+                "def test_rejected_calls_are_not_recorded():\n"
+                "    limiter = SlidingWindowLimiter(limit=1, window_seconds=10)\n"
+                '    assert limiter.allow("a", 0.0) is True\n'
+                '    assert limiter.allow("a", 5.0) is False\n'
+                '    assert limiter.allow("a", 10.0) is True\n\n\n'
+                "def test_expired_entries_are_discarded():\n"
+                "    limiter = SlidingWindowLimiter(limit=2, window_seconds=10)\n"
+                "    for step in range(50):\n"
+                '        limiter.allow("a", float(step) * 10)\n'
+                "    stored = sum(\n"
+                "        len(value) if hasattr(value, '__len__') else 1\n"
+                "        for value in vars(limiter).values()\n"
+                "        if isinstance(value, (list, dict))\n"
+                "    )\n"
+                "    assert stored <= 10\n\n\n"
+                "def test_invalid_configuration():\n"
+                "    with pytest.raises(ValueError):\n"
+                "        SlidingWindowLimiter(limit=0)\n"
+                "    with pytest.raises(ValueError):\n"
+                "        SlidingWindowLimiter(limit=1, window_seconds=0)\n"
+            )
+        },
+        max_steps=18,
+        tags=["stateful", "algorithm", "edge-cases"],
+    ),
+    BenchmarkTask(
+        task_id="safe_int_parse",
+        name="Strict integer coercion",
+        prompt=(
+            "Fix coercion.to_int. It converts a value to int for configuration loading. "
+            "Accept int (returned as-is), and str with optional surrounding whitespace "
+            "and an optional +/- sign. Reject bool entirely (True is not 1 here), reject "
+            "float, reject strings that are empty, non-numeric, or contain a decimal "
+            "point. On rejection return the `default` when one was given, otherwise raise "
+            "ValueError." + COMMON_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "coercion.py": (
+                "_MISSING = object()\n\n\n"
+                "def to_int(value, default=_MISSING):\n"
+                '    """Coerce a configuration value to int."""\n'
+                "    try:\n"
+                "        return int(value)\n"
+                "    except (TypeError, ValueError):\n"
+                "        if default is _MISSING:\n"
+                "            raise ValueError(f'cannot coerce {value!r} to int')\n"
+                "        return default\n"
+            ),
+            "tests/test_public_coercion.py": (
+                "from coercion import to_int\n\n\n"
+                "def test_plain_values():\n"
+                '    assert to_int("42") == 42\n'
+                "    assert to_int(7) == 7\n\n\n"
+                "def test_default_on_bad_value():\n"
+                '    assert to_int("abc", default=0) == 0\n'
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_coercion.py": (
+                "import pytest\n\n"
+                "from coercion import to_int\n\n\n"
+                "def test_bool_is_rejected():\n"
+                "    assert to_int(True, default=-1) == -1\n"
+                "    with pytest.raises(ValueError):\n"
+                "        to_int(False)\n\n\n"
+                "def test_float_and_decimal_string_are_rejected():\n"
+                "    assert to_int(1.5, default=-1) == -1\n"
+                '    assert to_int("1.0", default=-1) == -1\n\n\n'
+                "def test_whitespace_and_sign_are_accepted():\n"
+                '    assert to_int("  -42  ") == -42\n'
+                '    assert to_int("+7") == 7\n\n\n'
+                "def test_empty_and_none():\n"
+                '    assert to_int("", default=3) == 3\n'
+                "    assert to_int(None, default=3) == 3\n"
+                "    with pytest.raises(ValueError):\n"
+                '        to_int("   ")\n'
+            )
+        },
+        max_steps=14,
+        tags=["validation", "error-handling", "edge-cases"],
+    ),
 ]
 
 MAINTENANCE_PROMPT_SUFFIX = (
@@ -839,6 +1337,538 @@ BUILTIN_MAINTENANCE_TASKS: list[BenchmarkTask] = [
             ".github/workflows/ci.yml",
             "tests/test_public_packaging.py",
         ],
+    ),
+    BenchmarkTask(
+        task_id="billing_period_boundary",
+        name="Billing period boundary arithmetic",
+        prompt=(
+            "Fix billing.period_end. Given a start date and a month count it returns the "
+            "last day of the billing period: the day BEFORE the same day-of-month N months "
+            "later. When the target month is too short, clamp to that month's last day "
+            "before subtracting one day — so 2024-01-31 plus 1 month ends on 2024-02-28. "
+            "Leap years must be handled. Raise ValueError for months < 1."
+            + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "billing.py": (
+                "from datetime import date, timedelta\n\n\n"
+                "def period_end(start: date, months: int = 1) -> date:\n"
+                '    """Return the last day of a billing period."""\n'
+                "    year = start.year + (start.month - 1 + months) // 12\n"
+                "    month = (start.month - 1 + months) % 12 + 1\n"
+                "    return date(year, month, start.day) - timedelta(days=1)\n"
+            ),
+            "tests/test_public_billing.py": (
+                "from datetime import date\n\n"
+                "from billing import period_end\n\n\n"
+                "def test_simple_month():\n"
+                "    assert period_end(date(2024, 3, 15), 1) == date(2024, 4, 14)\n\n\n"
+                "def test_year_rollover():\n"
+                "    assert period_end(date(2024, 12, 10), 1) == date(2025, 1, 9)\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_billing.py": (
+                "import pytest\n\n"
+                "from datetime import date\n\n"
+                "from billing import period_end\n\n\n"
+                "def test_short_target_month_is_clamped():\n"
+                "    assert period_end(date(2024, 1, 31), 1) == date(2024, 2, 28)\n"
+                "    assert period_end(date(2024, 3, 31), 1) == date(2024, 4, 29)\n\n\n"
+                "def test_leap_year():\n"
+                "    assert period_end(date(2024, 1, 29), 1) == date(2024, 2, 28)\n"
+                "    assert period_end(date(2023, 1, 29), 1) == date(2023, 2, 27)\n\n\n"
+                "def test_multi_month_periods():\n"
+                "    assert period_end(date(2024, 1, 31), 12) == date(2025, 1, 30)\n"
+                "    assert period_end(date(2024, 8, 31), 6) == date(2025, 2, 27)\n\n\n"
+                "def test_invalid_month_count():\n"
+                "    with pytest.raises(ValueError):\n"
+                "        period_end(date(2024, 1, 1), 0)\n"
+            )
+        },
+        max_steps=16,
+        tags=["maintenance", "datetime", "edge-cases"],
+        allowed_changed_files=["billing.py"],
+    ),
+    BenchmarkTask(
+        task_id="sql_where_builder",
+        name="Parameterised WHERE clause builder",
+        prompt=(
+            "Fix query.build_where. It turns a dict of filters into a parameterised SQL "
+            "fragment and returns (clause, params). Values must NEVER be inlined into the "
+            "SQL — always emit a '?' placeholder and put the value in params, in the same "
+            "order as the placeholders. Keys are sorted for deterministic output. A None "
+            "value becomes 'col IS NULL' with no parameter. A list/tuple value becomes "
+            "'col IN (?, ?)' with one parameter per element; an empty list means the "
+            "filter can never match, so emit '1 = 0' with no parameter for that key. An "
+            "empty filter dict returns ('', []). Reject a column name that is not a valid "
+            "identifier with ValueError." + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "query.py": (
+                "def build_where(filters: dict):\n"
+                '    """Build a parameterised WHERE clause from a filter mapping."""\n'
+                "    if not filters:\n"
+                "        return '', []\n"
+                "    parts = []\n"
+                "    params = []\n"
+                "    for column, value in filters.items():\n"
+                "        parts.append(f\"{column} = '{value}'\")\n"
+                "    return ' AND '.join(parts), params\n"
+            ),
+            "tests/test_public_query.py": (
+                "from query import build_where\n\n\n"
+                "def test_empty_filters():\n"
+                "    assert build_where({}) == ('', [])\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_query.py": (
+                "import pytest\n\n"
+                "from query import build_where\n\n\n"
+                "def test_values_are_parameterised_not_inlined():\n"
+                "    clause, params = build_where({'name': \"O'Brien\"})\n"
+                "    assert clause == 'name = ?'\n"
+                '    assert params == ["O\'Brien"]\n\n\n'
+                "def test_keys_are_sorted_and_params_follow_placeholder_order():\n"
+                "    clause, params = build_where({'b': 2, 'a': 1})\n"
+                "    assert clause == 'a = ? AND b = ?'\n"
+                "    assert params == [1, 2]\n\n\n"
+                "def test_none_becomes_is_null():\n"
+                "    clause, params = build_where({'deleted_at': None})\n"
+                "    assert clause == 'deleted_at IS NULL'\n"
+                "    assert params == []\n\n\n"
+                "def test_list_becomes_in_clause():\n"
+                "    clause, params = build_where({'id': [1, 2, 3]})\n"
+                "    assert clause == 'id IN (?, ?, ?)'\n"
+                "    assert params == [1, 2, 3]\n\n\n"
+                "def test_empty_list_never_matches():\n"
+                "    clause, params = build_where({'id': []})\n"
+                "    assert clause == '1 = 0'\n"
+                "    assert params == []\n\n\n"
+                "def test_invalid_column_name_is_rejected():\n"
+                "    with pytest.raises(ValueError):\n"
+                "        build_where({'id; DROP TABLE users': 1})\n"
+            )
+        },
+        max_steps=18,
+        tags=["maintenance", "security", "database"],
+        allowed_changed_files=["query.py"],
+    ),
+    BenchmarkTask(
+        task_id="idempotent_job_runner",
+        name="Idempotent job execution",
+        prompt=(
+            "Fix jobs.JobRunner so submitting the same job key twice runs the work "
+            "function only once and returns the first result both times. A job that "
+            "raises must NOT be cached: the exception propagates and a later submit with "
+            "the same key retries. Results are per-key. has_run(key) reports whether a "
+            "successful result is cached. A falsy result (None, 0, '') still counts as a "
+            "cached success." + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "jobs.py": (
+                "class JobRunner:\n"
+                '    """Run keyed jobs at most once."""\n\n'
+                "    def __init__(self):\n"
+                "        self.results = {}\n\n"
+                "    def submit(self, key: str, work):\n"
+                "        if self.results.get(key):\n"
+                "            return self.results[key]\n"
+                "        result = work()\n"
+                "        self.results[key] = result\n"
+                "        return result\n\n"
+                "    def has_run(self, key: str) -> bool:\n"
+                "        return bool(self.results.get(key))\n"
+            ),
+            "tests/test_public_jobs.py": (
+                "from jobs import JobRunner\n\n\n"
+                "def test_runs_once():\n"
+                "    runner = JobRunner()\n"
+                "    calls = []\n"
+                "    work = lambda: calls.append(1) or 'done'\n"
+                "    assert runner.submit('a', work) == 'done'\n"
+                "    assert runner.submit('a', work) == 'done'\n"
+                "    assert len(calls) == 1\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_jobs.py": (
+                "import pytest\n\n"
+                "from jobs import JobRunner\n\n\n"
+                "def test_falsy_results_are_still_cached():\n"
+                "    runner = JobRunner()\n"
+                "    calls = []\n\n"
+                "    def work():\n"
+                "        calls.append(1)\n"
+                "        return None\n\n"
+                "    assert runner.submit('a', work) is None\n"
+                "    assert runner.submit('a', work) is None\n"
+                "    assert len(calls) == 1\n"
+                "    assert runner.has_run('a') is True\n\n\n"
+                "def test_zero_and_empty_string_are_cached():\n"
+                "    runner = JobRunner()\n"
+                "    assert runner.submit('z', lambda: 0) == 0\n"
+                "    assert runner.submit('z', lambda: 99) == 0\n"
+                "    assert runner.submit('e', lambda: '') == ''\n"
+                "    assert runner.submit('e', lambda: 'x') == ''\n\n\n"
+                "def test_failure_is_not_cached_and_retries():\n"
+                "    runner = JobRunner()\n"
+                "    attempts = []\n\n"
+                "    def flaky():\n"
+                "        attempts.append(1)\n"
+                "        if len(attempts) == 1:\n"
+                "            raise RuntimeError('boom')\n"
+                "        return 'ok'\n\n"
+                "    with pytest.raises(RuntimeError):\n"
+                "        runner.submit('f', flaky)\n"
+                "    assert runner.has_run('f') is False\n"
+                "    assert runner.submit('f', flaky) == 'ok'\n"
+                "    assert len(attempts) == 2\n\n\n"
+                "def test_keys_are_independent():\n"
+                "    runner = JobRunner()\n"
+                "    assert runner.submit('a', lambda: 1) == 1\n"
+                "    assert runner.submit('b', lambda: 2) == 2\n"
+                "    assert runner.has_run('c') is False\n"
+            )
+        },
+        max_steps=16,
+        tags=["maintenance", "stateful", "error-handling"],
+        allowed_changed_files=["jobs.py"],
+    ),
+    BenchmarkTask(
+        task_id="sort_stability_regression",
+        name="Stable ranking regression",
+        prompt=(
+            "Fix ranking.rank_items. Items are sorted by score descending, and ties must "
+            "preserve the original input order (a stable sort). The returned list is new; "
+            "the input must not be mutated. Items missing a 'score' key are treated as "
+            "score 0. Add a regression test to tests/test_ranking.py that would fail if "
+            "someone reintroduces an unstable tie-break." + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "ranking.py": (
+                "def rank_items(items):\n"
+                '    """Sort items by score, highest first."""\n'
+                "    return sorted(items, key=lambda item: -item['score'])\n"
+            ),
+            "tests/test_ranking.py": (
+                "from ranking import rank_items\n\n\n"
+                "def test_orders_by_score():\n"
+                "    items = [{'name': 'a', 'score': 1}, {'name': 'b', 'score': 3}]\n"
+                "    assert [item['name'] for item in rank_items(items)] == ['b', 'a']\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_ranking.py": (
+                "from ranking import rank_items\n\n\n"
+                "def test_ties_keep_input_order():\n"
+                "    items = [\n"
+                "        {'name': 'first', 'score': 5},\n"
+                "        {'name': 'second', 'score': 5},\n"
+                "        {'name': 'third', 'score': 5},\n"
+                "    ]\n"
+                "    assert [item['name'] for item in rank_items(items)] == [\n"
+                "        'first',\n"
+                "        'second',\n"
+                "        'third',\n"
+                "    ]\n\n\n"
+                "def test_missing_score_defaults_to_zero():\n"
+                "    items = [{'name': 'a'}, {'name': 'b', 'score': 2}, {'name': 'c', 'score': -1}]\n"
+                "    assert [item['name'] for item in rank_items(items)] == ['b', 'a', 'c']\n\n\n"
+                "def test_input_is_not_mutated():\n"
+                "    items = [{'name': 'a', 'score': 1}, {'name': 'b', 'score': 3}]\n"
+                "    snapshot = [dict(item) for item in items]\n"
+                "    rank_items(items)\n"
+                "    assert items == snapshot\n\n\n"
+                "def test_regression_test_was_added():\n"
+                "    from pathlib import Path\n\n"
+                "    source = Path('tests/test_ranking.py').read_text(encoding='utf-8')\n"
+                "    assert source.count('def test_') >= 2\n"
+            )
+        },
+        max_steps=16,
+        tags=["maintenance", "algorithm", "regression", "tests"],
+        allowed_changed_files=["ranking.py", "tests/test_ranking.py"],
+        required_changed_files=["ranking.py", "tests/test_ranking.py"],
+    ),
+    BenchmarkTask(
+        task_id="filename_sanitizer",
+        name="Cross-platform filename sanitising",
+        prompt=(
+            "Fix filenames.sanitize. It makes an arbitrary string safe as a single file "
+            'name: strip directory separators and the characters <>:"|?* , collapse runs '
+            "of the replacement underscore, and trim leading/trailing dots, spaces and "
+            "underscores. Preserve non-ASCII letters such as CJK. Reserved Windows device "
+            "names (CON, PRN, AUX, NUL, COM1-9, LPT1-9, case-insensitive, with or without "
+            "extension) get an underscore prefix. If nothing usable remains, return "
+            "'untitled'. Cap the result at 100 characters." + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "filenames.py": (
+                "import re\n\n"
+                "BAD = r'[/\\\\]'\n\n\n"
+                "def sanitize(name: str) -> str:\n"
+                '    """Return a safe single-segment file name."""\n'
+                "    cleaned = re.sub(BAD, '_', name).strip()\n"
+                "    return cleaned or 'untitled'\n"
+            ),
+            "tests/test_public_filenames.py": (
+                "from filenames import sanitize\n\n\n"
+                "def test_replaces_separators():\n"
+                "    assert sanitize('a/b') == 'a_b'\n\n\n"
+                "def test_empty_input():\n"
+                "    assert sanitize('') == 'untitled'\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_filenames.py": (
+                "from filenames import sanitize\n\n\n"
+                "def test_windows_illegal_characters():\n"
+                "    assert sanitize('re:port*v2?.txt') == 're_port_v2_.txt'\n\n\n"
+                "def test_collapses_and_trims():\n"
+                "    assert sanitize('a///b') == 'a_b'\n"
+                "    assert sanitize('  ..name..  ') == 'name'\n"
+                "    assert sanitize('___x___') == 'x'\n\n\n"
+                "def test_unicode_is_preserved():\n"
+                "    assert sanitize('报告-2024.txt') == '报告-2024.txt'\n\n\n"
+                "def test_reserved_device_names():\n"
+                "    assert sanitize('CON') == '_CON'\n"
+                "    assert sanitize('nul.txt') == '_nul.txt'\n"
+                "    assert sanitize('COM1') == '_COM1'\n"
+                "    assert sanitize('CONFIG') == 'CONFIG'\n\n\n"
+                "def test_only_bad_characters_and_length_cap():\n"
+                "    assert sanitize('///') == 'untitled'\n"
+                "    assert sanitize('...') == 'untitled'\n"
+                "    assert len(sanitize('x' * 300)) == 100\n"
+            )
+        },
+        max_steps=18,
+        tags=["maintenance", "filesystem", "encoding", "edge-cases"],
+        allowed_changed_files=["filenames.py"],
+    ),
+    BenchmarkTask(
+        task_id="error_propagation_contract",
+        name="Cross-file error translation contract",
+        prompt=(
+            "storage.py raises low-level StorageError. service.py must translate it into "
+            "the public NotFound / Unavailable exceptions declared in errors.py, per the "
+            "contract in errors.py: a missing key becomes NotFound, any other storage "
+            "failure becomes Unavailable, and the original exception must be attached as "
+            "__cause__ (raise ... from ...). Programming errors such as TypeError must "
+            "NOT be swallowed. Fix service.py only." + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "errors.py": (
+                '"""Public error contract for the service layer.\n\n'
+                "NotFound     -> the requested key does not exist\n"
+                "Unavailable  -> the backend failed for any other reason\n\n"
+                "Both must carry the original low-level exception as __cause__ so callers\n"
+                "can log the root cause. Programming errors (TypeError, ValueError raised\n"
+                'by our own code) must propagate unchanged.\n"""\n\n\n'
+                "class ServiceError(Exception):\n"
+                "    pass\n\n\n"
+                "class NotFound(ServiceError):\n"
+                "    pass\n\n\n"
+                "class Unavailable(ServiceError):\n"
+                "    pass\n"
+            ),
+            "storage.py": (
+                "class StorageError(Exception):\n"
+                "    def __init__(self, message: str, code: str = 'io'):\n"
+                "        super().__init__(message)\n"
+                "        self.code = code\n\n\n"
+                "class Storage:\n"
+                '    """Low-level storage. code is "missing" when the key is absent."""\n\n'
+                "    def __init__(self, data=None, failure=None):\n"
+                "        self.data = data or {}\n"
+                "        self.failure = failure\n\n"
+                "    def read(self, key):\n"
+                "        if self.failure is not None:\n"
+                "            raise self.failure\n"
+                "        if key not in self.data:\n"
+                "            raise StorageError(f'no such key: {key}', code='missing')\n"
+                "        return self.data[key]\n"
+            ),
+            "service.py": (
+                "from errors import ServiceError\n"
+                "from storage import StorageError\n\n\n"
+                "def fetch(storage, key):\n"
+                '    """Read a key and translate storage failures to the public contract."""\n'
+                "    try:\n"
+                "        return storage.read(key)\n"
+                "    except StorageError as exc:\n"
+                "        raise ServiceError(str(exc))\n"
+            ),
+            "tests/test_public_service.py": (
+                "from service import fetch\n"
+                "from storage import Storage\n\n\n"
+                "def test_reads_existing_key():\n"
+                "    assert fetch(Storage({'a': 1}), 'a') == 1\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_service.py": (
+                "import pytest\n\n"
+                "from errors import NotFound, Unavailable\n"
+                "from service import fetch\n"
+                "from storage import Storage, StorageError\n\n\n"
+                "def test_missing_key_becomes_not_found():\n"
+                "    with pytest.raises(NotFound) as info:\n"
+                "        fetch(Storage({'a': 1}), 'zzz')\n"
+                "    assert isinstance(info.value.__cause__, StorageError)\n\n\n"
+                "def test_other_storage_failure_becomes_unavailable():\n"
+                "    broken = Storage(failure=StorageError('disk on fire', code='io'))\n"
+                "    with pytest.raises(Unavailable) as info:\n"
+                "        fetch(broken, 'a')\n"
+                "    assert isinstance(info.value.__cause__, StorageError)\n\n\n"
+                "def test_programming_errors_are_not_swallowed():\n"
+                "    broken = Storage(failure=TypeError('bad call'))\n"
+                "    with pytest.raises(TypeError):\n"
+                "        fetch(broken, 'a')\n"
+            )
+        },
+        max_steps=18,
+        tags=["maintenance", "error-handling", "cross-file", "code-understanding"],
+        allowed_changed_files=["service.py"],
+        required_changed_files=["service.py"],
+    ),
+    BenchmarkTask(
+        task_id="settings_env_precedence",
+        name="Settings precedence across two modules",
+        prompt=(
+            "defaults.py holds the built-in defaults and the ENV_PREFIX. settings.py must "
+            "resolve settings as defaults < environment < overrides. Environment variables "
+            "are read as ENV_PREFIX + the UPPERCASED key. Only keys present in defaults are "
+            "recognised; unknown environment variables with the prefix are ignored. Values "
+            "coming from the environment must be coerced to the TYPE OF THE DEFAULT (int, "
+            "float, bool, str); for bool accept 1/true/yes/on case-insensitively as True "
+            "and 0/false/no/off as False. An env value that cannot be coerced raises "
+            "ValueError naming the key. Fix settings.py only." + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "defaults.py": (
+                'ENV_PREFIX = "APP_"\n\n'
+                "DEFAULTS = {\n"
+                '    "host": "localhost",\n'
+                '    "port": 8080,\n'
+                '    "debug": False,\n'
+                '    "timeout": 2.5,\n'
+                "}\n"
+            ),
+            "settings.py": (
+                "import os\n\n"
+                "from defaults import DEFAULTS, ENV_PREFIX\n\n\n"
+                "def resolve(env=None, overrides=None):\n"
+                '    """Resolve settings from defaults, environment and explicit overrides."""\n'
+                "    env = os.environ if env is None else env\n"
+                "    settings = dict(DEFAULTS)\n"
+                "    for key, value in env.items():\n"
+                "        if key.startswith(ENV_PREFIX):\n"
+                "            settings[key[len(ENV_PREFIX):].lower()] = value\n"
+                "    settings.update(overrides or {})\n"
+                "    return settings\n"
+            ),
+            "tests/test_public_settings.py": (
+                "from settings import resolve\n\n\n"
+                "def test_defaults_only():\n"
+                "    assert resolve(env={})['host'] == 'localhost'\n\n\n"
+                "def test_override_wins():\n"
+                "    assert resolve(env={}, overrides={'port': 9})['port'] == 9\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_settings.py": (
+                "import pytest\n\n"
+                "from settings import resolve\n\n\n"
+                "def test_env_values_are_coerced_to_default_type():\n"
+                "    result = resolve(env={'APP_PORT': '9090', 'APP_TIMEOUT': '0.5'})\n"
+                "    assert result['port'] == 9090\n"
+                "    assert isinstance(result['port'], int)\n"
+                "    assert result['timeout'] == 0.5\n\n\n"
+                "def test_bool_env_forms():\n"
+                "    for text in ('1', 'true', 'YES', 'On'):\n"
+                "        assert resolve(env={'APP_DEBUG': text})['debug'] is True\n"
+                "    for text in ('0', 'false', 'NO', 'Off'):\n"
+                "        assert resolve(env={'APP_DEBUG': text})['debug'] is False\n\n\n"
+                "def test_unknown_prefixed_vars_are_ignored():\n"
+                "    result = resolve(env={'APP_MYSTERY': 'x'})\n"
+                "    assert 'mystery' not in result\n"
+                "    assert set(result) == {'host', 'port', 'debug', 'timeout'}\n\n\n"
+                "def test_precedence_order():\n"
+                "    result = resolve(env={'APP_PORT': '1'}, overrides={'port': 2})\n"
+                "    assert result['port'] == 2\n\n\n"
+                "def test_bad_env_value_names_the_key():\n"
+                "    with pytest.raises(ValueError) as info:\n"
+                "        resolve(env={'APP_PORT': 'not-a-number'})\n"
+                "    assert 'port' in str(info.value)\n"
+            )
+        },
+        max_steps=18,
+        tags=["maintenance", "config", "cross-file", "code-understanding"],
+        allowed_changed_files=["settings.py"],
+        required_changed_files=["settings.py"],
+    ),
+    BenchmarkTask(
+        task_id="log_redaction",
+        name="Structured log secret redaction",
+        prompt=(
+            "Fix redact.redact_event. It scrubs a log event dict before it is written. Any "
+            "key whose lowercased name contains password, secret, token, api_key or "
+            "authorization has its value replaced with '***'. Redaction is recursive "
+            "through nested dicts and through lists of dicts. The input event must NOT be "
+            "mutated — return a new structure. Non-string values under a sensitive key are "
+            "still replaced with '***'. A None value stays None (there is nothing to leak). "
+            "Keys are matched case-insensitively." + MAINTENANCE_PROMPT_SUFFIX
+        ),
+        setup_files={
+            "redact.py": (
+                "SENSITIVE = ('password', 'secret', 'token', 'api_key', 'authorization')\n\n\n"
+                "def redact_event(event: dict) -> dict:\n"
+                '    """Replace sensitive values in a log event with a placeholder."""\n'
+                "    for key in event:\n"
+                "        if key in SENSITIVE:\n"
+                "            event[key] = '***'\n"
+                "    return event\n"
+            ),
+            "tests/test_public_redact.py": (
+                "from redact import redact_event\n\n\n"
+                "def test_top_level_secret():\n"
+                "    assert redact_event({'password': 'hunter2'})['password'] == '***'\n"
+            ),
+        },
+        hidden_files={
+            "tests/test_hidden_redact.py": (
+                "import copy\n\n"
+                "from redact import redact_event\n\n\n"
+                "def test_input_is_not_mutated():\n"
+                "    event = {'password': 'hunter2'}\n"
+                "    snapshot = copy.deepcopy(event)\n"
+                "    redact_event(event)\n"
+                "    assert event == snapshot\n\n\n"
+                "def test_partial_and_case_insensitive_key_match():\n"
+                "    event = {'user_PASSWORD': 'x', 'Api_Key': 'y', 'AUTHORIZATION': 'z'}\n"
+                "    result = redact_event(event)\n"
+                "    assert set(result.values()) == {'***'}\n\n\n"
+                "def test_nested_dicts_and_lists():\n"
+                "    event = {\n"
+                "        'ctx': {'auth': {'token': 'abc'}},\n"
+                "        'items': [{'secret': 1}, {'name': 'ok'}],\n"
+                "    }\n"
+                "    result = redact_event(event)\n"
+                "    assert result['ctx']['auth']['token'] == '***'\n"
+                "    assert result['items'][0]['secret'] == '***'\n"
+                "    assert result['items'][1]['name'] == 'ok'\n\n\n"
+                "def test_non_string_values_and_none():\n"
+                "    result = redact_event({'token': 12345, 'secret': None, 'keep': 1})\n"
+                "    assert result['token'] == '***'\n"
+                "    assert result['secret'] is None\n"
+                "    assert result['keep'] == 1\n"
+            )
+        },
+        max_steps=16,
+        tags=["maintenance", "security", "logging", "edge-cases"],
+        allowed_changed_files=["redact.py"],
     ),
 ]
 

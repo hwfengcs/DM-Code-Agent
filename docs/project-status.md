@@ -15,12 +15,12 @@ Tier-2 verifier 从未实现，CI 也从不跑它。
 **本项目的记分牌是自带的 coding + maintenance benchmark**：13 道题，本地建工作区 →
 agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overall_pass_rate`。
 它不依赖 Docker、不依赖 HuggingFace，需要一个真实 API key。已实测：DeepSeek 在
-13 题上 **pass_rate 0.385（5/13）**，95% CI [0.177, 0.645]
-（`bench_reports/baseline-20260803.json`，2026-08-03）。同一份报告里隐藏测试通过率是
-**0.769**——落差来自「改了不该改的文件」（3 题）与「步数耗尽」（4 题），
-不是写不出代码。
+**30 题**（coding 15 + maintenance 15）。13 题时代的存档 baseline 是
+**pass_rate 0.385（5/13）**，95% CI [0.177, 0.645]（`bench_reports/baseline-20260803.json`）；
+同一份报告里隐藏测试通过率是 **0.769**——落差来自「改了不该改的文件」（3 题）与
+「步数耗尽」（4 题），不是写不出代码。该报告对应旧任务集，**不可与 30 题分数直接比较**。
 
-读这个分数时请记住：13 题的规模下，**一题翻转就是 ±7.7 个百分点**。它适合用来对照
+读这个分数时请记住：30 题的规模下，**一题翻转就是 ±3.3 个百分点**。它适合用来对照
 「改了策略之后有没有变好」，不适合当作与其他项目横向比较的绝对值。所有离线报告都附 raw JSON。
 
 ## v.s. 同类项目（当前公开口径）
@@ -36,7 +36,7 @@ agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overal
 | 扩展系统（不改内核加能力） | ✅ entry_points + 目录 + 显式文件 | ❌ | plugins | ❌ | ❌ |
 | 可拦截生命周期钩子 | ✅ 6 个事件 | ❌ | partial | ❌ | ❌ |
 | MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
-| 自带 hidden-test benchmark | ✅ 13 题，可出分 | ❌ | ❌ | SWE-bench | ❌ |
+| 自带 hidden-test benchmark | ✅ 30 题，可出分 | ❌ | ❌ | SWE-bench | ❌ |
 | 公开 SWE-bench Lite 分数 | ❌ 已移除（跑不通，见上） | ❌ | ✅ | ✅ | ❌ |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 

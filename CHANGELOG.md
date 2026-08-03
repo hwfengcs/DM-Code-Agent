@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Benchmark expanded from 13 to 30 tasks (2026-08)
+
+At 13 tasks one flipped task moved the score by ±7.7 points, which made most changes
+indistinguishable from re-run noise — two runs of the same 6 coding tasks with the same model
+scored 3/6 and 4/6. At 30 tasks the noise floor is ±3.3. Details in
+[`docs/research-log/34-benchmark-expansion.md`](docs/research-log/34-benchmark-expansion.md).
+
+#### Added
+- **9 coding tasks**: `parse_duration`, `merge_intervals`, `retry_backoff_schedule`,
+  `csv_row_parser`, `paginate_cursor`, `semver_compare`, `flatten_config`,
+  `rate_limiter_window`, `safe_int_parse`.
+- **8 maintenance tasks**: `billing_period_boundary`, `sql_where_builder`,
+  `idempotent_job_runner`, `sort_stability_regression`, `filename_sanitizer`,
+  `error_propagation_contract`, `settings_env_precedence`, `log_redaction`. Every one of them
+  carries an `allowed_changed_files` constraint — the 13-task baseline showed three of eight
+  failures were the agent editing the test file instead of the implementation.
+- Dataset invariants enforced for all 30 tasks in `tests/test_coding_benchmarks.py`: hidden
+  tests must fail on the initial workspace, and a task may not list its own hidden tests as
+  editable.
+- `docs/benchmarks.md` gained an "Adding a task" section covering both invariants, the
+  solvability check that cannot be unit-tested, and the manifest regeneration step.
+
+#### Changed (breaking for score comparison)
+- `suite_signature` changed for both suites; `bench_reports/manifest-baseline-*.json` were
+  regenerated.
+- **`bench_reports/baseline-20260803.json` (13 tasks) is no longer comparable** to a 30-task
+  run. `dm-agent-score-diff` refuses the comparison and exits 2 rather than printing a
+  meaningless delta. Re-run the baseline after any task-set change.
+
 ### Scope reduction: removing what the frozen evaluation can never falsify (2026-08)
 
 An AST scan found essentially **no traditional dead code** (one 2-line unreferenced function

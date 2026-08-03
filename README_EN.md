@@ -179,11 +179,12 @@ SWE-bench / Docker Tier-2 verifier / cross-model scoring are **frozen**, and the
 suite was removed in v2.1 because it did not work: the Tier-1 baseline was 0.0% resolved and
 polluted by host verifier noise, and the Tier-2 verifier was never implemented.
 
-The scoreboard is now the bundled **coding + maintenance benchmark**: 13 tasks judged pass/fail
+The scoreboard is now the bundled **coding + maintenance benchmark**: 30 tasks judged pass/fail
 by hidden tests, with no Docker or HuggingFace dependency. Measured: DeepSeek scores
-an archived baseline (DeepSeek, 2026-08-03, 13 tasks) of **`pass_rate 0.385 (5/13)`** —
-while its hidden-test pass rate is `0.769`. The gap is entirely process discipline: editing
-files it was told not to touch, and running out of steps.
+**30 tasks** (15 coding + 15 maintenance). The archived 13-task baseline scored
+`pass_rate 0.385 (5/13)` while its hidden-test pass rate was `0.769` — the gap is entirely
+process discipline: editing files it was told not to touch, and running out of steps.
+That report predates the expansion and is not comparable to a 30-task score.
 
 ```bash
 dm-agent-bench --suite all --provider deepseek --output bench_reports/after.json
@@ -191,7 +192,7 @@ dm-agent-score-diff bench_reports/before.json bench_reports/after.json
 ```
 
 It reports **which tasks flipped in each direction**, not just the total — regressions are listed
-separately even when the total goes up. At 13 tasks one flip is ±7.7 percentage points, and that
+separately even when the total goes up. At 30 tasks one flip is ±3.3 percentage points, and that
 noise floor is printed in the output so a single-task swing is not misread as an improvement.
 Full caveats in [project status](docs/project-status.md).
 
@@ -278,7 +279,7 @@ The authoritative prose version is [docs/architecture.md](docs/architecture.md).
 | Interceptable lifecycle hooks | ✅ 6 events | ❌ | partial | ❌ | ❌ |
 | Visual audit console | ✅ read-only gallery, no key, static-hostable | chat GUI | ✅ full web UI | trajectory inspector | ❌ |
 | MCP integration | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Bundled hidden-test benchmark | ✅ 13 tasks, scored | ❌ | ❌ | SWE-bench | ❌ |
+| Bundled hidden-test benchmark | ✅ 30 tasks, scored | ❌ | ❌ | SWE-bench | ❌ |
 | Published SWE-bench Lite score | ❌ removed (did not work, see above) | ❌ | ✅ | ✅ | ❌ |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 

@@ -171,9 +171,11 @@ v2.1 做了一次减法：把 6 个**毕业标准依赖已冻结评测**的默�
 0.0% resolved 且受 host verifier 噪声污染，Tier-2 verifier 从未实现）。
 
 记分牌换成自带的 **coding + maintenance benchmark**：13 道题，隐藏测试判 pass/fail，
-不依赖 Docker 与 HuggingFace。已存档 baseline（DeepSeek，2026-08-03，13 题）：
-**`pass_rate 0.385（5/13）`**，而隐藏测试通过率是 `0.769`——差距全在「改了不该改的
-文件」和「步数耗尽」上，见 `bench_reports/baseline-20260803.json`。
+不依赖 Docker 与 HuggingFace。**30 道题**（coding 15 + maintenance 15）。
+
+13 题时代的存档 baseline 是 `pass_rate 0.385（5/13）`，而隐藏测试通过率 `0.769`——
+差距全在「改了不该改的文件」和「步数耗尽」上（`bench_reports/baseline-20260803.json`，
+对应旧任务集，不可与 30 题分数直接比较）。
 
 ```bash
 dm-agent-bench --suite all --provider deepseek --output bench_reports/after.json
@@ -181,8 +183,8 @@ dm-agent-score-diff bench_reports/before.json bench_reports/after.json
 ```
 
 输出**逐题 pass/fail 翻转**而不只是总分——回归即使在总分上升时也单独列出。
-13 题规模下一题翻转就是 ±7.7 个百分点，这条噪声口径直接印在输出里，
-免得把一题的抖动读成改进。完整口径见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
+30 题规模下一题翻转是 ±3.3 个百分点，这条噪声口径直接印在输出里，
+免得把一两题的抖动读成改进。完整口径见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
 
 ---
 
@@ -265,7 +267,7 @@ flowchart TD
 | 可拦截生命周期钩子 | ✅ 6 个事件 | ❌ | partial | ❌ | ❌ |
 | 可视化审计控制台 | ✅ 只读展厅免 key、可静态托管 | 聊天 GUI | ✅ 完整 Web UI | trajectory inspector | ❌ |
 | MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
-| 自带 hidden-test benchmark | ✅ 13 题，可出分 | ❌ | ❌ | SWE-bench | ❌ |
+| 自带 hidden-test benchmark | ✅ 30 题，可出分 | ❌ | ❌ | SWE-bench | ❌ |
 | 公开 SWE-bench Lite 分数 | ❌ 已移除（跑不通，见「不吹分数」） | ❌ | ✅ | ✅ | ❌ |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 

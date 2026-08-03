@@ -1,18 +1,36 @@
 {
   "suite": "coding",
-  "task_count": 6,
+  "task_count": 15,
   "task_ids": [
+    "csv_row_parser",
+    "flatten_config",
     "inventory_reservations",
+    "merge_intervals",
     "normalize_users",
     "order_total_edges",
+    "paginate_cursor",
+    "parse_duration",
+    "rate_limiter_window",
+    "retry_backoff_schedule",
+    "safe_int_parse",
+    "semver_compare",
     "slugify_cleanup",
     "stats_summary",
     "ttl_cache_lru"
   ],
   "task_fingerprints": {
+    "csv_row_parser": "169ba7ed5b53a5a3",
+    "flatten_config": "3f22789b7f66bc9c",
     "inventory_reservations": "43c061578fbdb4e9",
+    "merge_intervals": "3a90f2f5f7612341",
     "normalize_users": "fb2a9ef1fbe1e69c",
     "order_total_edges": "7c49203d5a852abf",
+    "paginate_cursor": "2e1ead1efa030856",
+    "parse_duration": "261e5fccc4ed9a03",
+    "rate_limiter_window": "063a6295ea59a67c",
+    "retry_backoff_schedule": "0202e96d157f183c",
+    "safe_int_parse": "c026afc8ec00c81f",
+    "semver_compare": "952376f8a0c1c481",
     "slugify_cleanup": "e046880a7e0c8931",
     "stats_summary": "60a0bf5a030da529",
     "ttl_cache_lru": "dbf22b2c61856221"
@@ -23,5 +41,5 @@
     "no_planning",
     "no_skills"
   ],
-  "suite_signature": "f26b8aa672d632f8"
+  "suite_signature": "c846387398b2ab63"
 }

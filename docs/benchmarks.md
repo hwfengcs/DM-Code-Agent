@@ -5,9 +5,10 @@ comes from, so read the caveats before quoting it.
 
 Three suites:
 
-- `coding` (6 tasks): compact hidden-test coding tasks.
-- `maintenance` (7 tasks): repository-maintenance tasks that mimic real fixes more closely.
-- `all` (13 tasks): both of the above in one run — **use this when you want one score.**
+- `coding` (15 tasks): compact hidden-test coding tasks.
+- `maintenance` (15 tasks): repository-maintenance tasks that mimic real fixes more closely,
+  most of them constrained by `allowed_changed_files`.
+- `all` (30 tasks): both of the above in one run — **use this when you want one score.**
 
 Every suite creates a temporary workspace, lets the agent inspect and edit files, injects hidden
 tests after the agent finishes, and scores the run by executable behavior. No Docker, no
@@ -15,29 +16,33 @@ HuggingFace download — but a real API key is required, because the point is to
 
 ## How to read the score
 
-The headline number is `summary.overall_pass_rate`. The archived baseline
-(`bench_reports/baseline-20260803.json`, DeepSeek `deepseek-chat`, suite `all`, 2026-08-03):
+The headline number is `summary.overall_pass_rate`.
 
-| Metric | Value |
+The last archived baseline (`bench_reports/baseline-20260803.json`, DeepSeek `deepseek-chat`)
+was measured on the **13-task** suite, before the expansion to 30:
+
+| Metric | Value (13-task suite) |
 | --- | --- |
 | `overall_pass_rate` | **0.385** (5/13) |
 | 95% CI (Wilson) | [0.177, 0.645] |
 | `hidden_test_pass_rate` | 0.769 |
 | `agent_completion_rate` | 0.615 |
-| Total tokens | 750,672 |
-| Wall clock | 7.1 min |
 
-Read the gap between those rates, not just the first line. Hidden tests pass on **77%** of tasks
-while only **38%** count as a pass — the difference is process discipline, not coding ability:
-three tasks edited files the prompt forbade (all three went for the test file), four ran out of
-steps, one produced unparseable output.
+That report is **not comparable** to a 30-task run — `dm-agent-score-diff` will refuse the
+comparison because the suite signature differs. Re-run the baseline after any task-set change.
 
-A concrete demonstration of why the noise floor matters: an earlier run of the same 6 coding
-tasks with the same model scored 3/6, this baseline scores 4/6. **Same model, same tasks, one
-task of difference.** That is the ±7.7 points talking, not a change in capability.
+Read the gap between those rates, not just the first line. Hidden tests passed on **77%** of
+tasks while only **38%** counted as a pass — the difference is process discipline, not coding
+ability: three tasks edited files the prompt forbade (all three went for the test file), four ran
+out of steps, one produced unparseable output. That finding is what motivated giving most of the
+new maintenance tasks an `allowed_changed_files` constraint.
 
-**At 13 tasks, one flipped task is ±7.7 percentage points.** That is the single most important
-thing to know about this number:
+A concrete demonstration of why the noise floor matters: two runs of the same 6 coding tasks with
+the same model scored 3/6 and 4/6. **Same model, same tasks, one task of difference.**
+
+**At 30 tasks, one flipped task is ±3.3 percentage points** (it was ±7.7 at 13 tasks — halving
+that noise floor is the main reason to grow the suite). That is the single most important thing
+to know about this number:
 
 - It is good for *"did my change help?"* — run before, run after, compare.
 - It is **not** good for comparing against other projects, and a swing of one or two tasks is
@@ -239,3 +244,44 @@ Future benchmark work should add:
 - richer repeated-sample variance summaries beyond binomial confidence intervals
 - cross-model comparison tables
 - cost-per-success economics across existing reports
+
+## Adding a task
+
+Tasks live in `dm_agent/benchmarks/tasks.py` as `BenchmarkTask` objects — there is **no external
+dataset file**, the fixture code and tests are inline strings. Append to `BUILTIN_CODING_TASKS`
+or `BUILTIN_MAINTENANCE_TASKS`.
+
+Two invariants are enforced by `tests/test_coding_benchmarks.py` and must hold:
+
+1. **Hidden tests must fail on the initial workspace.** A task whose hidden tests already pass
+   measures nothing.
+2. **A task must not list its own hidden tests in `allowed_changed_files`** — that would let the
+   agent edit the thing that grades it.
+
+A third one cannot be unit-tested cheaply but matters just as much: **the task must be
+solvable.** Before committing a new task, write a reference solution and confirm the hidden
+tests pass against it:
+
+```python
+from dm_agent.benchmarks.runner import prepare_workspace, run_hidden_tests
+from dm_agent.benchmarks.tasks import get_benchmark_tasks
+
+task = get_benchmark_tasks("all", ["your_task_id"])[0]
+prepare_workspace(task, workspace, include_hidden=True)
+(workspace / "impl.py").write_text(your_reference_solution)
+assert run_hidden_tests(task, workspace).returncode == 0
+```
+
+Whether the *visible* tests pass initially is a free choice: failing ones give the agent an
+obvious starting signal, passing ones force it to infer edge cases from the task description.
+The suite deliberately mixes both.
+
+Changing the task set changes `suite_signature`, so CI's manifest guard will fail until you
+regenerate the baselines:
+
+```bash
+dm-agent-bench --suite coding --manifest-only bench_reports/manifest-baseline-coding.json
+dm-agent-bench --suite maintenance --manifest-only bench_reports/manifest-baseline-maintenance.json
+```
+
+That failure is the guard working as designed — the task set must never drift silently.

@@ -1,23 +1,39 @@
 {
   "suite": "maintenance",
-  "task_count": 7,
+  "task_count": 15,
   "task_ids": [
+    "billing_period_boundary",
     "cli_config_docs_contract",
     "config_precedence",
     "cross_file_user_contract",
+    "error_propagation_contract",
+    "filename_sanitizer",
+    "idempotent_job_runner",
+    "log_redaction",
     "packaging_ci_contract",
     "patch_summary_name_status",
     "retry_regression_tests",
-    "safe_workspace_join"
+    "safe_workspace_join",
+    "settings_env_precedence",
+    "sort_stability_regression",
+    "sql_where_builder"
   ],
   "task_fingerprints": {
+    "billing_period_boundary": "1babc44ce9f2da0b",
     "cli_config_docs_contract": "823a40d03b67947e",
     "config_precedence": "4dfe0afeab978e30",
     "cross_file_user_contract": "0643ba4f350d59d6",
+    "error_propagation_contract": "d133c42d4e96c482",
+    "filename_sanitizer": "e0ba775f484be471",
+    "idempotent_job_runner": "81ef5a776fd55d83",
+    "log_redaction": "e99cb443f4e9c5c8",
     "packaging_ci_contract": "49d9fb24f3cc4ddb",
     "patch_summary_name_status": "58f902d5a48181b4",
     "retry_regression_tests": "7712d2b94da801b0",
-    "safe_workspace_join": "38c9521ab244d249"
+    "safe_workspace_join": "38c9521ab244d249",
+    "settings_env_precedence": "900e5c88d8252054",
+    "sort_stability_regression": "ee1ac3f3b347afe6",
+    "sql_where_builder": "38b0410a14dcb381"
   },
   "variant_names": [
     "full",
@@ -25,5 +41,5 @@
     "no_planning",
     "no_skills"
   ],
-  "suite_signature": "66045371a005173f"
+  "suite_signature": "1a633dda3e5bda09"
 }

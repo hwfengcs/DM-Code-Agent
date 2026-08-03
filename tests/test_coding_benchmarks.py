@@ -856,3 +856,55 @@ def test_manifest_diff_accepts_bare_manifest_files(tmp_path, capsys):
     drifted["suite_signature"] = "drifted"
     right.write_text(json.dumps(drifted), encoding="utf-8")
     assert manifest_diff_main([str(left), str(right)]) == 1
+
+
+# --- 30 题扩充后的数据集不变量 ---------------------------------------------
+#
+# 这两条是任务集的硬约束，与单题内容无关，所以对全部题目统一断言而不是逐题写：
+#   1. 初始工作区下隐藏测试必须失败——否则这道题不考任何东西。
+#   2. 每题都要有 allowed_changed_files 或明确不限，且不能把隐藏测试文件
+#      列进可改范围（那等于允许 agent 改判分标准）。
+#
+# 「正解下隐藏测试必须通过」无法在无 API key 的单测里对全部题目断言（需要写 30 份
+# 参考解），改为在新增题目时用 dm_agent.benchmarks.runner 手工验证，见 devlog 34。
+
+
+def test_every_task_hidden_tests_fail_on_the_initial_workspace(tmp_path):
+    """一道隐藏测试初始就通过的题目不考任何东西，等于白送分。"""
+    offenders = []
+    for index, task in enumerate(get_benchmark_tasks("all")):
+        workspace = tmp_path / f"ws{index}"
+        workspace.mkdir()
+        prepare_workspace(task, workspace, include_hidden=True)
+        if run_hidden_tests(task, workspace).returncode == 0:
+            offenders.append(task.task_id)
+    assert offenders == []
+
+
+def test_no_task_allows_editing_its_own_hidden_tests():
+    """把隐藏测试列进可改范围 = 允许 agent 改判分标准。"""
+    offenders = []
+    for task in get_benchmark_tasks("all"):
+        allowed = set(task.allowed_changed_files)
+        if allowed & set(task.hidden_files):
+            offenders.append(task.task_id)
+    assert offenders == []
+
+
+def test_suite_sizes_and_unique_ids():
+    coding = get_benchmark_tasks("coding")
+    maintenance = get_benchmark_tasks("maintenance")
+    combined = get_benchmark_tasks("all")
+
+    assert len(coding) == 15
+    assert len(maintenance) == 15
+    assert len(combined) == 30
+
+    ids = [task.task_id for task in combined]
+    assert len(ids) == len(set(ids))
+
+
+def test_every_task_declares_tags_and_a_step_budget():
+    for task in get_benchmark_tasks("all"):
+        assert task.tags, task.task_id
+        assert task.max_steps >= 10, task.task_id
