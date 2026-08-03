@@ -1,12 +1,52 @@
 # Benchmarks
 
-DM-Code-Agent has two benchmark suites:
+**This is the project's scoreboard.** It is the only place a real number about agent capability
+comes from, so read the caveats before quoting it.
 
-- `coding`: compact hidden-test coding tasks.
-- `maintenance`: repository-maintenance tasks that mimic real fixes more closely.
+Three suites:
 
-Both suites create a temporary workspace, let the agent inspect and edit files, inject hidden
-tests after the agent finishes, and score the run by executable behavior.
+- `coding` (6 tasks): compact hidden-test coding tasks.
+- `maintenance` (7 tasks): repository-maintenance tasks that mimic real fixes more closely.
+- `all` (13 tasks): both of the above in one run — **use this when you want one score.**
+
+Every suite creates a temporary workspace, lets the agent inspect and edit files, injects hidden
+tests after the agent finishes, and scores the run by executable behavior. No Docker, no
+HuggingFace download — but a real API key is required, because the point is to measure a real model.
+
+## How to read the score
+
+The headline number is `summary.overall_pass_rate`. Measured baseline: DeepSeek scores
+`0.5 (3/6)` on the coding suite (`bench_reports/deepseek_coding.json`).
+
+**At 13 tasks, one flipped task is ±7.7 percentage points.** That is the single most important
+thing to know about this number:
+
+- It is good for *"did my change help?"* — run before, run after, compare.
+- It is **not** good for comparing against other projects, and a swing of one or two tasks is
+  not evidence of anything. `dm-agent-score-diff` says so out loud rather than letting you
+  read a 1-task flip as an improvement.
+- `pass_rate_ci_95` (Wilson interval) is in every report. At this sample size it is wide. That
+  is honest, not a defect.
+
+## Comparing two runs
+
+```bash
+dm-agent-bench --suite all --provider deepseek --output bench_reports/before.json
+# ... change a strategy ...
+dm-agent-bench --suite all --provider deepseek --output bench_reports/after.json
+
+dm-agent-score-diff bench_reports/before.json bench_reports/after.json
+```
+
+Output gives the pass-rate delta, **which specific tasks flipped in each direction**, and the
+token/cost change. Per-task flips matter more than the total: "总分 +7.7%" tells you almost
+nothing, "`ttl_cache_lru` started passing and `safe_workspace_join` started failing" tells you
+where to look next.
+
+Regressions are always listed separately, **even when the total went up** — that is the failure
+mode a single aggregate number hides. Exit code is `1` when any task regressed, so it can gate
+a script. If the two reports have different task sets, the tool refuses to compare
+(`exit 2`) instead of printing a meaningless delta.
 
 ## Commands
 

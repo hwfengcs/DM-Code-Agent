@@ -12,6 +12,7 @@
 | `dm-agent-eval` | `dm_agent.evals.cli:main` | 确定性 eval（无需 API key） |
 | `dm-agent-economics` | `dm_agent.benchmarks.economics:main` | 离线 token 成本核算 |
 | `dm-agent-manifest-diff` | `dm_agent.benchmarks.manifest_diff:main` | benchmark 任务集漂移检测 |
+| `dm-agent-score-diff` | `dm_agent.benchmarks.score_diff:main` | 两份 benchmark 报告的分数差、逐题翻转与成本对照 |
 | `dm-agent-web` | `dm_agent.server.cli:main` | Web 控制台（需 `[web]` extra），见 [Web 控制台](web.md) |
 
 根目录 `main.py` 是 `python main.py` 的兼容转发，不会作为顶级 `main` 模块安装。

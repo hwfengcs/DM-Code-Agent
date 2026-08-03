@@ -845,6 +845,9 @@ BUILTIN_MAINTENANCE_TASKS: list[BenchmarkTask] = [
 BENCHMARK_SUITES = {
     "coding": BUILTIN_CODING_TASKS,
     "maintenance": BUILTIN_MAINTENANCE_TASKS,
+    # 记分牌：两个套件合起来跑一次，出一个 overall_pass_rate。
+    # 想对照「改了策略有没有变好」就用这个，别分两次跑再心算。
+    "all": BUILTIN_CODING_TASKS + BUILTIN_MAINTENANCE_TASKS,
 }
 
 

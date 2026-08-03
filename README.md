@@ -172,8 +172,15 @@ v2.1 做了一次减法：把 6 个**毕业标准依赖已冻结评测**的默�
 
 记分牌换成自带的 **coding + maintenance benchmark**：13 道题，隐藏测试判 pass/fail，
 不依赖 Docker 与 HuggingFace。实测 DeepSeek 在 coding suite 上 `pass_rate 0.5（3/6）`。
-13 题规模下一题翻转就是 ±7.7 个百分点——它用来对照「改了策略有没有变好」，
-不用来跟别的项目比绝对值。完整口径见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
+
+```bash
+dm-agent-bench --suite all --provider deepseek --output bench_reports/after.json
+dm-agent-score-diff bench_reports/before.json bench_reports/after.json
+```
+
+输出**逐题 pass/fail 翻转**而不只是总分——回归即使在总分上升时也单独列出。
+13 题规模下一题翻转就是 ±7.7 个百分点，这条噪声口径直接印在输出里，
+免得把一题的抖动读成改进。完整口径见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
 
 ---
 

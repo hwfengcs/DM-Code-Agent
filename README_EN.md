@@ -181,9 +181,17 @@ polluted by host verifier noise, and the Tier-2 verifier was never implemented.
 
 The scoreboard is now the bundled **coding + maintenance benchmark**: 13 tasks judged pass/fail
 by hidden tests, with no Docker or HuggingFace dependency. Measured: DeepSeek scores
-`pass_rate 0.5 (3/6)` on the coding suite. At 13 tasks, one flip is ±7.7 percentage points — use
-it to check whether a change helped, not to compare against other projects. Full caveats in
-[project status](docs/project-status.md).
+`pass_rate 0.5 (3/6)` on the coding suite.
+
+```bash
+dm-agent-bench --suite all --provider deepseek --output bench_reports/after.json
+dm-agent-score-diff bench_reports/before.json bench_reports/after.json
+```
+
+It reports **which tasks flipped in each direction**, not just the total — regressions are listed
+separately even when the total goes up. At 13 tasks one flip is ±7.7 percentage points, and that
+noise floor is printed in the output so a single-task swing is not misread as an improvement.
+Full caveats in [project status](docs/project-status.md).
 
 ---
 
