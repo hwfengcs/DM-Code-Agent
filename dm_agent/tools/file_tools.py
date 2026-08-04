@@ -17,15 +17,46 @@ EDIT_ECHO_CONTEXT_LINES = 3
 EDIT_ECHO_MAX_LINES = 40
 
 
+def _dominant_newline(path: Path) -> str:
+    """探测已有文件用的是哪种行尾；新文件一律用 LF。
+
+    读取端的 ``read_text`` 会把 CRLF 归一成 LF，所以写回时必须把行尾还原成文件
+    原本的样子，否则"改一行"会变成"整份文件都变了"。新建文件选 LF：跨平台通用，
+    也是 git 的默认存储形式。
+    """
+    if not path.exists():
+        return "\n"
+    try:
+        with path.open("rb") as handle:
+            sample = handle.read(65536)
+    except OSError:
+        return "\n"
+    crlf = sample.count(b"\r\n")
+    lf = sample.count(b"\n") - crlf
+    return "\r\n" if crlf > lf else "\n"
+
+
+def _with_newline(content: str, newline: str) -> str:
+    """把内容的行尾统一成 ``newline``（先归一化，避免出现 \\r\\r\\n）。"""
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    return normalized if newline == "\n" else normalized.replace("\n", newline)
+
+
 def _atomic_write_text(path: Path, content: str) -> str:
     """原子写入：同目录临时文件 + os.replace，避免中断留下半写文件。
 
     Windows 上目标被占用时 os.replace 可能抛 PermissionError；小睡后重试一次，
     仍失败则回退普通写入并在返回值中注明。返回空串表示原子写成功。
+
+    ``newline=""`` 关掉平台改写、由 :func:`_dominant_newline` 决定实际行尾，
+    两者缺一不可：默认的 ``newline=None`` 会把 ``\\n`` 换成 ``os.linesep``，于是在
+    Windows 上编辑一个 LF 文件会把**整份文件**转成 CRLF。实测代价：在真实仓库上
+    改一行，产出的 diff 是 +317/-317 的整文件重写。
     """
+    payload = _with_newline(content, _dominant_newline(path))
     tmp_path = path.with_name(f"{path.name}.tmp-{os.getpid()}")
     try:
-        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.write_text(payload, encoding="utf-8", newline="")
         try:
             os.replace(tmp_path, path)
             return ""
@@ -39,7 +70,7 @@ def _atomic_write_text(path: Path, content: str) -> str:
                 tmp_path.unlink()
         except OSError:
             pass
-        path.write_text(content, encoding="utf-8")
+        path.write_text(payload, encoding="utf-8", newline="")
         return " (non-atomic fallback)"
 
 

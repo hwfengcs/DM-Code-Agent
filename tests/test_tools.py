@@ -364,3 +364,36 @@ def test_missing_linter_without_any_alternative_says_the_step_can_be_skipped(tmp
 def test_available_linters_reports_a_subset_of_the_supported_ones():
     supported = {"ruff", "flake8", "pylint", "mypy", "black"}
     assert set(available_linters()) <= supported
+
+
+def test_editing_an_lf_file_keeps_lf_line_endings(tmp_path):
+    """在 Windows 上编辑 LF 文件不得把整份文件转成 CRLF。
+
+    根因是 Path.write_text 默认的 newline=None 会按平台改写行尾。代价实测过：
+    在一个真实仓库里改一行，产出的 diff 是 +317/-317 的整文件重写——这样的 patch
+    在 SWE-bench 官方 harness 上 git apply 会失败。
+    """
+    target = tmp_path / "mod.py"
+    target.write_bytes(b"a = 1\nb = 2\nc = 3\n")
+
+    edit_file({"path": str(target), "old_string": "b = 2", "new_string": "b = 20"})
+
+    raw = target.read_bytes()
+    assert b"\r\n" not in raw
+    assert raw == b"a = 1\nb = 20\nc = 3\n"
+
+
+def test_editing_a_crlf_file_keeps_crlf_line_endings(tmp_path):
+    """反向同理：原本是 CRLF 的文件，编辑后仍是 CRLF。"""
+    target = tmp_path / "mod.py"
+    target.write_bytes(b"a = 1\r\nb = 2\r\nc = 3\r\n")
+
+    edit_file({"path": str(target), "old_string": "b = 2", "new_string": "b = 20"})
+
+    assert target.read_bytes() == b"a = 1\r\nb = 20\r\nc = 3\r\n"
+
+
+def test_new_files_are_written_with_lf(tmp_path):
+    target = tmp_path / "fresh.py"
+    create_file({"path": str(target), "content": "x = 1\ny = 2\n"})
+    assert target.read_bytes() == b"x = 1\ny = 2\n"
