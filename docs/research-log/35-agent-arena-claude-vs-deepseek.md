@@ -125,6 +125,49 @@ maintenance    4/15
 4. **"隐藏测试通过率"与"pass_rate"的落差是这个 benchmark 最有信息量的指标**，
    比任何一个单独的分数都有用。它把「不会写代码」和「不守规矩」分开了。
 
+## 补测：DeepSeek 的 30 题数据（2026-08-04）
+
+| 指标 | DeepSeek + dm-agent | Claude Code + Opus 5 |
+| --- | --- | --- |
+| pass_rate | **15/30 = 0.500** | **19/30 = 0.633** |
+| hidden_test_pass_rate | 27/30 = 0.900 | 28/30 = 0.933 |
+| coding (15) | 12/15 | 15/15 |
+| maintenance (15) | 3/15 | 4/15 |
+| 成本 | 15.4 分钟 / 1,543,977 tokens | — |
+
+差 4 题 = 13.3 点。30 题下一题 3.3 点，刚够得上"不是噪音"，但不是代差。
+
+**全部差距来自"跑不完"，不是"写不对"**：
+
+| 失败原因 | DeepSeek | Claude |
+| --- | --- | --- |
+| 改了不该改的文件 | 8 题 | 10 题 |
+| 其他（多为 Max steps exceeded） | 7 题 | 1 题 |
+
+两边违规题数几乎相同（8 vs 10），差距全在第二行。Claude 赢下的
+`slugify_cleanup` / `normalize_users` / `cli_config_docs_contract` 三题，DeepSeek 全是
+步数耗尽——而 `slugify_cleanup` 是全套最简单的题之一（Claude 8 步做完）。
+**这是模型效率问题，不是 dm-agent 的架构问题。**
+
+**10 道题两边一起挂**（占全套三分之一）：config_precedence、
+patch_summary_name_status、safe_workspace_join、cross_file_user_contract、
+packaging_ci_contract、billing_period_boundary、sql_where_builder、
+idempotent_job_runner、filename_sanitizer、log_redaction。
+共同点：全部带 `allowed_changed_files` 约束，且两边都是代码写对了、去补测试被判违规。
+
+### 天花板测算
+
+`hidden_test_pass_rate = 0.900` 就是 DeepSeek + dm-agent 的能力上限，现在只兑现了
+0.500。中间 40 个百分点全是过程纪律损耗：
+
+| 阶段 | 预期 pass_rate |
+| --- | --- |
+| 现在 | 0.500 (15/30) |
+| 修好「改测试」后 | **~0.767 (23/30)** — 那 8 题的隐藏测试本来就过 |
+| 再解决步数耗尽 | ~0.90 (27/30) |
+
+修好第一条就能超过 Claude Code 当前的 19/30，且不需要换模型。
+
 ## Open questions / next bets
 
 1. DeepSeek 的 30 题数据还没跑，目前只能在 13 题上直接对比。补齐后可以看
