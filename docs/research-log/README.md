@@ -53,6 +53,7 @@ these entries.
 | [32](32-user-level-config-and-env.md) | User-level config and `.env`: making a global install actually work | post-v2 | implementation landed |
 | [33](33-scope-reduction.md) | Subtraction: removing what the frozen evaluation can never falsify | v2.1 | implementation landed |
 | [34](34-benchmark-expansion.md) | Growing the benchmark from 13 to 30 tasks to halve the noise floor | v2.1 | implementation landed |
+| [35](35-agent-arena-claude-vs-deepseek.md) | Claude Code (Opus 5) vs DeepSeek + dm-agent on identical tasks | v2.1 | measured |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

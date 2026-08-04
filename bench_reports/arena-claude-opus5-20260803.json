@@ -1,0 +1,299 @@
+{
+  "runner": "claude-code-opus-5-subagents",
+  "results": [
+    {
+      "task_id": "slugify_cleanup",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "text_utils.py"
+      ]
+    },
+    {
+      "task_id": "order_total_edges",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "orders.py"
+      ]
+    },
+    {
+      "task_id": "ttl_cache_lru",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "cache.py"
+      ]
+    },
+    {
+      "task_id": "normalize_users",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "users.py"
+      ]
+    },
+    {
+      "task_id": "stats_summary",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "stats.py"
+      ]
+    },
+    {
+      "task_id": "inventory_reservations",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "inventory.py"
+      ]
+    },
+    {
+      "task_id": "parse_duration",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "durations.py"
+      ]
+    },
+    {
+      "task_id": "merge_intervals",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "intervals.py"
+      ]
+    },
+    {
+      "task_id": "retry_backoff_schedule",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "backoff.py"
+      ]
+    },
+    {
+      "task_id": "csv_row_parser",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "csv_row.py"
+      ]
+    },
+    {
+      "task_id": "paginate_cursor",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "pagination.py"
+      ]
+    },
+    {
+      "task_id": "semver_compare",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "semver.py"
+      ]
+    },
+    {
+      "task_id": "flatten_config",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "flatten.py"
+      ]
+    },
+    {
+      "task_id": "rate_limiter_window",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "ratelimit.py"
+      ]
+    },
+    {
+      "task_id": "safe_int_parse",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "coercion.py"
+      ]
+    },
+    {
+      "task_id": "config_precedence",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_config_loader.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "config_loader.py",
+        "tests/test_public_config_loader.py"
+      ]
+    },
+    {
+      "task_id": "patch_summary_name_status",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_patch_summary.py",
+      "hidden_returncode": 1,
+      "changed_files": [
+        "patch_summary.py",
+        "tests/test_public_patch_summary.py"
+      ]
+    },
+    {
+      "task_id": "retry_regression_tests",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: conftest.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "conftest.py",
+        "retry.py",
+        "tests/test_retry.py"
+      ]
+    },
+    {
+      "task_id": "safe_workspace_join",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_workspace.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "tests/test_public_workspace.py",
+        "workspace.py"
+      ]
+    },
+    {
+      "task_id": "cross_file_user_contract",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_user_serializers.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "serializers.py",
+        "tests/test_public_user_serializers.py",
+        "users.py"
+      ]
+    },
+    {
+      "task_id": "cli_config_docs_contract",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "cli_docs.py",
+        "docs/configuration.md",
+        "tests/test_public_cli_docs.py"
+      ]
+    },
+    {
+      "task_id": "packaging_ci_contract",
+      "success": false,
+      "failure_reason": "all_keyless_checks_in_order():\n        expected = [\n            'python -m pytest',\n            'python -m ruff check dm_agent tests',\n            'python -m black --check .',\n        ]\n>       assert ci_check_commands() == expected\nE       AssertionError: assert ['python -m p...ck --check .'] == ['python -m p...ck --check .']\nE         \nE         At index 1 diff: 'python -m ruff check .' != 'python -m ruff check dm_agent tests'\nE         Use -v to get more diff\n\ntests\\test_hidden_packaging_ci.py:45: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_hidden_packaging_ci.py::test_dev_extra_and_ci_install_are_consistent\nFAILED tests/test_hidden_packaging_ci.py::test_ci_runs_all_keyless_checks_in_order\n2 failed, 15 passed in 0.15s\n",
+      "hidden_returncode": 1,
+      "changed_files": [
+        ".github/workflows/ci.yml",
+        "packaging_contract.py",
+        "pyproject.toml",
+        "tests/test_public_packaging.py"
+      ]
+    },
+    {
+      "task_id": "billing_period_boundary",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_billing.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "billing.py",
+        "tests/test_public_billing.py"
+      ]
+    },
+    {
+      "task_id": "sql_where_builder",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_query.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "query.py",
+        "tests/test_public_query.py"
+      ]
+    },
+    {
+      "task_id": "idempotent_job_runner",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_jobs.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "jobs.py",
+        "tests/test_public_jobs.py"
+      ]
+    },
+    {
+      "task_id": "sort_stability_regression",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "ranking.py",
+        "tests/test_ranking.py"
+      ]
+    },
+    {
+      "task_id": "filename_sanitizer",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_filenames.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "filenames.py",
+        "tests/test_public_filenames.py"
+      ]
+    },
+    {
+      "task_id": "error_propagation_contract",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "service.py"
+      ]
+    },
+    {
+      "task_id": "settings_env_precedence",
+      "success": true,
+      "failure_reason": "",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "settings.py"
+      ]
+    },
+    {
+      "task_id": "log_redaction",
+      "success": false,
+      "failure_reason": "changed files outside allowed set: tests/test_public_redact.py",
+      "hidden_returncode": 0,
+      "changed_files": [
+        "redact.py",
+        "tests/test_public_redact.py"
+      ]
+    }
+  ],
+  "summary": {
+    "total": 30,
+    "passed": 19,
+    "pass_rate": 0.6333333333333333,
+    "hidden_test_pass_rate": 0.9333333333333333
+  }
+}
