@@ -89,8 +89,16 @@ def _builtin_tools() -> list[Tool]:
         Tool(
             name="edit_file",
             description=(
-                'Edit specific lines in a file. Arguments: {"path": string, "operation": "insert"|"replace"|"delete", '
-                '"line_start": int, "line_end": int (for replace/delete), "content": string (for insert/replace)}.'
+                "Edit a file. PREFERRED: content-anchored replace with "
+                '{"path": string, "old_string": string, "new_string": string} — '
+                "old_string must match exactly once (whitespace and indentation "
+                "included); if it matches zero or several times nothing is written. "
+                "Fallback (line-numbered, use only when content anchoring will not do): "
+                '{"path": string, "operation": "insert"|"replace"|"delete", '
+                '"line_start": int, "line_end": int (for replace/delete), '
+                '"content": string (for insert/replace)}. Line numbers shift after every '
+                "edit, so re-read the file before using them again. Every edit echoes the "
+                "resulting lines back to you — check them before moving on."
             ),
             runner=edit_file,
         ),
