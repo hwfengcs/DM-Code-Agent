@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Scope-constraint ablation: 8 violations to 0 (2026-08)
+
+The 30-task baseline passed 27/30 hidden tests but only scored 15/30. Eight of the fifteen
+failures were "changed files outside allowed set" — and all eight had already passed their
+hidden tests. The cause turned out to be a benchmark design flaw, not an agent one:
+`allowed_changed_files` never appeared in the prompt, while `MAINTENANCE_PROMPT_SUFFIX`
+actively told the agent to "update tests when the task asks for a regression test".
+
+Stating the constraint took violations to **zero** and pass rate from `0.500` to `0.733`.
+The `before_tool_call` guard extension proposed in devlog 35 is no longer needed — details and
+the honest counter-evidence (hidden-test rate dropped, coding noise floor is ±3 flips) in
+[`docs/research-log/36-scope-constraint-ablation.md`](docs/research-log/36-scope-constraint-ablation.md).
+
+#### Added
+- `dm-agent-bench --declare-allowed-files`: appends the task's allowed set to the prompt handed
+  to the agent. **Default off** — it changes what the benchmark measures, and existing baselines
+  were recorded without it.
+- `BenchmarkTask.scoped_prompt()`: derived view that appends the constraint. Tasks with no
+  constraint return `prompt` verbatim (all 15 coding tasks — the flag is a byte-level no-op
+  for them, which is what makes them a usable noise-floor control).
+- Reports carry `prompt_policy.declare_allowed_files` at the top level and per-result metadata,
+  so a report states which side of the ablation it is from.
+- `bench_reports/ablation-scope-20260804.{json,md}`: the experiment arm.
+
+#### Unchanged (deliberately)
+- `task.prompt` is untouched, so `benchmark_task_fingerprint` and both suite signatures are
+  byte-identical to the checked-in manifest baselines. `dm-agent-score-diff` therefore compares
+  the two arms directly instead of refusing with exit 2, and no manifest baseline needed
+  regenerating. `test_declaring_allowed_files_does_not_change_the_suite_signature` locks this in.
+
 ### Benchmark expanded from 13 to 30 tasks (2026-08)
 
 At 13 tasks one flipped task moved the score by ±7.7 points, which made most changes

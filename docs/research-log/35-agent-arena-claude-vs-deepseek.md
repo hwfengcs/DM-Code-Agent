@@ -123,6 +123,11 @@ maintenance    4/15
    `tests/` 的写入，理论上能让 Claude 从 19/30 到 29/30、DeepSeek 从 5/13 到 8/13。
    这正是扩展系统的典型用法，不需要碰内核——也正好可以用 `dm-agent-score-diff`
    量化它到底值多少分。
+
+   > **2026-08-04 更正：这一条被 [devlog 36](36-scope-constraint-ablation.md) 证伪。**
+   > 杠杆确实在这里，但守卫是多余的——`allowed_changed_files` 从来没进过 prompt，
+   > 把它说出来就够了：DeepSeek 违规 8 题 → 0 题，pass_rate 0.500 → 0.733，
+   > 一行扩展代码都没写。
 4. **"隐藏测试通过率"与"pass_rate"的落差是这个 benchmark 最有信息量的指标**，
    比任何一个单独的分数都有用。它把「不会写代码」和「不守规矩」分开了。
 
@@ -179,3 +184,8 @@ idempotent_job_runner、filename_sanitizer、log_redaction。
 3. 「改了不该改的文件」在两个模型上都是首要失败模式。值得单独做一个消融：
    把 `allowed_changed_files` 明确写进 prompt，看失败率降多少——如果降到接近零，
    说明这是提示问题；如果不降，说明是 agent 的自控问题，那才需要守卫。
+
+   —— 已于 2026-08-04 做完，见 [devlog 36](36-scope-constraint-ablation.md)：
+   **降到零**。DeepSeek 侧违规 8 题 → 0 题，pass_rate 0.500 → 0.733。
+   这同时**证伪了上面结论第 3 条**——守卫扩展不需要写，agent 一旦知道边界就不越界。
+   Claude 那一侧的同款消融还没做（它有 10 题违规，其中 9 题是改 `tests/test_public_*.py`）。

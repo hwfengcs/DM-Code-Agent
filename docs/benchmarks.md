@@ -233,6 +233,23 @@ task, regenerate the baseline in the same PR and attach the diff output.
 This makes the benchmark more practical. A task can require the agent to add regression tests,
 or fail a run that edits unrelated files to game the score.
 
+### Declaring the constraint to the agent (`--declare-allowed-files`)
+
+By default the agent is **not told** about `allowed_changed_files` — it is scored against a rule
+it cannot see. `--declare-allowed-files` appends the task's allowed set to the prompt handed to
+the agent (`BenchmarkTask.scoped_prompt()`); tasks without a constraint are unaffected, the
+prompt is returned verbatim.
+
+The flag deliberately does **not** touch `task.prompt`, so `benchmark_task_fingerprint` and the
+suite signature are unchanged and `dm-agent-score-diff` still compares the two sides directly.
+A unit test enforces this.
+
+Measured on 30 tasks with DeepSeek (devlog 36): scope violations `8 → 0`, pass rate
+`0.500 → 0.733`. **Default is off**, because turning it on changes what the benchmark measures
+(inferring an unstated project rule vs. following a stated one) and would make existing
+baselines incomparable. Reports record which side they are on under
+`prompt_policy.declare_allowed_files`.
+
 ## Design Direction
 
 Future benchmark work should add:
