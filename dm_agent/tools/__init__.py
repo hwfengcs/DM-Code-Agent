@@ -134,7 +134,9 @@ def _builtin_tools() -> list[Tool]:
             name="run_linter",
             description=(
                 'Run code linter/formatter. Arguments: {"path": string, '
-                '"tool": optional "pylint"|"flake8"|"mypy"|"black" (default \'flake8\')}.'
+                '"tool": optional "ruff"|"flake8"|"pylint"|"mypy"|"black" (default \'ruff\')}. '
+                "If the chosen linter is not installed here, the tool replies with the list "
+                "of linters this environment does provide -- switch to one of those."
             ),
             runner=run_linter,
         ),

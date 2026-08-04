@@ -6,7 +6,7 @@ from dm_agent.core.observation import is_failure_observation
 from dm_agent.tools import task_complete
 from dm_agent.tools.code_analysis_tools import get_code_metrics, get_function_signature, parse_ast
 from dm_agent.tools.code_index_tools import build_code_index, dependency_graph, search_symbol
-from dm_agent.tools.execution_tools import run_python
+from dm_agent.tools.execution_tools import available_linters, run_linter, run_python
 from dm_agent.tools.file_tools import (
     EDIT_ECHO_MAX_LINES,
     _atomic_write_text,
@@ -329,3 +329,38 @@ def test_create_and_edit_file_use_atomic_write(tmp_path):
     assert target.read_text(encoding="utf-8") == "LINE1\nline2\n"
     leftovers = [p.name for p in target.parent.iterdir() if ".tmp-" in p.name]
     assert leftovers == []
+
+
+def test_missing_linter_reports_the_ones_this_environment_has(tmp_path, monkeypatch):
+    """缺检查器时给出可用清单，而不是把 "No module named" 原样丢回给模型。
+
+    实测一轮 30 题里 run_linter 被调用 39 次、其中 29 次撞在没装的 flake8/pylint 上，
+    横跨 15 道题——模型拿到裸的 ImportError 只会挨个盲试下一个。
+    """
+    target = tmp_path / "mod.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "dm_agent.tools.execution_tools.available_linters", lambda: ["ruff", "mypy"]
+    )
+    observation = run_linter({"path": str(target), "tool": "flake8"})
+
+    assert "ruff" in observation and "mypy" in observation
+    # 换一个检查器重试是局部纠正，不该触发一次完整重规划。
+    assert not is_failure_observation(observation, action="run_linter")
+
+
+def test_missing_linter_without_any_alternative_says_the_step_can_be_skipped(tmp_path, monkeypatch):
+    target = tmp_path / "mod.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+
+    monkeypatch.setattr("dm_agent.tools.execution_tools.available_linters", lambda: [])
+    observation = run_linter({"path": str(target), "tool": "pylint"})
+
+    assert "可跳过" in observation
+    assert not is_failure_observation(observation, action="run_linter")
+
+
+def test_available_linters_reports_a_subset_of_the_supported_ones():
+    supported = {"ruff", "flake8", "pylint", "mypy", "black"}
+    assert set(available_linters()) <= supported

@@ -5,10 +5,26 @@ from __future__ import annotations
 import shlex
 import subprocess
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
 from .base import _require_str
+
+# run_linter 支持的检查器，按推荐顺序（ruff 最快且覆盖面最广）。
+_LINTER_TOOLS = ("ruff", "flake8", "pylint", "mypy", "black")
+
+
+def available_linters() -> list[str]:
+    """探测当前解释器里实际装了哪些检查器，不启动子进程。"""
+    available: list[str] = []
+    for name in _LINTER_TOOLS:
+        try:
+            if find_spec(name) is not None:
+                available.append(name)
+        except (ImportError, ValueError):
+            continue
+    return available
 
 
 def run_python(arguments: dict[str, Any]) -> str:
@@ -105,12 +121,14 @@ def run_tests(arguments: dict[str, Any]) -> str:
 
 
 def run_linter(arguments: dict[str, Any]) -> str:
-    """运行代码检查工具（支持 pylint、flake8、mypy、black）"""
+    """运行代码检查工具（支持 ruff、pylint、flake8、mypy、black）"""
     path_value = _require_str(arguments, "path")
-    tool = arguments.get("tool", "flake8")
+    tool = arguments.get("tool", "ruff")
 
-    if tool not in ["pylint", "flake8", "mypy", "black"]:
-        raise ValueError("tool 必须是 'pylint'、'flake8'、'mypy' 或 'black' 之一。")
+    if tool not in _LINTER_TOOLS:
+        raise ValueError(
+            "tool 必须是 " + "、".join(f"'{name}'" for name in _LINTER_TOOLS) + " 之一。"
+        )
 
     path = Path(path_value)
     if not path.exists():
@@ -119,12 +137,28 @@ def run_linter(arguments: dict[str, Any]) -> str:
     if tool == "black":
         # black 用于格式化，添加 --check 只检查不修改
         command = [sys.executable, "-m", tool, "--check", str(path)]
+    elif tool == "ruff":
+        command = [sys.executable, "-m", tool, "check", str(path)]
     else:
         command = [sys.executable, "-m", tool, str(path)]
 
     result = subprocess.run(
         command, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
+
+    # 当前解释器没装这个检查器。直接把子进程的 "No module named X" 回给模型，会让它
+    # 逐个盲试下一个（实测一道题平均撞两次），因此改为报出本环境实际可用的清单。
+    # 文案刻意避开 core/observation.py 的失败标记：换一个检查器重试是局部纠正，
+    # 不该白烧一次完整重规划。
+    if result.returncode != 0 and f"No module named {tool}" in (result.stderr or ""):
+        available = [name for name in available_linters() if name != tool]
+        if available:
+            return (
+                f"当前环境未提供 {tool}。可用的检查工具：{'、'.join(available)}，"
+                f"请改用其中之一重试。"
+            )
+        return f"当前环境未提供 {tool}，也没有其他可用的检查工具，本步可跳过。"
+
     segments: list[str] = []
 
     if result.stdout:
