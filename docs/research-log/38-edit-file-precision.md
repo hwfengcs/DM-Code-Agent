@@ -26,6 +26,11 @@ token **−3.9%**。pass_rate 0.733 → 0.833，但翻转 7 题、噪声底 ±3 
 observation，里面的 `from errors import` / `raise ValueError` 命中了
 `FAILURE_MARKERS`，一次成功的编辑被误判成失败。见「诚实栏」。
 
+> **2026-08-05 结清（[devlog 39](39-observation-failure-classification.md)）**：
+> 这笔债已还。根因不在回显，在于失败判定对整条观察做全文扫描——它分不清工具
+> **自述**的状态和工具**搬运**的内容。判定改为按来源分层后，误报 replan 归零
+> （复算同一批 trace：全部误报 34 次 → 0，46 次真失败全部保住）。回显本身保留。
+
 ## Context
 
 [devlog 37](37-step-budget-and-edit-self-damage.md) 排除了「步数预算不够」这个假设，
