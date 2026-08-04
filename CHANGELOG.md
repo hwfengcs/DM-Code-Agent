@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### `edit_file` gains content-anchored editing and a post-edit echo (2026-08)
+
+devlog 37 traced half of all benchmark failures to one mechanism: `edit_file`'s `replace`
+runs `lines[start:end] = [content]`, so a range that is one line too wide silently swallows
+adjacent code — and the old return value was just "已替换第 5-6 行", giving the model nothing
+to check against. It took **2.2 steps on average** to notice, then 3–6 more to repair, often
+damaging the file again on the way.
+
+Measured on 30 tasks: **edit self-damage went 13 incidents / 6 tasks → 0 / 0**, and the model
+adopted the new mode on **100% of its 47 edits with zero misses** — it never fell back to line
+numbers. `edit_file` calls dropped 25% (no more repairing itself), total steps −7.1%, tokens
+−3.9%. Write-up in
+[`docs/research-log/38-edit-file-precision.md`](docs/research-log/38-edit-file-precision.md).
+
+#### Added
+- `edit_file` accepts `old_string` / `new_string`: locate the edit by content, not line number.
+  Must match **exactly once** including whitespace; on zero or multiple matches **nothing is
+  written**. Mutually exclusive with `operation`/`line_start`/`line_end`.
+- Every edit now echoes the resulting lines back with **new** line numbers, changed lines
+  marked, ±3 lines of context, capped at 40 lines.
+- `.py` writes (both `edit_file` and `create_file`) are checked with `ast.parse`. **Reported,
+  never rolled back** — a mid-edit state may legitimately not parse. Note this only catches
+  syntax breakage; a swallowed assignment stays valid Python, which is what the echo is for.
+
+#### Unchanged
+- The line-number mode still works exactly as before; existing callers and tests are untouched.
+- Tool return values do not enter the manifest, so both suite signatures are unchanged.
+
+#### Known issue this surfaced
+The echo brings file contents into the observation, and `core.observation.is_failure_observation`
+matches the bare substring `error` — so a successful edit that echoes `from errors import ...`
+is judged a failure and burns a planner call. **17 of 78 replans (22%) in the run were this
+false positive.** The root cause predates this change (`read_file` has always behaved this way)
+and is now the top open item in devlog 38.
+
 ### Step budget is not the bottleneck — a negative result (2026-08)
 
 devlog 36 left "max steps exceeded" as the top failure mode (4 tasks, 3 with passing hidden

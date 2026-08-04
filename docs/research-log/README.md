@@ -56,6 +56,7 @@ these entries.
 | [35](35-agent-arena-claude-vs-deepseek.md) | Claude Code (Opus 5) vs DeepSeek + dm-agent on identical tasks | v2.1 | measured |
 | [36](36-scope-constraint-ablation.md) | Declaring `allowed_changed_files` in the prompt: 8 scope violations to 0 | v2.1 | measured |
 | [37](37-step-budget-and-edit-self-damage.md) | Step budget is not the bottleneck; line-number edit self-damage is | v2.1 | measured (negative) |
+| [38](38-edit-file-precision.md) | Content-anchored edits and post-edit echo: self-damage 13 to 0 | v2.1 | measured |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 
