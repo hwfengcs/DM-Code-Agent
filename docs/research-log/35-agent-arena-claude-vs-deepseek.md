@@ -1,9 +1,10 @@
 # 35 · Claude Code (Opus 5) vs DeepSeek + dm-agent：同题对局
 
-- 日期：2026-08-03
+- 日期：2026-08-03（30 题补测：2026-08-04）
 - 相关：[33](33-scope-reduction.md) [34](34-benchmark-expansion.md)
-- 原始数据：`bench_reports/arena-claude-opus5-20260803.json`（Claude）、
-  `bench_reports/baseline-20260803.json`（DeepSeek）
+- 原始数据：`bench_reports/arena-claude-opus5-20260803.json`（Claude，30 题）、
+  `bench_reports/baseline-20260803.json`（DeepSeek，13 题）、
+  `bench_reports/baseline-30task-20260804.json`（DeepSeek，30 题）
 
 ## TL;DR
 
@@ -170,8 +171,9 @@ idempotent_job_runner、filename_sanitizer、log_redaction。
 
 ## Open questions / next bets
 
-1. DeepSeek 的 30 题数据还没跑，目前只能在 13 题上直接对比。补齐后可以看
-   maintenance 新增 8 题是否同样区分不出两者。
+1. ~~DeepSeek 的 30 题数据还没跑~~ —— 已于 2026-08-04 补齐，见上一节。
+   结果证实新增的 8 道 maintenance 题同样区分不出两者：两边在其中 5 题上一起挂，
+   全是「改测试」违规。
 2. 步数预算的不对称能否消除？给 sub-agent 加一个显式的工具调用次数上限或许可行，
    但那与 ReAct 的「步」仍不是同一个单位。
 3. 「改了不该改的文件」在两个模型上都是首要失败模式。值得单独做一个消融：
