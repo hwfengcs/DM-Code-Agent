@@ -657,7 +657,7 @@ class ReactAgent:
                     action=action,
                     action_input=action_input,
                     observation=observation,
-                    failed=self._is_failure_observation(observation),
+                    failed=self._is_failure_observation(observation, action=action),
                 )
 
             # 更新计划进度（如果有计划；被守卫拦下的编辑不算完成）。
@@ -674,7 +674,7 @@ class ReactAgent:
             # 调用回调函数实时输出步骤
             self._publish_step(step, step_num)
 
-            if self._is_failure_observation(observation) and plan and self.planner:
+            if self._is_failure_observation(observation, action=action) and plan and self.planner:
                 plan = self._replan_after_failure(
                     task,
                     plan,
@@ -691,7 +691,7 @@ class ReactAgent:
             if (
                 action == "task_complete"
                 and accepted
-                and not self._is_failure_observation(observation)
+                and not self._is_failure_observation(observation, action=action)
             ):
                 metadata["status"] = "success"
                 metadata["failure_reason"] = ""
@@ -797,9 +797,9 @@ class ReactAgent:
         self._persistence.save(path, checkpoint)
 
     @staticmethod
-    def _is_failure_observation(observation: str) -> bool:
+    def _is_failure_observation(observation: str, *, action: str | None = None) -> bool:
         """委托到 ``core.observation``，让内核外的能力复用同一份失败判定。"""
-        return is_failure_observation(observation)
+        return is_failure_observation(observation, action=action)
 
     def _replan_after_failure(
         self,

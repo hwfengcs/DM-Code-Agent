@@ -292,7 +292,7 @@ BUILTIN_TASKS: list[EvalTask] = [
                     "operation": "replace",
                     "line_start": 1,
                     "line_end": 1,
-                    "content": "updated line",
+                    "content": "x = 2",
                 },
             ),
             agent_response("Blocked; read the file first.", "read_file", {"path": "app.py"}),
@@ -304,15 +304,18 @@ BUILTIN_TASKS: list[EvalTask] = [
                     "operation": "replace",
                     "line_start": 1,
                     "line_end": 1,
-                    "content": "updated line",
+                    "content": "x = 2",
                 },
             ),
             agent_response("Finish.", "task_complete", {"message": "app.py updated"}),
         ],
-        setup_files={"app.py": "original line\n"},
+        # 内容必须是合法 Python：edit_file 会对 .py 做 ast.parse 并回报结果，而语法
+        # 未通过本身就是一次失败观察。这道题测的是 read-before-edit 守卫，不该被
+        # fixture 自带的语法问题干扰。
+        setup_files={"app.py": "x = 1\n"},
         expected=EvalExpected(
             required_actions=["edit_file", "read_file", "task_complete"],
-            workspace_files={"app.py": "updated line"},
+            workspace_files={"app.py": "x = 2"},
             metadata_min={"edit_guard_block_count": 1},
         ),
         tags=["long-context", "edit-guard"],
