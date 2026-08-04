@@ -128,6 +128,13 @@ python -m dm_agent.benchmarks.score_diff \
 
 DeepSeek `deepseek-chat`，temperature 0，variant `full`，30 题各跑一次。
 
+违规 8 → 0，完全消除。
+
+> **2026-08-04 补充：违规率是低但非零。** [devlog 37](37-step-budget-and-edit-self-damage.md)
+> 那一轮（同样开着 `--declare-allowed-files`）出现了 1 次违规——`sql_where_builder`
+> 新建了 `tests/test_query_comprehensive.py`。两轮合计 60 次运行里 1 次。
+> 结论方向不变，但「0」是一次采样而不是定律。
+
 | 指标 | 对照组（不声明） | 实验组（声明） | 差 |
 | --- | ---: | ---: | ---: |
 | **pass_rate** | 0.500 (15/30) | **0.733 (22/30)** | **+23.3 pts** |
@@ -238,6 +245,11 @@ DeepSeek `deepseek-chat`，temperature 0，variant `full`，30 题各跑一次�
 1. **步数耗尽现在是首要失败模式**（4 题，3 题代码已写对）。值得先量的是
    「加大 `max_steps` 能买回几题」——那是纯预算问题，跑一轮就知道，
    而且能把「模型啰嗦」和「agent 不会收尾」分开。
+
+   —— 已于 2026-08-04 做完，见 [devlog 37](37-step-budget-and-edit-self-damage.md)：
+   **它不是预算问题**。4 题里 3 题在实验组用**更少**的步数就通过了（9/13/16 步，
+   都低于原上限），唯一吃到超额预算的那题依然失败。真正的驱动是 `edit_file`
+   行号编辑自伤，「步数耗尽」只是它的症状。
 2. **`hidden_test_pass_rate` 的 −6.7 点需要 `--repeat 3` 才能定性**：是剥夺了
    试探手段，还是运行噪声。两题的样本量说明不了任何事。
 3. **要不要换记分口径？** 声明约束更公平，但会让 `baseline-30task-20260804.json`

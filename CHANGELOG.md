@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Step budget is not the bottleneck — a negative result (2026-08)
+
+devlog 36 left "max steps exceeded" as the top failure mode (4 tasks, 3 with passing hidden
+tests), which looked like a pure budget problem. Raising `--max-steps` from each task's own
+14–20 to a uniform 30 did **not** produce an attributable gain:
+
+- Only **one** task ever used more steps than its old ceiling — and it still failed. The three
+  that flipped to PASS used **9 / 13 / 16** steps, *below* their old limits. The budget was
+  never binding.
+- Those flips track edit self-damage, not budget: across the four tasks, self-damage incidents
+  went 7 → 2.
+- More budget made self-damage **worse** globally (13 → 25 incidents, 6 → 9 tasks).
+  `filename_sanitizer` went from a clean 10-step PASS to burning all 30 steps after damaging
+  its own file 6 times.
+- Cost +30.6% tokens. Pass rate moved 0.733 → 0.800, but with **10 tasks flipping** against a
+  measured noise floor of ±3 — not evidence.
+
+The real bottleneck is `edit_file`'s line-numbered editing: the agent edits using line numbers
+that went stale after its own previous edit, corrupts the file, then spends 3–6 steps repairing
+itself. It hits 6/30 tasks and accounts for half of all failures. Full write-up with the trace
+excerpts in
+[`docs/research-log/37-step-budget-and-edit-self-damage.md`](docs/research-log/37-step-budget-and-edit-self-damage.md).
+
+No code changed — this entry records an experiment and its raw data
+(`bench_reports/steps30-20260804.{json,md}`). `ablation-scope-20260804.json` (0.733) remains
+the reference baseline; the 0.800 run is the top of the noise band, not a new level.
+
+Also corrects devlog 36: scope violations are **low but non-zero**, not absolutely zero
+(1 occurrence in 60 runs across both experiments).
+
 ### Scope-constraint ablation: 8 violations to 0 (2026-08)
 
 The 30-task baseline passed 27/30 hidden tests but only scored 15/30. Eight of the fifteen
