@@ -5,6 +5,23 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# 判分强制的改动范围约束，`BenchmarkTask.scoped_prompt` 追加在 prompt 末尾。
+#
+# 三处措辞是照着实际失败样本写的，改动前先看 devlog 36：
+#   - 说明「即使实现完全正确也判失败」——对齐 `_score_run` 的真实行为，
+#     baseline 里 8 道违规题的隐藏测试全部是通过的。
+#   - 显式点名「新建文件同样算」——Claude 那一轮有一题栽在新建 conftest.py。
+#   - 显式放行读操作——否则约束会误伤探索步骤。
+# 位置必须在 MAINTENANCE_PROMPT_SUFFIX 之后：后者有一句 "update tests when the task
+# asks for a regression test"，会反向鼓励 agent 去动测试文件，靠末尾指令压过它。
+SCOPE_CONSTRAINT_TEMPLATE = (
+    "\n\nSCOPE CONSTRAINT (enforced by the grader): you may only create or modify "
+    "these files: {allowed}. Changing any other file (including creating a new one, "
+    "and including test files not in that list) fails this task even if your "
+    "implementation is completely correct. Reading any file is unrestricted; the "
+    "limit applies to writes only."
+)
+
 
 @dataclass(frozen=True)
 class BenchmarkTask:
@@ -41,6 +58,21 @@ class BenchmarkTask:
             "required_changed_files": self.required_changed_files,
         }
 
+    def scoped_prompt(self) -> str:
+        """prompt 追加改动范围约束；无 ``allowed_changed_files`` 时逐字返回原 prompt。
+
+        这是**派生视图**，不改 ``self.prompt``——``benchmark_task_fingerprint`` 读的是
+        字段本身，所以启用约束声明不会动 ``suite_signature``，两侧报告仍可直接
+        ``dm-agent-score-diff``。这条不变量由 ``tests/test_coding_benchmarks.py`` 守着。
+
+        逐题列出实际允许的文件，不能简化成「不要改测试」：有 4 道题的可改范围里
+        本来就含 ``tests/``（如 ``retry_regression_tests``），一刀切会把它们判错。
+        """
+        if not self.allowed_changed_files:
+            return self.prompt
+        allowed = ", ".join(f"`{path}`" for path in self.allowed_changed_files)
+        return self.prompt + SCOPE_CONSTRAINT_TEMPLATE.format(allowed=allowed)
+
 
 @dataclass(frozen=True)
 class BenchmarkVariant:
@@ -68,6 +100,9 @@ class BenchmarkRunConfig:
     enable_adaptive_replanning: bool = False
     max_replans: int = -1
     cost_per_1k_tokens: float = 0.0
+    # 把每题的 allowed_changed_files 声明进 prompt。默认关闭：既有 baseline 是在
+    # 「agent 看不到约束」下跑的，开着会让两侧不可比。见 devlog 36。
+    declare_allowed_files: bool = False
     # Advisory: run hidden tests node-by-node for partial credit (score unchanged).
     per_test_credit: bool = False
 

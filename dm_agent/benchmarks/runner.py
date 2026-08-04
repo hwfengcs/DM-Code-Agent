@@ -110,6 +110,11 @@ def run_benchmark_suite(
             "enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
         },
+        # 报告要能自证是哪一组：约束声明只影响传给 agent 的 prompt，不进 manifest，
+        # 所以两组报告的 suite_signature 相同、可直接 score-diff——但必须看得出区别。
+        "prompt_policy": {
+            "declare_allowed_files": config.declare_allowed_files,
+        },
         "token_economics": {
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
         },
@@ -660,12 +665,13 @@ def _run_benchmark_task_in_workspace(
     )
 
     with chdir(workspace):
+        prompt = task.scoped_prompt() if config.declare_allowed_files else task.prompt
         try:
             if config.quiet:
                 with redirect_stdout(StringIO()):
-                    raw_result = agent.run(task.prompt)
+                    raw_result = agent.run(prompt)
             else:
-                raw_result = agent.run(task.prompt)
+                raw_result = agent.run(prompt)
         except Exception as exc:
             if trace_writer:
                 trace_writer.record(
@@ -713,6 +719,7 @@ def _run_benchmark_task_in_workspace(
             "trace_path": str(trace_path) if trace_path else "",
             "adaptive_replanning_enabled": config.enable_adaptive_replanning,
             "max_replans": config.max_replans,
+            "declare_allowed_files": config.declare_allowed_files,
             "cost_per_1k_tokens": config.cost_per_1k_tokens,
         }
     )

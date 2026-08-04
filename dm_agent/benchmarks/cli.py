@@ -65,6 +65,15 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
         default=0.0,
         help="Estimated provider cost per 1K tokens for local economics reports.",
     )
+    parser.add_argument(
+        "--declare-allowed-files",
+        action="store_true",
+        help=(
+            "Append each task's allowed_changed_files to the prompt handed to the "
+            "agent. Default is off, because existing baselines were run without it. "
+            "Does not change the suite signature, so reports stay comparable."
+        ),
+    )
     parser.add_argument("--test-timeout", type=int, default=30, help="Hidden test timeout.")
     parser.add_argument(
         "--per-test-credit",
@@ -161,6 +170,7 @@ def main(argv: Any = None) -> int:
                 enable_adaptive_replanning=args.enable_adaptive_replanning,
                 max_replans=args.max_replans,
                 cost_per_1k_tokens=args.cost_per_1k_tokens,
+                declare_allowed_files=args.declare_allowed_files,
                 per_test_credit=args.per_test_credit,
             ),
         )

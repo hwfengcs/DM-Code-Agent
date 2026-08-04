@@ -908,3 +908,127 @@ def test_every_task_declares_tags_and_a_step_budget():
     for task in get_benchmark_tasks("all"):
         assert task.tags, task.task_id
         assert task.max_steps >= 10, task.task_id
+
+
+# --- 改动范围约束声明（--declare-allowed-files）-----------------------------
+#
+# 这个开关把每题的 allowed_changed_files 写进交给 agent 的 prompt。它存在的全部前提
+# 是「只影响 prompt，不影响任务集身份」——否则既有 baseline 就不能再做对照。
+# 见 docs/research-log/36-scope-constraint-ablation.md。
+
+
+def test_scoped_prompt_is_verbatim_when_no_allowed_files_declared():
+    """无约束的题必须逐字返回原 prompt：coding 15 题全部零约束，开关对它们是 no-op。
+
+    这条是消融实验的对照面——coding 那半边的翻转量就是噪声底，一旦这里注入了什么，
+    噪声底就被污染了。
+    """
+    coding = get_benchmark_tasks("coding")
+    assert all(not task.allowed_changed_files for task in coding)
+    for task in coding:
+        assert task.scoped_prompt() == task.prompt, task.task_id
+
+
+def test_scoped_prompt_lists_every_allowed_file():
+    """必须逐题列全，不能简化成「不要改测试」——4 道题的可改范围本来就含 tests/。"""
+    constrained = [task for task in get_benchmark_tasks("all") if task.allowed_changed_files]
+    assert len(constrained) == 15
+
+    for task in constrained:
+        scoped = task.scoped_prompt()
+        assert scoped.startswith(task.prompt), task.task_id
+        for path in task.allowed_changed_files:
+            assert path in scoped, f"{task.task_id} missing {path}"
+
+    with_tests = [
+        task
+        for task in constrained
+        if any(path.startswith("tests/") for path in task.allowed_changed_files)
+    ]
+    assert {task.task_id for task in with_tests} == {
+        "retry_regression_tests",
+        "sort_stability_regression",
+        "cli_config_docs_contract",
+        "packaging_ci_contract",
+    }
+
+
+def test_declaring_allowed_files_does_not_change_the_suite_signature():
+    """整个方案的基石：开关只改 prompt，不改任务集身份。
+
+    ``benchmark_task_fingerprint`` 读的是 ``task.prompt`` 字段而非 ``scoped_prompt()``，
+    所以开/关两侧的 ``suite_signature`` 相同，``dm-agent-score-diff`` 才肯直接比
+    pass_rate、CI 的 manifest guard 才不用重新生成 baseline。谁要是把约束搬进
+    ``task.prompt``，这条会立刻红。
+    """
+    for suite in ("coding", "maintenance", "all"):
+        tasks = get_benchmark_tasks(suite)
+        manifest = build_benchmark_manifest(
+            suite=suite, tasks=tasks, variants=DEFAULT_BENCH_VARIANTS
+        )
+        for task in tasks:
+            payload = task.to_public_dict()
+            assert payload["prompt"] == task.prompt, task.task_id
+            assert "SCOPE CONSTRAINT" not in benchmark_task_fingerprint(task)
+        assert (
+            manifest["suite_signature"]
+            == build_benchmark_manifest(suite=suite, tasks=tasks, variants=DEFAULT_BENCH_VARIANTS)[
+                "suite_signature"
+            ]
+        )
+
+    # 指纹只认字段，不认派生视图：把 scoped_prompt 的产物塞回 prompt 才会改指纹。
+    task = next(t for t in get_benchmark_tasks("maintenance") if t.allowed_changed_files)
+    assert benchmark_task_fingerprint(task) != benchmark_task_fingerprint(
+        replace(task, prompt=task.scoped_prompt())
+    )
+
+
+def test_runner_passes_the_scoped_prompt_only_when_the_flag_is_on(monkeypatch, tmp_path):
+    """开关关闭时 agent 收到的必须是原 prompt——默认行为逐字不变。"""
+    task = next(t for t in get_benchmark_tasks("maintenance") if t.allowed_changed_files)
+    seen: list[str] = []
+
+    class _FakeAgent:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def run(self, prompt):
+            seen.append(prompt)
+            return {"final_answer": "", "steps": [], "metadata": {"status": "stubbed"}}
+
+    monkeypatch.setattr(runner_module, "ReactAgent", _FakeAgent)
+    monkeypatch.setattr(runner_module, "_build_tracking_client", lambda config: _FakeUsageClient())
+
+    for index, declare in enumerate((False, True)):
+        workspace = tmp_path / f"ws{index}"
+        workspace.mkdir()
+        runner_module._run_benchmark_task_in_workspace(
+            task,
+            DEFAULT_BENCH_VARIANTS[0],
+            BenchmarkRunConfig(declare_allowed_files=declare),
+            workspace,
+            repeat_index=0,
+            cleanup=True,
+            suite="maintenance",
+        )
+
+    assert seen[0] == task.prompt
+    assert seen[1] == task.scoped_prompt()
+    assert seen[1] != seen[0]
+
+
+class _FakeUsage:
+    request_count = 0
+    prompt_tokens = 0
+    completion_tokens = 0
+    total_tokens = 0
+    prompt_chars = 0
+    completion_chars = 0
+    estimated_tokens = 0
+
+
+class _FakeUsageClient:
+    model = "stub"
+    base_url = ""
+    usage = _FakeUsage()
