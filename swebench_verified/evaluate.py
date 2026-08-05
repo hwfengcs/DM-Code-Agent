@@ -16,6 +16,39 @@ import sys
 from pathlib import Path
 
 
+def force_lf_writes() -> None:
+    """让 harness 写出的 shell 脚本用 LF 行尾。
+
+    ``run_evaluation.py:199`` 用 ``eval_file.write_text(test_spec.eval_script)``
+    生成 ``/eval.sh``，再 copy 进 Linux 容器执行。``write_text`` 默认的
+    ``newline=None`` 在 Windows 上会把 ``\\n`` 写成 ``\\r\\n``，于是容器里的 bash 把
+    ``\\r`` 当成命令的一部分：
+
+        + cd $'/testbed\\r'
+        /eval.sh: line 7: cd: $'/testbed\\r': No such file or directory
+        + git $'status\\r'
+        git: 'status' is not a git command.
+
+    **每一条命令都失败，测试一个都没跑**，而报告里表现为 PASS_TO_PASS 全 0——
+    看着像 agent 把整个模块改坏了。实测 10 题全中，resolved 0/10 完全是这个 bug 的
+    产物，不是能力信号。
+
+    这与主项目 ``tools/file_tools.py`` 修的是同一个缺陷，只是发生在上游包里，
+    所以在进程内就地修补。本脚本只用来跑 harness，全局改 ``Path.write_text``
+    的影响面是可控的。
+    """
+    original = Path.write_text
+
+    def write_text(  # type: ignore[no-untyped-def]
+        self, data, encoding=None, errors=None, newline=None
+    ):
+        if isinstance(data, str):
+            data = data.replace("\r\n", "\n")
+        return original(self, data, encoding=encoding, errors=errors, newline="")
+
+    Path.write_text = write_text  # type: ignore[method-assign]
+
+
 def summarize(report_path: Path) -> dict[str, object]:
     """把官方 harness 的报告压成一行结论。"""
     report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -51,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     from swebench.harness.run_evaluation import main as run_evaluation
+
+    force_lf_writes()
 
     run_evaluation(
         dataset_name="princeton-nlp/SWE-bench_Verified",
