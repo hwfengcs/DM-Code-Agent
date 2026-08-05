@@ -11,122 +11,128 @@
 
 本地优先、可审计的 Python Code Agent（ReAct + Planner + Replan + append-only 会话日志）。
 内核 `dm_agent/core/agent.py` 只做装配 + 主循环，可选能力挂在六个生命周期钩子上。
-**记分牌是自带的 30 题 hidden-test benchmark**（coding 15 + maintenance 15），不是 SWE-bench。
 
-## 二、最近三轮实验（devlog 36/37/38，都在 main 上，**未 push**）
+两个记分牌：
 
-一条完整的因果链，每轮都用 `dm-agent-score-diff` 量化。全部 DeepSeek `deepseek-chat`、
-temperature 0、variant `full`、30 题各跑一次。
+- **自带 30 题 hidden-test benchmark**（coding 15 + maintenance 15）——主力，衡量过程纪律
+- **SWE-bench Verified**（`swebench_verified/`，2026-08-05 建）——独立子系统，
+  判分交给官方 harness，用来拿一个能和公开数字对齐的坐标
+
+## 二、四轮实验（devlog 36/37/38/39，都在 main 上，**未 push**）
+
+一条完整的因果链。全部 DeepSeek `deepseek-chat`、temperature 0、variant `full`。
 
 | 轮次 | 干预 | pass_rate | 结论 |
 | --- | --- | ---: | --- |
-| baseline | — | 0.500 (15/30) | hidden 0.900，落差 40 点全是过程纪律 |
-| **36** | `--declare-allowed-files` | **0.733** | **有效**：违规 8 题 → **0** |
+| baseline | — | 0.500 | hidden 0.900，落差 40 点全是过程纪律 |
+| **36** | `--declare-allowed-files` | 0.733 | **有效**：违规 8 题 → 0 |
 | **37** | `--max-steps 30` | 0.800 | **无效**（负面结果），已存档不采用 |
-| **38** | 修 `edit_file` | **0.833** | **有效**：编辑自伤 13 次 → **0** |
+| **38** | 修 `edit_file` | 0.833 | **有效**：编辑自伤 13 次 → 0 |
+| **39** | 修失败判定 + `run_linter` | **0.878**（repeat 3） | **有效**：误报 replan 34 → 0 |
 
-### devlog 36：约束从来没写进 prompt
+前三轮的详情见 devlog；下面只写第 39 轮和它翻出来的东西。
 
-`allowed_changed_files` 从没进过交给 agent 的 prompt，而 `MAINTENANCE_PROMPT_SUFFIX`
-还有一句 "update tests when the task asks for a regression test" 在反向诱导。
-8 道违规题 100% 是改 `tests/test_public_*.py`，且 8/8 的隐藏测试本来就是绿的。
-**把规则说出来 → 违规归零**，devlog 35 推断的「要写 `before_tool_call` 守卫扩展」被证伪。
+### devlog 39：失败判定在扫描工具搬运的内容
 
-实现要点：开关走 `BenchmarkRunConfig.declare_allowed_files` + `BenchmarkTask.scoped_prompt()`
-派生视图，**刻意不碰 `task.prompt`** —— 指纹不变 → `suite_signature` 不变 → score-diff
-能直接比 pass_rate、manifest baseline 不用重生成。有单测锁死这条。
+`core/observation.py` 的 `FAILURE_MARKERS` 里躺着裸子串 `error`。观察文本混着两种东西——
+工具**自述**的状态（`文件 x 不存在。`）和工具**搬运**的外部内容（文件正文、stdout）——
+全文扫描对两者一视同仁，于是读到 `from errors import NotFound` 就把一次成功的 read_file
+判成失败，白烧一次 planner 调用。
 
-### devlog 37：步数预算是假瓶颈（负面结果）
+复算 devlog 38 那轮的 30 份 trace：**78 次 replan 里 34 次（43.6%）是误报**。
+（devlog 38 的「代价栏」记的 17 次是"回显触发"这一个口径，不是全部误报，两者不矛盾。）
 
-4 道步数耗尽题里，3 题在实验组只用了 **9/13/16 步**就通过 —— **低于它们原来的上限**，
-预算根本没绑定；唯一吃到超额预算的 `packaging_ci_contract`（21 步）仍然失败。
-翻转 10 题、噪声底 ±3 题，+6.7 点不构成证据。放宽预算反让自伤 13 → 25 次、token +30.6%。
+改为按来源分层：内核前缀 → 语法检查未通过 → **退出码为权威信号** → 工具自述句式 →
+内置工具默认不失败 → 第三方工具仍全文扫描（保持兼容）。同一批 trace 复算：
+**误报 38 → 0，46 次真失败全保住，另多抓到 4 次旧判定漏判的**，零反向误报。
 
-**真病因**：`edit_file` 的 `replace` 执行 `lines[start:end] = [content]`，区间给宽一行就
-静默吞掉相邻代码；旧回执只有一句「已替换第 N-M 行」，实测平均 **2.2 步**后才发现，
-再花 3–6 步修自己（常常再错一次）。6/30 题踩到，**占失败题的一半**。
+顺带修掉两个：
 
-### devlog 38：修 edit_file（当前 HEAD 的状态）
+- **`run_linter` 撞墙**：默认硬编码 flake8 而环境装的是 ruff，39 次调用 **29 次**撞
+  `No module named`、横跨 **15/30 题**，占该轮 8.9% 的步数。改为报出本环境可用清单 → **0**。
+- **Windows 行尾**（跑 SWE-bench 才暴露）：`Path.write_text` 默认按平台改写行尾，
+  编辑 LF 文件会把整份文件转 CRLF。astropy 上改一处逻辑，patch 从 504 B `+1/-1`
+  变成 20595 B `+317/-317`。本地 benchmark 测不出——工作区文件都是新建的。
 
-两处干预：`old_string`/`new_string` 按内容定位（必须逐字命中且仅一次，0 处或多处则
-**一个字节都不写**）+ 每次编辑后回显受影响区间（带新行号、标出改动行、±3 行、上限 40 行）
-+ `.py` 过 `ast.parse`（**只报告不回滚**）。
+### 首次 `--repeat 3`：单轮说谎
 
-| 主指标 | 前 | 后 |
-| --- | ---: | ---: |
-| 编辑自伤 | 13 次 / 6 题 | **0 次 / 0 题** |
-| `old_string` 采用率 | — | **47/47 = 100%，零未命中** |
-| `edit_file` 调用 | 63 | 47（−25%） |
-| 总步数 / token | 350 | 325（−7.1%）/ −3.9% |
+单轮 pass_rate 掉了 6.7 点（0.833 → 0.767），看着像回归。跑 90 次 run 后：
 
-devlog 37 的诊断被验证：`semver_compare` 16 步用满 → 14 步 PASS；
-`cli_config_docs_contract` 18 步用满 → **9 步** PASS；`packaging_ci_contract` 不再耗尽，
-露出真实死因（隐藏测试没过）。
+| 分类 | 题数 |
+| --- | ---: |
+| 3/3 稳定通过 | 24 |
+| 2/3 抖动 | 4 |
+| 0/3 稳定失败 | 2 |
 
-## 三、当前状态与剩余失败
+- **真实水位 0.878**，单轮抽到的是运气差的一次
+- `pass@3 = 0.933` vs `pass^3 = 0.767`，**5 题在多轮之间来回翻**
+- 抖动的 4 题里 3 题正是单轮里"回归"的那批——不是回归，是抖动
+- 原先步数耗尽的 3 题现在全部 3/3 通过：**误报重规划吃掉的步数就是它们的死因**，
+  这回过头解释了 devlog 37「加预算无效」为什么是对的
 
-`editfix-20260804.json`：**25/30 = 0.833**，hidden 0.933，违规 0。剩 5 题：
+## 三、当前状态
 
-| 任务 | 原因 | 隐藏测试 |
-| --- | --- | --- |
-| `cross_file_user_contract` | 步数耗尽 | **通过** |
-| `filename_sanitizer` | 步数耗尽 | **通过** |
-| `normalize_users` | 步数耗尽 | **通过** |
-| `packaging_ci_contract` | 隐藏测试没过 | — |
-| `patch_summary_name_status` | 隐藏测试没过 | — |
+`obsfix-r3-20260805.json`：**0.878**（3 次平均）。稳定失败只剩 2 题，都是真实能力不足：
 
-后两题是真实能力不足。前三题代码都写对了没走到 `finish`，但
-**devlog 37 已证明加预算无效** —— 别再走那条路。
+| 任务 | 状态 |
+| --- | --- |
+| `packaging_ci_contract` | 0/3，隐藏测试没过 |
+| `patch_summary_name_status` | 0/3，隐藏测试没过 |
 
-## 四、三条方法论教训（比任何单个分数都重要）
+SWE-bench Verified 闭环已跑通并冒烟验证（`astropy__astropy-12907`）：8 步 43 秒产出
+504 B patch，官方 harness 判 `empty_patch=0 error=0`（流程通）、`resolved=0`
+（FAIL_TO_PASS 0/2 且 **PASS_TO_PASS 0/13** —— 定位对了函数但改坏了原行为）。
+**还没跑规模子集。**
 
-1. **主指标必须挑不受 pass/fail 噪声影响的直接计数。** 三轮分别是违规题数、实际用了
-   多少步、自伤次数。pass_rate 在 30 题下永远说明不了 4 题以内的事。
-2. **实测噪声底是 ±3 题 ≈ ±10 个百分点**，不是 devlog 34 按题数算的 ±3.3。证据：
-   prompt 逐字未变的 coding 题翻转了 3 题；且 `max_steps` 确实不进 prompt
-   （`prompting`/`context_window`/`RunContext`/`planner` 四处都核对过），
-   而原本 6 步通过的题下一轮用了 11 步。**单轮 + 小于 3 题的差异不构成证据。**
-3. **负面结果和自我更正照样存档**，并在被证伪的原文标注更正（35→36、37→38 都这么做）。
+## 四、四条方法论教训（比任何单个分数都重要）
+
+1. **主指标必须挑不受 pass/fail 噪声影响的直接计数。** 四轮分别是：违规题数、实际用了
+   多少步、自伤次数、误报 replan 次数 + 撞墙次数。四轮结论站得住靠的一直是这条。
+2. **实测噪声底是 ±5 题 ≈ ±16.7 个百分点**（首次 repeat 3 实测），不是 devlog 37 观察
+   的 ±3、更不是 devlog 34 按题数算的 ±3.3。**30 题这个盘子测不出 5 题以内的改进。**
+3. **负面结果和自我更正照样存档**，并在被证伪的原文标注更正（35→36、37→38、37/38→39
+   都这么做；devlog 39 还更正了自己初稿的两句错话）。
+4. **自建 benchmark 有系统性盲区。** Windows 行尾缺陷在 30 题上永远测不出来——那些工作区
+   文件都是新建的、行尾自始至终一致。**要有一个外部的真实仓库才暴露得出来。**
 
 ## 五、下一步（按杠杆排序）
 
-用户的目标是**找大厂 agent 算法工程师岗位**，这决定优先级。上一轮的评估：方法论 8 分、
-工程规范 8 分，但**评测的行业可比性只有 3 分** —— 缺一个能和公开数字对齐的坐标。
+用户的目标是**找大厂 agent 算法工程师岗位**，这决定优先级。
 
-### 第一优先：重跑 SWE-bench Verified 子集（最高性价比）
+### 第一优先：跑 SWE-bench Verified 规模子集
 
-SWE-bench Lite 子系统在 devlog 33 被整个移除，理由是跑不通（Tier-1 resolved 0.0%、
-Tier-2 verifier 从未实现）。**但那个判断是在两个已修复的缺陷之下做出的**：
-当时既没有约束声明、`edit_file` 也还在自伤。现在两个都修了，值得重新验证一次。
+闭环已通，剩下的是花时间和磁盘。成本实测：
 
-- 目标：跑通 SWE-bench Verified 的 50–100 题子集，拿到任何一个非零的可比数字
-- 取回方式见 `docs/research-log/33-scope-reduction.md`（写了怎么复活）
-- 守 CLAUDE.md 的宪法：**要复活就写成外部扩展或独立子系统，不要往内核塞**
-- 即使只有 5–10%，配上现有方法论叙事，说服力也会跳一档
+| 项 | 量级 |
+| --- | --- |
+| 镜像 | **3.9 GB / 题**，下载是主要瓶颈（50 题 ≈ 196 GB，磁盘目前余 570 GB） |
+| 预测 | 约 40 秒 / 题 |
+| 判分 | 约 20 秒 / 题 |
 
-### 第二优先：补 `--repeat 3`
+命令见 `swebench_verified/README.md`。建议先跑 10 题看 resolve 率量级，再决定要不要
+扩到 50。即使只有 5–10%，配上现有方法论叙事，说服力也会跳一档。
 
-把「噪声底 ±3 题」从一句观察坐实成可引用的数字。约 450 万 token / 50 分钟。
-价值不在提分，在于能说出「我知道我的 benchmark 分辨率极限是 10%」。
+### 第二优先：修 SWE-bench 上暴露的能力短板
 
-### 第三优先：还 `is_failure_observation` 的债
+冒烟那题 **PASS_TO_PASS 0/13** —— agent 定位对了函数却改坏了原有行为。这是
+30 题 benchmark 测不到的维度（那些题的"原有行为"很薄）。跑完子集后按失败模式聚类。
 
-`core/observation.py` 的 `FAILURE_MARKERS` 用**裸子串匹配 `error`**，导致回显了
-`from errors import NotFound` 的**成功**编辑被判成失败观察、白烧一次 planner 调用。
-实测 78 次 replan 里 **17 次（22%）是这种误报**。根因早于 devlog 38（`read_file` 一直如此）。
-修法：把判定限制在工具自己写的**结构化前缀**而非全文扫描；或给护栏文案显式标记位。
+### 第三优先：给 maintenance 加题
+
+30 题测不出 5 题以内的改进（教训 2），要么加题要么每次都 `--repeat 3`。
+coding 对前沿模型已饱和，**只往 maintenance 加**。
 
 ### 可选
 
-- 写一篇公开复盘（`hidden−pass` 落差指标 + 三次消融 + 两次自我证伪），现在全埋在仓库里
-- maintenance 继续加题（coding 对前沿模型已饱和，别再加）
+- 写一篇公开复盘：`hidden−pass` 落差指标 + 四次消融 + 三次自我证伪 + 一次
+  「修好 A 放大了 B」的因果链。现在全埋在仓库里。
 
 ## 六、硬约束（违反会返工或被 CI 拦下）
 
 - 中文交流；Conventional Commit（`feat:` / `fix:` / `refactor:` / `bench:` / `docs:` / `chore:`）
 - **改动完成前必须全绿**：
   ```
-  python -m pytest                     # 当前 454 passed
+  python -m pytest                     # 当前 476 passed
   python -m dm_agent.evals.cli --output r.json && python -m dm_agent.evals.gate r.json --min-success-rate 1.0
   python -m ruff check . && python -m black --check . && python -m mypy dm_agent
   uv lock --check
@@ -137,15 +143,20 @@ Tier-2 verifier 从未实现）。**但那个判断是在两个已修复的缺�
 - **判分/注入隐藏测试只能用 `_write_files(ws, task.hidden_files)`**，绝不能用
   `prepare_workspace(..., include_hidden=True)` —— 后者会先重写 `setup_files`，
   把 agent 的成果整个覆盖回初始版本。这个坑作废过一整轮 30 题实验且不可恢复
-- **内核护栏与工具的提示文案必须避开 `FAILURE_MARKERS`**（失败/错误/error/不存在），
-  否则局部可纠正的问题会白烧一次 planner 调用。参照 `core/guards.py:_block_message`
+- **内核护栏与工具的提示文案仍应避开 `FAILURE_MARKERS`**。devlog 39 后该清单只对
+  第三方扩展工具生效，内置工具走精确判定；但新增内置工具时要确认其失败自述符合
+  `_TOOL_REFUSAL_RE` / `returncode` 契约，`tests/test_observation_failure.py` 有断言把关
 - **加 benchmark 题守三条不变量**：① 初始工作区下隐藏测试必须失败；② 隐藏测试文件
   不得进 `allowed_changed_files`；③ 题目必须可解（手写参考解验证）
 - 任务集变更会改 `suite_signature`，CI 的 manifest guard 会 fail —— 那是按设计工作，
   重新生成 `bench_reports/manifest-baseline-*.json` 即可
 - 路径一律走 `dm_agent/paths.py`，绝不能用 `Path(__file__).parents[N]`
 - **不要重新引入 devlog 33 删掉的 6 个模块**（Reflexion / Critic / Self-Consistency /
-  熔断 / 记忆卫生 / LLM 摘要压缩）。要复活就写成外部扩展
+  熔断 / 记忆卫生 / LLM 摘要压缩）。要复活就写成外部扩展或独立子系统——
+  `swebench_verified/` 就是照这条做的样板
+- **SWE-bench 三个会让分数无效的坑**见 `swebench_verified/README.md`：工作区必须放系统
+  临时目录（否则 agent 会爬父目录读走 `FAIL_TO_PASS`）、`core.fileMode`/`autocrlf` 必须
+  关、`_assert_git_root` 安全闸不要移除
 
 ## 七、关键文件位置
 
@@ -154,29 +165,48 @@ Tier-2 verifier 从未实现）。**但那个判断是在两个已修复的缺�
 | 评测数据集（30 题，无外部数据文件） | `dm_agent/benchmarks/tasks.py` |
 | 判分逻辑 | `dm_agent/benchmarks/runner.py` 的 `_score_run` |
 | 约束声明开关 | `models.py:BenchmarkTask.scoped_prompt()` + `declare_allowed_files` |
-| `edit_file` 实现 | `dm_agent/tools/file_tools.py` |
-| 失败观察判定（有债） | `dm_agent/core/observation.py` |
+| `edit_file` 实现 / 行尾处理 | `dm_agent/tools/file_tools.py` |
+| 失败观察判定（已修） | `dm_agent/core/observation.py` |
+| SWE-bench 子系统 | `swebench_verified/`（含 README 与三个坑） |
 | 分数对比工具 | `dm_agent/benchmarks/score_diff.py` |
-| DeepSeek baseline（30 题，0.500） | `bench_reports/baseline-30task-20260804.json` |
+| DeepSeek baseline（0.500） | `bench_reports/baseline-30task-20260804.json` |
 | 约束声明组（0.733） | `bench_reports/ablation-scope-20260804.json` |
 | 步数实验（0.800，**不采用**） | `bench_reports/steps30-20260804.json` |
-| edit_file 修复后（0.833，**当前水位**） | `bench_reports/editfix-20260804.json` |
+| edit_file 修复后（0.833） | `bench_reports/editfix-20260804.json` |
+| 判定修复后单轮（0.767） | `bench_reports/obsfix-20260805.json` |
+| **判定修复后 repeat 3（0.878，当前水位）** | `bench_reports/obsfix-r3-20260805.json` |
 | Claude arena（30 题，0.633） | `bench_reports/arena-claude-opus5-20260803.json` |
-| 设计决策记录 | `docs/research-log/33..38` |
+| 设计决策记录 | `docs/research-log/33..39` |
 
 ## 八、状态
 
-`main` 分支，工作树干净，全部检查绿（454 passed、eval gate 1.000、两条 manifest guard
-`compatible`、pre-commit 四钩子）。**8 个 commit 未 push**（`cfe0d3a`..`62493fe`），
+`main` 分支，工作树干净，全部检查绿（476 passed、eval gate 1.000、两条 manifest guard
+`match`、pre-commit 四钩子全 Passed）。**14 个 commit 未 push**（`cfe0d3a`..`c771894`），
 是否 push 由用户决定。
 
-复现任一轮实验（需 `.env` 里的 `DEEPSEEK_API_KEY`，约 15 分钟 / 150 万 token）：
+复现 30 题实验（需 `.env` 里的 `DEEPSEEK_API_KEY`）：
 
 ```bash
+# 单轮，约 15 分钟 / 130 万 token
 python -m dm_agent.benchmarks.cli --suite all --declare-allowed-files \
   --trace-dir bench_reports/<name>-traces \
   --output bench_reports/<name>.json --markdown bench_reports/<name>.md
 
+# 带误差棒，约 50 分钟 / 400 万 token（判读小于 5 题的差异时必须用这个）
+python -m dm_agent.benchmarks.cli --suite all --declare-allowed-files --repeat 3 \
+  --trace-dir bench_reports/<name>-r3-traces --output bench_reports/<name>-r3.json
+
 python -m dm_agent.benchmarks.score_diff \
-  bench_reports/editfix-20260804.json bench_reports/<name>.json
+  bench_reports/obsfix-r3-20260805.json bench_reports/<name>.json
+```
+
+跑 SWE-bench Verified（需 Docker Desktop 运行中）：
+
+```bash
+python -m swebench_verified.run --limit 10 --max-steps 60 \
+  --output swebench_work/preds.jsonl --trace-dir swebench_work/traces
+
+PYTHONPATH=swebench_verified/_winshim \
+  .swebench-venv/Scripts/python.exe -m swebench_verified.evaluate \
+  --predictions swebench_work/preds.jsonl --run-id myrun --max-workers 4
 ```
