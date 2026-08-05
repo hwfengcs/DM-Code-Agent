@@ -79,10 +79,14 @@
 | `packaging_ci_contract` | 0/3，隐藏测试没过 |
 | `patch_summary_name_status` | 0/3，隐藏测试没过 |
 
-SWE-bench Verified 闭环已跑通并冒烟验证（`astropy__astropy-12907`）：8 步 43 秒产出
-504 B patch，官方 harness 判 `empty_patch=0 error=0`（流程通）、`resolved=0`
-（FAIL_TO_PASS 0/2 且 **PASS_TO_PASS 0/13** —— 定位对了函数但改坏了原行为）。
-**还没跑规模子集。**
+**SWE-bench Verified 首个可比数字：10 题 resolved 2 = 20%**
+（`bench_reports/swebench-verified-10-20260805.json`，判分完全由官方 swebench 4.1.0 完成）。
+6 道 unresolved 里多数是"没修好"而非"改坏了"：13236 的 PASS_TO_PASS 是 644/644、
+14182 是 9/9，零回归；13977 已修好 F2P 12/20。只有 13453 明显改坏原行为。
+2 题 60 步耗尽出空 patch。
+
+> 这 10 题按数据集顺序取前 N，**全部来自 astropy 单一仓库**，不构成对整体的估计。
+> 扩子集时要改成跨仓库抽样。
 
 ## 四、四条方法论教训（比任何单个分数都重要）
 
@@ -99,23 +103,27 @@ SWE-bench Verified 闭环已跑通并冒烟验证（`astropy__astropy-12907`）�
 
 用户的目标是**找大厂 agent 算法工程师岗位**，这决定优先级。
 
-### 第一优先：跑 SWE-bench Verified 规模子集
+### 第一优先：把 SWE-bench 子集扩到跨仓库 50 题
 
-闭环已通，剩下的是花时间和磁盘。成本实测：
+10 题已出数（20%），但**全是 astropy**，代表性不足。扩子集时要改 `dataset.py` 的
+取样方式——现在是按数据集顺序取前 N，应改成按 repo 分层抽样。成本实测：
 
 | 项 | 量级 |
 | --- | --- |
-| 镜像 | **3.9 GB / 题**，下载是主要瓶颈（50 题 ≈ 196 GB，磁盘目前余 570 GB） |
-| 预测 | 约 40 秒 / 题 |
+| 镜像 | 约 3.9 GB / 题，但**层是共享的**：10 题实际只占 7.3 GB |
+| 预测 | 30 秒 – 19 分钟 / 题（抖动极大，见下） |
 | 判分 | 约 20 秒 / 题 |
 
-命令见 `swebench_verified/README.md`。建议先跑 10 题看 resolve 率量级，再决定要不要
-扩到 50。即使只有 5–10%，配上现有方法论叙事，说服力也会跳一档。
+命令见 `swebench_verified/README.md`（含四个会让分数无效的坑）。
 
-### 第二优先：修 SWE-bench 上暴露的能力短板
+### 第二优先：治空 patch 与步数耗尽
 
-冒烟那题 **PASS_TO_PASS 0/13** —— agent 定位对了函数却改坏了原有行为。这是
-30 题 benchmark 测不到的维度（那些题的"原有行为"很薄）。跑完子集后按失败模式聚类。
+10 题里 **5 题步数耗尽**、其中 **2 题产出空 patch**（60 步一个字都没写）。
+这是最直接的失分项：把这 2 题救回来就是 +20%。先看 trace 找出 60 步都花在哪了。
+
+注意 SWE-bench 上的**轨迹抖动比 30 题 benchmark 大得多**：同一道
+`astropy-12907`、同样配置，一次 8 步 success、一次 60 步耗尽。判读小样本 resolve 率
+前先扣掉这个量级。
 
 ### 第三优先：给 maintenance 加题
 
@@ -154,9 +162,11 @@ coding 对前沿模型已饱和，**只往 maintenance 加**。
 - **不要重新引入 devlog 33 删掉的 6 个模块**（Reflexion / Critic / Self-Consistency /
   熔断 / 记忆卫生 / LLM 摘要压缩）。要复活就写成外部扩展或独立子系统——
   `swebench_verified/` 就是照这条做的样板
-- **SWE-bench 三个会让分数无效的坑**见 `swebench_verified/README.md`：工作区必须放系统
+- **SWE-bench 四个会让分数无效的坑**见 `swebench_verified/README.md`：工作区必须放系统
   临时目录（否则 agent 会爬父目录读走 `FAIL_TO_PASS`）、`core.fileMode`/`autocrlf` 必须
-  关、`_assert_git_root` 安全闸不要移除
+  关、`_assert_git_root` 安全闸不要移除、`evaluate.py:force_lf_writes()` 不要删
+  （官方 harness 在 Windows 上把 `/eval.sh` 写成 CRLF，容器里一条命令都跑不了，
+  症状是 **PASS_TO_PASS 全 0**，看着像 agent 把模块改坏了）
 
 ## 七、关键文件位置
 
@@ -167,7 +177,7 @@ coding 对前沿模型已饱和，**只往 maintenance 加**。
 | 约束声明开关 | `models.py:BenchmarkTask.scoped_prompt()` + `declare_allowed_files` |
 | `edit_file` 实现 / 行尾处理 | `dm_agent/tools/file_tools.py` |
 | 失败观察判定（已修） | `dm_agent/core/observation.py` |
-| SWE-bench 子系统 | `swebench_verified/`（含 README 与三个坑） |
+| SWE-bench 子系统 | `swebench_verified/`（含 README 与四个坑） |
 | 分数对比工具 | `dm_agent/benchmarks/score_diff.py` |
 | DeepSeek baseline（0.500） | `bench_reports/baseline-30task-20260804.json` |
 | 约束声明组（0.733） | `bench_reports/ablation-scope-20260804.json` |
@@ -175,13 +185,14 @@ coding 对前沿模型已饱和，**只往 maintenance 加**。
 | edit_file 修复后（0.833） | `bench_reports/editfix-20260804.json` |
 | 判定修复后单轮（0.767） | `bench_reports/obsfix-20260805.json` |
 | **判定修复后 repeat 3（0.878，当前水位）** | `bench_reports/obsfix-r3-20260805.json` |
+| **SWE-bench Verified 10 题（resolved 2/10）** | `bench_reports/swebench-verified-10-20260805.json` |
 | Claude arena（30 题，0.633） | `bench_reports/arena-claude-opus5-20260803.json` |
 | 设计决策记录 | `docs/research-log/33..39` |
 
 ## 八、状态
 
 `main` 分支，工作树干净，全部检查绿（476 passed、eval gate 1.000、两条 manifest guard
-`match`、pre-commit 四钩子全 Passed）。**14 个 commit 未 push**（`cfe0d3a`..`c771894`），
+`match`、pre-commit 四钩子全 Passed）。**5 个 commit 未 push**（至 `762c7a3`），
 是否 push 由用户决定。
 
 复现 30 题实验（需 `.env` 里的 `DEEPSEEK_API_KEY`）：

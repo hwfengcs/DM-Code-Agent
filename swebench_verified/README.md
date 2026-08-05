@@ -67,7 +67,31 @@ PYTHONPATH=swebench_verified/_winshim \
 
 工作区默认建在系统临时目录，跑完即删（`--keep-workspace` 可保留，几百 MB / 题）。
 
-## 三个踩过的坑
+## 结果
+
+首轮 10 题（DeepSeek `deepseek-chat`、temperature 0、`--max-steps 60`，判分完全由
+官方 swebench 4.1.0 完成）：**resolved 2 / 10 = 20%**，
+存档在 `bench_reports/swebench-verified-10-20260805.json`。
+
+6 道 unresolved 的分层比总数更有信息量——多数是"没修好"而不是"改坏了"：
+
+| 实例 | FAIL_TO_PASS | PASS_TO_PASS | |
+| --- | ---: | ---: | --- |
+| astropy-12907 | 2/2 | 13/13 | **RESOLVED** |
+| astropy-14309 | 1/1 | 141/141 | **RESOLVED**（4 步） |
+| astropy-13977 | **12/20** | 318/322 | 修好一半 |
+| astropy-13236 | 0/2 | **644/644** | 零回归 |
+| astropy-14182 | 0/1 | **9/9** | 零回归 |
+| astropy-13033 | 0/1 | 19/20 | |
+| astropy-13398 | 0/4 | 63/68 | |
+| astropy-13453 | 0/1 | **2/9** | 改坏了原行为 |
+
+另有 2 题 60 步耗尽、产出空 patch。
+
+> 这 10 题按数据集顺序取前 N，**全部来自 astropy 单一仓库**，不构成对
+> SWE-bench Verified 整体的估计。扩子集时应改成跨仓库抽样。
+
+## 四个踩过的坑
 
 都是「在 Windows 上跑 Linux 仓库」引出的，改错任何一个都会让分数无效：
 
@@ -87,5 +111,27 @@ PYTHONPATH=swebench_verified/_winshim \
    已一并修掉（本地 30 题 benchmark 看不到它，因为那些工作区文件都是新建的、
    行尾自始至终一致）。
 
+4. **官方 harness 自己也中了同一个行尾陷阱，而且最阴险**。
+   `run_evaluation.py:199` 用 `write_text` 写 `/eval.sh` 再 copy 进 Linux 容器执行，
+   Windows 上写出 CRLF，容器里的 bash 把 `\r` 当成命令的一部分：
+
+   ```
+   + cd $'/testbed\r'
+   /eval.sh: line 7: cd: $'/testbed\r': No such file or directory
+   + git $'status\r'
+   git: 'status' is not a git command.
+   ```
+
+   **每条命令都失败、测试一个都没跑**，而报告里的表现是 **PASS_TO_PASS 全 0**——
+   看着像 agent 把整个模块改坏了。10 题实测全中，`resolved 0/10` 完全是这个 bug 的
+   产物；`evaluate.py:force_lf_writes()` 修补后，同一批 predictions 重判
+   **resolved 0 → 2**。
+
+   > 判读时记住：**`P2P 全 0` 是环境故障的指纹，不是能力信号**。agent 改一行不可能
+   > 让 322 个原本通过的测试全挂。
+
 另有一道安全闸 `_assert_git_root`：工作区必须自己就是 git 仓库根，否则拒绝执行
 `git add -A`——否则 git 会向上查找，作用到本项目的仓库上（实测差点中招）。
+
+`--resume` 只跳过真正跑过 agent 的题；`harness_error`（daemon 挂了、镜像拉不下来）
+会被重试。早期版本把环境失败也当"已完成"，重跑会静默跳过全部失败题。
