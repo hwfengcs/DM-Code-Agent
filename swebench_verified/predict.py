@@ -72,18 +72,29 @@ def _run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
     )
 
 
-def ensure_image(instance_id: str, *, quiet: bool = False) -> str:
-    """镜像不在本地就拉一次；返回镜像名。"""
+def ensure_image(instance_id: str, *, quiet: bool = False, attempts: int = 3) -> str:
+    """镜像不在本地就拉一次；返回镜像名。
+
+    每个镜像约 3.9 GB，实测拉到一半被 registry 断开是常态
+    （``httpReadSeeker: failed open``）。docker 自己会复用已下载的层，所以重试很便宜。
+    """
     image = image_name(instance_id)
     exists = _run(["docker", "image", "inspect", image])
     if exists.returncode == 0:
         return image
-    if not quiet:
-        print(f"    pulling {image} ...", flush=True)
-    pulled = _run(["docker", "pull", image])
-    if pulled.returncode != 0:
-        raise RuntimeError(f"拉取镜像失败 {image}: {pulled.stderr.strip()[:300]}")
-    return image
+
+    last_error = ""
+    for attempt in range(1, attempts + 1):
+        if not quiet:
+            suffix = f" (retry {attempt - 1})" if attempt > 1 else ""
+            print(f"    pulling {image}{suffix} ...", flush=True)
+        pulled = _run(["docker", "pull", image])
+        if pulled.returncode == 0:
+            return image
+        last_error = pulled.stderr.strip()[:300]
+        if attempt < attempts:
+            time.sleep(5 * attempt)
+    raise RuntimeError(f"拉取镜像失败 {image}（{attempts} 次尝试）: {last_error}")
 
 
 def _force_rmtree(path: Path) -> None:
