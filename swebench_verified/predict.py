@@ -72,6 +72,20 @@ def _run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
     )
 
 
+def docker_preflight() -> str:
+    """docker daemon 是否可用；可用返回空串，否则返回可读的原因。
+
+    没有这道检查时，daemon 挂掉会让每一题各自重试 3 次拉镜像才失败，真正的原因
+    还埋在最后一条错误里。实测踩过：Docker Desktop 中途退出，10 题跑了一遍全是
+    harness_error，看着像限流或磁盘满。
+    """
+    probe = _run(["docker", "info", "--format", "{{.ServerVersion}}"])
+    if probe.returncode == 0 and probe.stdout.strip():
+        return ""
+    reason = (probe.stderr or probe.stdout).strip().splitlines()
+    return reason[-1][:200] if reason else "docker info 没有返回版本号"
+
+
 def ensure_image(instance_id: str, *, quiet: bool = False, attempts: int = 3) -> str:
     """镜像不在本地就拉一次；返回镜像名。
 

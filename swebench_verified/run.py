@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 from .dataset import fetch_instances
-from .predict import predict_one
+from .predict import docker_preflight, predict_one
 
 DEFAULT_CACHE = Path("swebench_work/instances.jsonl")
 
@@ -52,15 +52,35 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    docker_error = docker_preflight()
+    if docker_error:
+        print(f"docker 不可用：{docker_error}", file=sys.stderr)
+        print("请确认 Docker Desktop 正在运行（docker info 能返回版本号）后重试。", file=sys.stderr)
+        return 2
+
     instances = fetch_instances(args.limit, cache_path=args.cache)
     print(f"loaded {len(instances)} instances from SWE-bench Verified")
 
     done: set[str] = set()
+    kept: list[str] = []
     if args.resume and args.output.exists():
+        retryable = 0
         for line in args.output.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                done.add(json.loads(line)["instance_id"])
-        print(f"resume: {len(done)} already predicted")
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            # 只跳过真正跑过 agent 的题。harness_error 是环境问题（daemon 挂了、
+            # 镜像拉不下来），把它当"已完成"会让重跑静默跳过全部失败题——
+            # 实测踩过：daemon 中途退出，10 题全记成 harness_error。
+            if record.get("dm_status") == "harness_error":
+                retryable += 1
+                continue
+            done.add(record["instance_id"])
+            kept.append(line)
+        print(f"resume: {len(done)} already predicted, {retryable} will be retried")
+        # 把可重试的记录从文件里清掉，避免同一 instance_id 出现两条。
+        if retryable:
+            args.output.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     written = 0
