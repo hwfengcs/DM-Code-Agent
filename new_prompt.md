@@ -18,7 +18,7 @@
 - **SWE-bench Verified**（`swebench_verified/`，2026-08-05 建）——独立子系统，
   判分交给官方 harness，用来拿一个能和公开数字对齐的坐标
 
-## 二、四轮实验（devlog 36/37/38/39，都在 main 上，**未 push**）
+## 二、四轮实验（devlog 36/37/38/39，都在 `main` 上）
 
 一条完整的因果链。全部 DeepSeek `deepseek-chat`、temperature 0、variant `full`。
 
@@ -101,12 +101,55 @@
 
 ## 五、下一步（按杠杆排序）
 
-用户的目标是**找大厂 agent 算法工程师岗位**，这决定优先级。
+用户的目标是**找大厂 agent 算法工程师岗位**，这决定优先级。下面三条已经做过初步
+诊断，证据都在，可以直接接着干。
 
-### 第一优先：把 SWE-bench 子集扩到跨仓库 50 题
+### 第一优先：治空 patch —— 10 题里 2 题跑满 60 步一个字没写
 
-10 题已出数（20%），但**全是 astropy**，代表性不足。扩子集时要改 `dataset.py` 的
-取样方式——现在是按数据集顺序取前 N，应改成按 repo 分层抽样。成本实测：
+这是当前最直接的失分项：**救回这 2 题就是 +20%**，而且成本远低于扩子集。
+已经挖到根因，两题的失败模式**完全不同**，要分开治：
+
+**A. `astropy-13579`：edit guard 的 stale_read 把 agent 卡进循环**
+
+22 次 `edit_file` 里 **11 次成功、11 次被守卫拦下**：
+
+```
+Edit blocked: astropy/wcs/wcsapi/wrappers/sliced_wcs.py changed after your
+last read in this run. Re-read the target range with read_file ...
+```
+
+模式是「改一次 → 文件变了 → 下次编辑被判 stale → 重读 → 再改」，一半的编辑预算
+花在重读上。更糟的是成功那几次的回执写着 **`1146 -> 1146 字符`**——字符数一个没变，
+说明 agent 在**把同一段代码改来改去，最后改回了原样**，所以 patch 是空的。
+
+要查的东西：`core/guards.py` 的 stale_read 判定是不是对「同一个 run 内自己刚写过
+的文件」也算 stale。如果是，那对连续编辑同一文件的场景就是纯损耗——agent 自己写的
+改动，它当然知道内容。注意别把守卫整个关掉，devlog 里它挡住过真实的行号漂移。
+
+**B. `astropy-14096`：29 次 `read_file`、0 次编辑，探索瘫痪**
+
+60 步全在读文件，从头到尾没尝试过一次编辑。这跟 A 是两回事，先看 trace 里的
+thought 序列判断它在犹豫什么——是定位不到目标文件，还是反复确认不敢下手。
+
+```bash
+python -m dm_agent.tracing.cli view swebench_work/traces-10/astropy__astropy-14096.jsonl
+```
+
+（trace 目录不入库，需要重跑一遍预测才有；命令见第八节。）
+
+**验收标准**：主指标是**空 patch 数**（2 → 0）与**被守卫拦下的编辑次数**，
+都是直接计数，不受 resolve 率噪声影响——按教训 1 办。
+
+### 第二优先：把 SWE-bench 子集扩到跨仓库 50 题
+
+10 题已出数（resolved 2/10），但**全部来自 astropy**，代表性不足，不能拿去对外说。
+
+要改的地方：`swebench_verified/dataset.py` 的 `fetch_instances()` 现在是**按数据集
+顺序取前 N**（数据集按 instance_id 字典序排，所以前 10 条必然同一个仓库）。
+应改成**按 repo 分层抽样**，且保持确定性（同一个 `--limit` 换机器换时间拿到同一批题，
+否则报告之间不可比）。数据里有 `repo` 与 `difficulty` 两个字段可用。
+
+成本实测：
 
 | 项 | 量级 |
 | --- | --- |
@@ -114,26 +157,23 @@
 | 预测 | 30 秒 – 19 分钟 / 题（抖动极大，见下） |
 | 判分 | 约 20 秒 / 题 |
 
-命令见 `swebench_verified/README.md`（含四个会让分数无效的坑）。
+跨仓库会比 astropy 内部更费磁盘（层共享变少），先看 `docker system df` 再决定规模。
 
-### 第二优先：治空 patch 与步数耗尽
-
-10 题里 **5 题步数耗尽**、其中 **2 题产出空 patch**（60 步一个字都没写）。
-这是最直接的失分项：把这 2 题救回来就是 +20%。先看 trace 找出 60 步都花在哪了。
-
-注意 SWE-bench 上的**轨迹抖动比 30 题 benchmark 大得多**：同一道
-`astropy-12907`、同样配置，一次 8 步 success、一次 60 步耗尽。判读小样本 resolve 率
-前先扣掉这个量级。
+**判读时先扣掉抖动**：SWE-bench 上的轨迹抖动比 30 题 benchmark 大得多——同一道
+`astropy-12907`、同样配置，一次 8 步 success、一次 60 步耗尽。小样本 resolve 率
+的差异基本说明不了问题。
 
 ### 第三优先：给 maintenance 加题
 
-30 题测不出 5 题以内的改进（教训 2），要么加题要么每次都 `--repeat 3`。
-coding 对前沿模型已饱和，**只往 maintenance 加**。
+30 题这个盘子测不出 5 题以内的改进（教训 2），要么加题要么每次都 `--repeat 3`。
+coding 对前沿模型已饱和（Claude 15/15），**只往 maintenance 加**。加题守第六节
+那三条不变量，并记得重新生成 `bench_reports/manifest-baseline-*.json`。
 
-### 可选
+### 可选：写一篇公开复盘
 
-- 写一篇公开复盘：`hidden−pass` 落差指标 + 四次消融 + 三次自我证伪 + 一次
-  「修好 A 放大了 B」的因果链。现在全埋在仓库里。
+现在全埋在仓库里。手上已经有的材料：`hidden−pass` 落差指标、四次消融（两次有效、
+一次负面结果、一次翻盘）、三次自我证伪、一次「修好 A 放大了 B」的因果链，
+外加一个「系统性环境故障伪装成 agent 能力极差」的实例（P2P 全 0）。
 
 ## 六、硬约束（违反会返工或被 CI 拦下）
 
@@ -211,13 +251,20 @@ python -m dm_agent.benchmarks.score_diff \
   bench_reports/obsfix-r3-20260805.json bench_reports/<name>.json
 ```
 
-跑 SWE-bench Verified（需 Docker Desktop 运行中）：
+跑 SWE-bench Verified（需 Docker Desktop 运行中；daemon 挂了脚本会带原因早退）：
 
 ```bash
-python -m swebench_verified.run --limit 10 --max-steps 60 \
+# 预测。--trace-dir 一定要给：治空 patch 那条要靠 trace 诊断，而 trace 不入库。
+# --resume 可续跑，且只重试 harness_error，不会把环境失败当"已完成"跳过。
+python -m swebench_verified.run --limit 10 --max-steps 60 --resume \
   --output swebench_work/preds.jsonl --trace-dir swebench_work/traces
 
+# 判分。必须在 .swebench-venv 里跑，且必须带 PYTHONPATH（Windows 垫片）。
 PYTHONPATH=swebench_verified/_winshim \
   .swebench-venv/Scripts/python.exe -m swebench_verified.evaluate \
   --predictions swebench_work/preds.jsonl --run-id myrun --max-workers 4
 ```
+
+判分完会写 `dm-agent-<provider>.<run_id>.json`，逐题结果在
+`logs/run_evaluation/<run_id>/`（含 `patch.diff`、`eval.sh`、`test_output.txt`，
+诊断全靠它们）。**两者都在 .gitignore 里，要存档得 `git add -f`。**
