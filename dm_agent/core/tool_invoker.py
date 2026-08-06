@@ -14,9 +14,14 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from dm_agent.tools.base import Tool
+from dm_agent.tools.file_tools import edit_file as builtin_edit_file
 
 from .events import AfterToolResultEvent, BeforeToolCallEvent, EventBus, HookErrorHandler
-from .guards import WRITE_ACTIONS
+from .guards import (
+    WRITE_ACTIONS,
+    is_identity_content_edit,
+    observation_reports_missing_path,
+)
 from .observation import ObservationBounder
 from .persistence import RunPersistence
 from .run_state import RunContext
@@ -28,6 +33,9 @@ class ToolInvocation:
 
     ``arguments`` 可能被 ``before_tool_call`` 处理器就地改过，调用方要用返回的这份
     （step、对话历史与 trace 都以它为准）。
+
+    ``no_change`` 表示工具的预期效果没有发生，本次调用不应推进 planner；它不表示
+    “这是一个只读工具”。
     """
 
     arguments: Any
@@ -35,6 +43,7 @@ class ToolInvocation:
     error_kind: str = ""
     blocked: bool = False
     tool_succeeded: bool = False
+    no_change: bool = False
 
 
 def coerce_task_complete_arguments(action_input: Any) -> dict[str, Any]:
@@ -103,6 +112,7 @@ class ToolInvoker:
             step_number=context.step_number,
             run_id=context.run_id,
             metadata=metadata,
+            content_anchor_safe=(action == "edit_file" and tool.runner is builtin_edit_file),
         )
         block = self.event_bus.emit_before_tool_call(before_event, on_error=self.on_error)
         action_input = before_event.arguments
@@ -114,7 +124,12 @@ class ToolInvoker:
                 blocked=True,
             )
 
-        if action in WRITE_ACTIONS:
+        identity_edit_noop = (
+            action == "edit_file"
+            and tool.runner is builtin_edit_file
+            and is_identity_content_edit(action_input)
+        )
+        if action in WRITE_ACTIONS and not identity_edit_noop:
             self.persistence.backup_before_write(action_input, context)
 
         error_kind = ""
@@ -129,23 +144,33 @@ class ToolInvoker:
         else:
             tool_succeeded = True
 
+        bounded_observation = self.bounder.bound(
+            raw_observation,
+            action=action,
+            action_input=action_input,
+            context=context,
+        )
+        confirmed_no_change = (
+            tool_succeeded
+            and identity_edit_noop
+            and not observation_reports_missing_path(bounded_observation)
+        )
         after_event = AfterToolResultEvent(
             tool_name=action,
             arguments=action_input,
-            observation=self.bounder.bound(
-                raw_observation,
-                action=action,
-                action_input=action_input,
-                context=context,
-            ),
+            observation=bounded_observation,
             step_number=context.step_number,
             run_id=context.run_id,
             tool_succeeded=tool_succeeded,
+            no_change=confirmed_no_change,
+            no_change_reason="identical_content" if confirmed_no_change else "",
             metadata=metadata,
         )
+        observation = self.event_bus.emit_after_tool_result(after_event, on_error=self.on_error)
         return ToolInvocation(
             arguments=action_input,
-            observation=self.event_bus.emit_after_tool_result(after_event, on_error=self.on_error),
+            observation=observation,
             error_kind=error_kind,
             tool_succeeded=tool_succeeded,
+            no_change=after_event.no_change,
         )

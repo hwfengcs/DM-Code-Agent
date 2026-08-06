@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from dm_agent.core import EventBus, ReactAgent
+from dm_agent.core.events import AfterToolResultEvent
 from dm_agent.memory.context_compressor import Compaction, Mem0StyleMemory
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events
@@ -88,6 +89,70 @@ def test_after_tool_result_handlers_chain_in_registration_order():
 
     assert second_seen == ["raw|first"]
     assert result["steps"][0]["observation"] == "raw|first|second"
+
+
+def test_after_tool_result_exception_rolls_back_no_change_signal():
+    failures = []
+    bus = EventBus()
+
+    def mark_then_raise(event):
+        event.no_change = True
+        event.no_change_reason = "poisoned"
+        raise RuntimeError("boom")
+
+    bus.on("after_tool_result", mark_then_raise, name="mark_then_raise")
+    event = AfterToolResultEvent(
+        tool_name="echo",
+        arguments={},
+        observation="raw",
+        step_number=1,
+        run_id="run",
+        tool_succeeded=True,
+    )
+
+    observation = bus.emit_after_tool_result(event, on_error=failures.append)
+
+    assert observation == "raw"
+    assert event.no_change is False
+    assert event.no_change_reason == ""
+    assert len(failures) == 1
+
+
+def test_after_tool_result_no_progress_signal_keeps_planned_step_pending():
+    bus = EventBus()
+
+    def declare_no_progress(event):
+        if event.tool_name == "echo":
+            event.no_change = True
+            event.no_change_reason = "expected_effect_missing"
+
+    bus.on("after_tool_result", declare_no_progress, name="declare_no_progress")
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "echo", "reason": "produce output"},
+                        {"step": 2, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            _action("echo", {}),
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("echo", "Echo", lambda arguments: "raw")],
+        enable_planning=True,
+        enable_compression=False,
+        event_bus=bus,
+    )
+
+    agent.run("produce output", max_steps=1)
+
+    assert agent.planner is not None
+    assert agent.planner.current_plan[0].completed is False
+    assert agent.planner.get_next_step().action == "echo"
 
 
 def test_handler_exception_is_isolated_and_traced(tmp_path):

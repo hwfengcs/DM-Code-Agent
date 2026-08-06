@@ -19,13 +19,16 @@ agent = ReactAgent(client, tools, event_bus=bus)
 ### `before_tool_call`
 
 处理器收到 `BeforeToolCallEvent`，其中包含 `tool_name`、`arguments`、`step_number`、
-`run_id` 和本次 run 的 `metadata`。
+`run_id` 和本次 run 的 `metadata`。内核还会为具备当前文件唯一锚点语义的 canonical
+`edit_file` 设置 `content_anchor_safe=True`；覆盖同名工具时默认保持 `False`，避免仅凭参数
+形状绕过 `stale_read`。实现同等安全语义的受信扩展可以显式设置该字段。
 
 - 返回 `{"block": True, "reason": "..."}` 会停止后续前置处理器并跳过工具执行；
   `reason` 会成为该步骤的 observation。
 - 可以直接修改 `event.arguments`。
 - **修改参数后不会重新做参数校验。** 工具会直接收到处理器留下的参数。这是刻意采用的
   约定，便于扩展实现参数重写、沙箱路径映射等能力；处理器必须自行保证参数可用。
+- 处理器异常或返回非法类型时，`arguments` 与 `content_anchor_safe` 一起回滚。
 
 ### `after_tool_result`
 
@@ -36,7 +39,15 @@ agent = ReactAgent(client, tools, event_bus=bus)
 Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏，**先于**本事件
 执行：处理器拿到的已经是截断后的文本，也就是最终会写进对话历史的那一份。
 
-事件还包含 `tool_succeeded`：它表示 runner 是否正常返回，不代表返回文本一定是业务成功。
+事件还包含：
+
+- `tool_succeeded`：runner 是否正常返回，不代表返回文本一定是业务成功；
+- `no_change` / `no_change_reason`：这次调用已确认**没有实现预期效果、没有形成计划进展**，
+  以及对应的机器可读原因。字段名为兼容保留，不等价于“没有修改持久化状态”：成功的
+  `read_file` / `search_in_file` 已经完成读取目的，不能仅因工具只读就设为 `True`。
+  处理器显式设置后，内核不会把匹配的 planner 步骤标成完成；处理器异常或返回非法类型时，
+  两字段与 observation 一起回滚。内置 `edit_file` 的 identity no-op 使用
+  `no_change_reason="identical_content"`。
 
 ### `before_llm_request`
 
@@ -108,8 +119,10 @@ Critic 用这条路），会话日志与 planner 的重规划策略都按它对�
 ## 内置能力也是事件处理器
 
 内置 read-before-edit 守卫是事件处理器：它在 `before_tool_call` 拦截不安全的
-`edit_file`，并在 `after_tool_result` 中维护成功读写的文件台账。`--disable-edit-guard`
-只关闭拦截，保持既有 CLI 语义不变。
+`edit_file`，并在 `after_tool_result` 中维护成功读写的文件台账。首次编辑必须有读取证据；
+写后 `stale_read` 只拦依赖旧行号的模式，内容锚定模式会在当前文件重新验证唯一精确匹配。
+identity no-op 会设 `no_change=True`，不备份、不推进写台账，也不完成 planner 步骤。
+`--disable-edit-guard` 只关闭读取证据拦截，保持既有 CLI 语义不变。
 
 可选能力同样如此：实现 `dm_agent.core.capabilities.AgentCapability` 协议，
 在 Agent 构造末尾通过 `install(context)` 把自己挂到事件总线上，经

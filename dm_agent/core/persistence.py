@@ -273,6 +273,12 @@ def metadata_from_checkpoint(
 ) -> dict[str, Any]:
     """还原 metadata：状态改回 running，丢掉上一轮的耗时，记下续跑起点。"""
     restored = dict(raw_metadata)
+    for key in (
+        "edit_noop_count",
+        "parse_error_context_omitted_count",
+        "parse_error_context_omitted_chars",
+    ):
+        restored.setdefault(key, 0)
     restored["status"] = "running"
     restored.pop("duration_seconds", None)
     restored["resumed_from_step"] = resume_from

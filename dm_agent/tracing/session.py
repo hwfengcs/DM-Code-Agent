@@ -25,6 +25,15 @@ COMPACTION_EVENT = "compaction"
 CHECKPOINT_EVENT = "checkpoint"
 FORK_EVENT = "fork"
 RUN_START_EVENT = "run_start"
+PARSE_ERROR_EVENT = "parse_error"
+
+
+def parse_failed_response_placeholder(response_chars: int) -> str:
+    """解析失败的原文在后续上下文中的短占位。"""
+    return (
+        "[omitted from context: previous assistant response was not valid JSON "
+        f"({max(0, int(response_chars))} chars)]"
+    )
 
 
 def new_entry_id(run_id: str, seq: int) -> str:
@@ -153,6 +162,21 @@ def rebuild_context(
                 {"role": str(payload.get("role", "")), "content": _message_content(payload)}
             )
             history_ids.append(str(entry.get("id", "")))
+        elif event == PARSE_ERROR_EVENT:
+            # 写侧保留原始 assistant message 供审计，但实时上下文只放短占位，
+            # 避免一次超长 malformed completion 被近期窗口反复携带。读侧必须做
+            # 同样的替换，rebuild_context 才能逐字复现模型真正看到的窗口。旧日志
+            # 没有 context_replacement，说明当时原文仍在上下文中，必须保持旧语义。
+            context_replacement = payload.get("context_replacement")
+            if (
+                isinstance(context_replacement, str)
+                and history
+                and history[-1].get("role") == "assistant"
+            ):
+                history[-1] = {
+                    "role": "assistant",
+                    "content": context_replacement,
+                }
         elif event == COMPACTION_EVENT and apply_compaction:
             summary = str(payload.get("summary", ""))
             first_kept_entry_id = str(payload.get("first_kept_entry_id", ""))

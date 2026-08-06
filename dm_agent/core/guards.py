@@ -13,7 +13,7 @@ WRITE_ACTIONS = frozenset({"edit_file", "create_file"})
 
 
 class ReadBeforeEditGuard:
-    """要求 edit_file 前已读取目标，并在每次写入后重新读取。"""
+    """要求 edit_file 前已读取目标，并保护依赖旧行号的连续编辑。"""
 
     def __init__(self, *, enabled: bool, trace_writer: Any | None = None) -> None:
         self.enabled = enabled
@@ -32,6 +32,15 @@ class ReadBeforeEditGuard:
         if not isinstance(path, str) or not path:
             return None
         reason = self._ledger.check_edit(path)
+        if (
+            reason == "stale_read"
+            and event.content_anchor_safe
+            and _uses_content_anchored_edit(event.arguments)
+        ):
+            # 内容锚定模式每次都会在当前文件中重新做唯一精确匹配；旧锚点失效时
+            # 工具不写文件。它不依赖上一次读取时的行号，因此无需为自己的写入
+            # 强制再读一次。台账仍保持 stale，使后续切回行号模式时继续受保护。
+            return None
         if not reason:
             return None
 
@@ -56,12 +65,38 @@ class ReadBeforeEditGuard:
         path = event.arguments.get("path")
         if not isinstance(path, str) or not path:
             return
-        if _observation_reports_missing_path(event.observation):
+        if observation_reports_missing_path(event.observation):
+            return
+        if event.no_change and event.tool_name in WRITE_ACTIONS:
+            if event.tool_name == "edit_file" and event.no_change_reason == "identical_content":
+                event.metadata["edit_noop_count"] = (
+                    int(event.metadata.get("edit_noop_count", 0)) + 1
+                )
+                if self.trace_writer:
+                    self.trace_writer.record(
+                        "edit_noop",
+                        {
+                            "step_number": event.step_number,
+                            "path": path,
+                            "reason": "identical_content",
+                        },
+                    )
             return
         if event.tool_name in READ_ACTIONS:
             self._ledger.note_read(path, event.step_number)
         elif event.tool_name in WRITE_ACTIONS:
             self._ledger.note_write(path, event.step_number)
+
+
+def _uses_content_anchored_edit(arguments: dict[str, Any]) -> bool:
+    old_string = arguments.get("old_string")
+    return isinstance(old_string, str) and bool(old_string)
+
+
+def is_identity_content_edit(arguments: dict[str, Any]) -> bool:
+    old_string = arguments.get("old_string")
+    new_string = arguments.get("new_string")
+    return isinstance(old_string, str) and isinstance(new_string, str) and old_string == new_string
 
 
 def _block_message(path: str, reason: str) -> str:
@@ -78,7 +113,7 @@ def _block_message(path: str, reason: str) -> str:
     )
 
 
-def _observation_reports_missing_path(observation: str) -> bool:
+def observation_reports_missing_path(observation: str) -> bool:
     text = str(observation).strip()
     return (
         len(text) <= 300

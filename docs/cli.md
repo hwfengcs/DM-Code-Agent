@@ -78,10 +78,11 @@ printf '%s\n' \
 | --- | --- | --- |
 | `--max-observation-chars` | `8000` | 单条工具观察的字符上限，超出截断并附分页提示；`0` 关闭 |
 | `--context-token-budget` | `24000` | 估算 token 超预算时提前触发上下文折叠；`0` 只按消息节奏折叠 |
-| `--disable-edit-guard` | 守卫开启 | 关闭 read-before-edit 守卫（`edit_file` 前必须读过目标） |
+| `--disable-edit-guard` | 守卫开启 | 关闭 read-before-edit 守卫（首次编辑前需读；写后只有行号模式要求重读，内容锚定模式重新做唯一匹配） |
 | `--llm-max-retries` | `2` | 四家 provider 统一的瞬时故障重试次数 |
 
-原子文件写入与修改前备份始终开启，没有开关。
+原子文件写入、修改前备份、解析失败响应的上下文替换，以及 identity no-op 的零写入处理
+始终开启，没有开关。identity no-op 不创建备份、不推进写台账，也不完成 planner 的编辑步骤。
 
 ## 行为/算法模块（默认**关**）
 
@@ -104,7 +105,7 @@ Planning 与上下文折叠**默认开启**，但没有暴露成 `dm-agent` 开�
 | 参数 | 说明 |
 | --- | --- |
 | `--trace PATH` | 写可分享的脱敏会话日志 |
-| `--trace-llm-io` | 在 trace 中包含完整 LLM 输入/输出，仅私有调试用 |
+| `--trace-llm-io` | 在 trace 中包含完整 LLM 输入/输出，仅私有调试用；malformed 原文即使完整留档，后续请求仍使用 `parse_error.context_replacement` |
 | `--checkpoint PATH` | `*.jsonl` 写 append-only 会话日志（可配合 `--resume-at` 与 `fork`）；其他后缀写单文件 JSON 快照 |
 | `--resume PATH` | 从上面两种形态中的任意一种恢复；任务参数可省略 |
 | `--resume-at ENTRY_ID` | 仅对 JSONL 会话日志有效，定位到某条 entry（支持唯一前缀） |

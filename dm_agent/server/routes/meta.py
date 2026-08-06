@@ -58,7 +58,7 @@ CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
         "default": True,
         "category": "guardrail",
         "label": "read-before-edit 守卫",
-        "help": "edit_file 前必须读过目标文件，写后需重读。默认开启。",
+        "help": "首次 edit_file 前必须读过目标文件；行号模式写后需重读。默认开启。",
     },
     {
         "flag": "--llm-max-retries",

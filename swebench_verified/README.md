@@ -46,6 +46,30 @@ python -m swebench_verified.run --limit 10 --max-steps 60 \
 每题会：拉官方评测镜像 → `docker cp` 出 `/testbed` 当工作区 → 跑 ReactAgent →
 `git diff` 出 patch。断了用 `--resume` 接着跑。
 
+预测记录除官方要求的三列外，还带 `dm_status/failure`、`dm_patch_chars`、
+`dm_duration_seconds`、`dm_difficulty`；正常完成 Agent run 时另带
+`dm_diagnostics_version=1`、`dm_steps`、`dm_replans`、`dm_parse_errors/repairs`、
+`dm_parse_error_context_omitted_count/chars`、`dm_truncations`、`dm_edit_guard_blocks`、
+`dm_edit_noops`、`dm_repeat_search_blocks`、`dm_edit_state_revisits` 与
+`dm_edit_cycle_blocks`。这些字段不参与官方判分，只用于区分“没修好”“探索/解析循环”和
+“环境失败”，并给空 patch 治理提供不受 resolved 噪声影响的直接计数。后三个字段分别表示：
+
+- 同一参数、同一文件内容版本上的精确重复搜索被拦截并回放缓存观察的次数；
+- 实际写入后，文件内容回到本 run 已访问状态的次数；
+- 可在执行前准确预测的 canonical 内容锚定 `edit_file` 二周期被拦截的次数。
+
+编辑二周期的执行前预测只适用于 `old_string/new_string` 在当前内容中唯一命中的 canonical
+内容锚定 `edit_file`。行号 `edit_file` 与 `create_file` 只在写后记录状态回访，不承诺提前
+拦截；`run_shell` / `run_python` 即使改了文件，也不计为本守卫的状态转移。这个守卫只由
+SWE-bench 的 `predict.py` 装配，不影响主 CLI 或 30 题 benchmark。
+
+`dm_edit_noops` 严格只计 `old_string == new_string` 的 identity no-op，不代表所有“没有形成
+patch”的调用；`dm_parse_error_context_omitted_chars` 只计未进入后续模型上下文的字符，审计
+日志没有删除原文。正常完成一次 Agent run 时，诊断字段存在且为 0 才是实测零；旧
+predictions、`agent_exception` 或 `harness_error` 没有 `dm_diagnostics_version` 或某个字段
+时表示**未测量**，不能按真实 0 解读。验收新诊断字段时要写新 output，不能用 `--resume`
+静默保留旧记录。
+
 **第二步：判分**（在 swebench venv 里）
 
 ```bash
@@ -55,14 +79,15 @@ PYTHONPATH=swebench_verified/_winshim \
 ```
 
 产出 `dm-agent-<provider>.<run_id>.json`，逐题结果在 `logs/run_evaluation/<run_id>/`。
-只想重看结论：`--summarize-only <report.json>`。
+只想重看结论：`--summarize-only <report.json>`。空 patch 只进入汇总报告的
+`empty_patch_ids`，不会生成该实例的 `patch.diff` / `eval.sh` / `test_output.txt` 目录。
 
 ## 成本
 
 | 项 | 量级 |
 | --- | --- |
 | 镜像 | **约 3.9 GB / 题**，下载是主要瓶颈（50 题 ≈ 196 GB） |
-| 预测 | 约 40 秒 / 题（DeepSeek，简单题 8 步左右） |
+| 预测 | 约 30 秒 – 19 分钟 / 题（DeepSeek，轨迹抖动很大） |
 | 判分 | 约 20 秒 / 题（复用已有镜像） |
 
 工作区默认建在系统临时目录，跑完即删（`--keep-workspace` 可保留，几百 MB / 题）。
@@ -86,7 +111,25 @@ PYTHONPATH=swebench_verified/_winshim \
 | astropy-13398 | 0/4 | 63/68 | |
 | astropy-13453 | 0/1 | **2/9** | 改坏了原行为 |
 
-另有 2 题 60 步耗尽、产出空 patch。
+另有 2 题 60 步耗尽、产出空 patch：`astropy-13579` 被 identity no-op 与
+`stale_read` 交替放大，`astropy-14096` 则是超长解析失败响应与重复读取形成二周期。
+机制修复与三轮真实复跑见 [devlog 40](../docs/research-log/40-empty-patch-loops.md)。定向复跑的
+直接指标已经达到 **empty patch 2 → 0**，官方 harness 结果如下：
+
+| 实例 | patch | FAIL_TO_PASS | PASS_TO_PASS | 官方结论 |
+| --- | ---: | ---: | ---: | --- |
+| astropy-13579 | 1881 B | **1/1** | **40/40** | **RESOLVED** |
+| astropy-14096 | 913 B | **0/1** | **426/426** | unresolved，零 P2P 回归 |
+
+归档报告 `bench_reports/swebench-emptyfix-2-20260806.json` 为 submitted 2、empty patch 0、
+resolved 1/2、harness error 0。14096 虽不再为空，仍跑满 60 步；44 次 `run_python` 中
+有 **35 次参数逐字相同**，是尚未治理的残余固定点。13579 的预测早于三个新进度环字段，
+字段缺失表示未测量，不是 0。
+
+这只是针对原两道空 patch 题的定向复跑，不能把 1/2 直接叠加到首轮 2/10，伪装成新的
+10 题总体分数。结果来自已实际运行的机械修复轮与纯事件守卫轮；随后对未触发的编辑二周期
+分支做了确定性契约收紧，没有再消耗模型调用，因此 1/2 也不冒充收紧后源码树的新端到端
+分数。细节与适用边界见 devlog 40。
 
 > 这 10 题按数据集顺序取前 N，**全部来自 astropy 单一仓库**，不构成对
 > SWE-bench Verified 整体的估计。扩子集时应改成跨仓库抽样。

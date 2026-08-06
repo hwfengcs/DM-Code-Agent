@@ -30,11 +30,17 @@ class BeforeToolCallEvent:
     step_number: int
     run_id: str
     metadata: dict[str, Any] = field(default_factory=dict, repr=False)
+    content_anchor_safe: bool = False
 
 
 @dataclass
 class AfterToolResultEvent:
-    """工具执行后事件，后续处理器会看到前序处理器改写的 observation。"""
+    """工具执行后事件，后续处理器会看到前序处理器改写的 observation。
+
+    ``no_change`` 是“本次调用没有实现预期效果，因此不应推进计划”的结构化信号，
+    不是“工具没有修改持久化状态”的同义词。成功的只读工具已经完成读取目的，通常
+    应保持 ``False``。
+    """
 
     tool_name: str
     arguments: dict[str, Any]
@@ -43,6 +49,8 @@ class AfterToolResultEvent:
     run_id: str
     tool_succeeded: bool
     metadata: dict[str, Any] = field(default_factory=dict, repr=False)
+    no_change: bool = False
+    no_change_reason: str = ""
 
 
 @dataclass
@@ -194,14 +202,17 @@ class EventBus:
         """执行工具前置链；遇到第一个 ``block=True`` 时停止并返回。"""
         for position, handler in enumerate(self._handlers["before_tool_call"], start=1):
             previous_arguments = dict(event.arguments)
+            previous_content_anchor_safe = event.content_anchor_safe
             succeeded, result = self._call("before_tool_call", handler, position, event, on_error)
             if not succeeded:
                 event.arguments = previous_arguments
+                event.content_anchor_safe = previous_content_anchor_safe
                 continue
             if result is None:
                 continue
             if not isinstance(result, Mapping):
                 event.arguments = previous_arguments
+                event.content_anchor_safe = previous_content_anchor_safe
                 self._report_invalid_result(
                     "before_tool_call", handler, position, event, result, on_error
                 )
@@ -220,13 +231,19 @@ class EventBus:
         """串联改写 observation，返回最终结果。"""
         for position, handler in enumerate(self._handlers["after_tool_result"], start=1):
             previous = event.observation
+            previous_no_change = event.no_change
+            previous_no_change_reason = event.no_change_reason
             succeeded, result = self._call("after_tool_result", handler, position, event, on_error)
             if not succeeded:
                 event.observation = previous
+                event.no_change = previous_no_change
+                event.no_change_reason = previous_no_change_reason
                 continue
             candidate = event.observation if result is None else result
             if not isinstance(candidate, str):
                 event.observation = previous
+                event.no_change = previous_no_change
+                event.no_change_reason = previous_no_change_reason
                 self._report_invalid_result(
                     "after_tool_result", handler, position, event, candidate, on_error
                 )

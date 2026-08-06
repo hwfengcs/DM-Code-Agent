@@ -210,6 +210,11 @@ Agent 持有一个 `SessionWriter` 门面；它把普通会话事件扇出到各
 主 sink 的兼容视图，折叠起点不会跨文件复用 id。JSONL checkpoint sink 的写入失败按
 checkpoint 的“尽力而为”约定隔离并告警，不会拖垮分享档或主循环。
 
+解析失败的 assistant 原文同样不删除：`message` 条目保留原始响应，紧随其后的
+`parse_error.context_replacement` 记录后续请求实际采用的短占位。实时历史只使用该派生
+视图，`rebuild_context` 也只对显式带此字段的新事件做替换；旧 trace 没有该字段，继续按
+当时“原文留在上下文”的语义重建。
+
 ## 三条约定
 
 1. **新增能力先问：这个必须住在内核里吗？** 只需要在固定几个点插手的，就该是扩展。

@@ -32,6 +32,7 @@ from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter
 
 from .dataset import image_name
+from .progress_guard import SWEProgressLoopGuard
 
 # 喂给 agent 的题面。SWE-bench 的约定是 agent 只看 problem_statement，
 # 看不到 test_patch，也不知道 FAIL_TO_PASS 具体是哪些用例。
@@ -275,6 +276,7 @@ def predict_one(
         max_steps=max_steps,
         temperature=temperature,
         trace_writer=trace_writer,
+        capabilities=[SWEProgressLoopGuard()],
     )
     prompt = PROMPT_TEMPLATE.format(
         repo=instance["repo"],
@@ -286,10 +288,12 @@ def predict_one(
     failure = ""
     metadata: dict[str, Any] = {}
     step_count = 0
+    diagnostics_measured = False
     with chdir(workspace):
         try:
             with redirect_stdout(StringIO()):
                 result = agent.run(prompt)
+            diagnostics_measured = True
             metadata = dict(result.get("metadata", {}))
             status = str(metadata.get("status", "unknown"))
             step_count = len(result.get("steps", []))
@@ -298,21 +302,40 @@ def predict_one(
             failure = f"{type(exc).__name__}: {exc}"
 
     patch = extract_patch(workspace)
-    record = {
+    record: dict[str, Any] = {
         "instance_id": instance_id,
         "model_name_or_path": f"dm-agent-{provider}",
         "model_patch": patch,
-        # 下面是诊断字段，官方 harness 会忽略，但我们自己要看
         "dm_status": status,
         "dm_failure": failure,
-        "dm_steps": step_count,
-        "dm_replans": metadata.get("replan_count", 0),
-        "dm_parse_repairs": metadata.get("parse_repair_count", 0),
-        "dm_truncations": metadata.get("truncation_count", 0),
         "dm_patch_chars": len(patch),
         "dm_duration_seconds": round(time.perf_counter() - started, 2),
         "dm_difficulty": instance.get("difficulty", ""),
     }
+    if diagnostics_measured:
+        # 下面是诊断字段，官方 harness 会忽略，但我们自己要看。Agent 异常时
+        # metadata 只存在于部分 trace，不能把“未测量”伪装成真实 0。
+        record.update(
+            {
+                "dm_diagnostics_version": 1,
+                "dm_steps": step_count,
+                "dm_replans": metadata.get("replan_count", 0),
+                "dm_parse_errors": metadata.get("parse_error_count", 0),
+                "dm_parse_repairs": metadata.get("parse_repair_count", 0),
+                "dm_parse_error_context_omitted_count": metadata.get(
+                    "parse_error_context_omitted_count", 0
+                ),
+                "dm_parse_error_context_omitted_chars": metadata.get(
+                    "parse_error_context_omitted_chars", 0
+                ),
+                "dm_truncations": metadata.get("truncation_count", 0),
+                "dm_edit_guard_blocks": metadata.get("edit_guard_block_count", 0),
+                "dm_edit_noops": metadata.get("edit_noop_count", 0),
+                "dm_repeat_search_blocks": metadata.get("repeat_search_block_count", 0),
+                "dm_edit_state_revisits": metadata.get("edit_state_revisit_count", 0),
+                "dm_edit_cycle_blocks": metadata.get("edit_cycle_block_count", 0),
+            }
+        )
 
     if not keep_workspace:
         shutil.rmtree(workspace, ignore_errors=True)

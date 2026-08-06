@@ -13,6 +13,7 @@ from dm_agent.core.checkpoint import (
     load_checkpoint,
     save_checkpoint,
 )
+from dm_agent.core.persistence import metadata_from_checkpoint
 from dm_agent.core.run_state import RunContext
 from dm_agent.memory import ContextCompressor
 from dm_agent.memory.context_budget import estimate_messages_tokens
@@ -51,6 +52,16 @@ def _tools(log=None):
         Tool("echo", "Echo text", echo),
         Tool("task_complete", "Finish", lambda arguments: arguments.get("message", "done")),
     ]
+
+
+def test_legacy_checkpoint_metadata_backfills_new_diagnostic_counters():
+    restored = metadata_from_checkpoint({"status": "success"}, resume_from=2)
+
+    assert restored["status"] == "running"
+    assert restored["resumed_from_step"] == 2
+    assert restored["edit_noop_count"] == 0
+    assert restored["parse_error_context_omitted_count"] == 0
+    assert restored["parse_error_context_omitted_chars"] == 0
 
 
 def test_checkpoint_roundtrip_and_schema_guard(tmp_path):

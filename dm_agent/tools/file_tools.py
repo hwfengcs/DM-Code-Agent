@@ -260,6 +260,8 @@ def _edit_by_old_string(path: Path, arguments: dict[str, Any]) -> str:
                 f"old_string 模式不能与 {conflicting} 同时使用；"
                 "按内容定位时行号无意义，请二选一。"
             )
+    if old_string == new_string:
+        return "未改动：old_string 与 new_string 完全相同；请在 new_string 中提供实际修改后重试。"
 
     content = path.read_text(encoding="utf-8")
     occurrences = content.count(old_string)

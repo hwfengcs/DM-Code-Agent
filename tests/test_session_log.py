@@ -28,8 +28,10 @@ class FakeRespondClient:
     def __init__(self, responses):
         self.responses = list(responses)
         self.model = "fake-model"
+        self.requests = []
 
     def respond(self, messages, **extra):
+        self.requests.append([dict(message) for message in messages])
         if not self.responses:
             raise AssertionError("FakeRespondClient ran out of responses")
         return self.responses.pop(0)
@@ -136,6 +138,88 @@ def test_model_responses_are_hashed_unless_llm_io_capture_is_enabled(tmp_path):
     assert redacted[0]["content_sha256"]
     assert redacted[0]["content_chars"] > 0
     assert full[0]["content"] == responses[0]
+
+
+def test_parse_failed_response_is_audited_but_omitted_from_later_context(tmp_path):
+    trace_path = tmp_path / "parse-error.jsonl"
+    raw = "not-json-" + "x" * 31000
+    client = FakeRespondClient([raw, _action("finish", {"answer": "recovered"})])
+    writer = TraceWriter(trace_path, capture_llm_io=True)
+    agent = ReactAgent(
+        client,
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+        trace_writer=writer,
+    )
+
+    result = agent.run("recover after a huge parse failure", max_steps=3)
+    writer.close()
+
+    assert result["final_answer"] == "recovered"
+    assert result["metadata"]["parse_error_context_omitted_count"] == 1
+    assert result["metadata"]["parse_error_context_omitted_chars"] == len(raw)
+    second_request = client.requests[1]
+    assert all(message.get("content") != raw for message in second_request)
+    assert any("omitted from context" in message.get("content", "") for message in second_request)
+
+    entries = load_session_entries(trace_path)
+    parse_error = next(entry for entry in entries if entry["event"] == "parse_error")
+    assert "omitted from context" in parse_error["payload"]["context_replacement"]
+    assistant_messages = [
+        entry["payload"]
+        for entry in message_entries(entries)
+        if entry["payload"].get("role") == "assistant"
+    ]
+    assert assistant_messages[0]["content"] == raw
+
+    rebuilt = rebuild_context(entries, apply_compaction=False)
+    assert all(message.get("content") != raw for message in rebuilt)
+    assert any("omitted from context" in message.get("content", "") for message in rebuilt)
+
+
+def test_legacy_parse_error_without_replacement_keeps_original_context():
+    entries = normalize_entries(
+        [
+            {"event": "run_start", "payload": {}},
+            {
+                "event": "message",
+                "payload": {
+                    "role": "assistant",
+                    "kind": "model_response",
+                    "content": "legacy malformed response",
+                },
+            },
+            {
+                "event": "parse_error",
+                "payload": {"response_chars": 25, "error": "legacy parse failure"},
+            },
+        ]
+    )
+
+    assert rebuild_context(entries, apply_compaction=False) == [
+        {"role": "assistant", "content": "legacy malformed response"}
+    ]
+
+
+def test_short_parse_failed_response_is_also_replaced_in_context(tmp_path):
+    raw = "not-json"
+    client = FakeRespondClient([raw, _action("finish", {"answer": "recovered"})])
+    agent = ReactAgent(
+        client,
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    result = agent.run("recover from a short parse failure", max_steps=3)
+
+    assert result["metadata"]["parse_error_context_omitted_count"] == 1
+    assert result["metadata"]["parse_error_context_omitted_chars"] == len(raw)
+    assert all(message.get("content") != raw for message in client.requests[1])
+    assert any(
+        "omitted from context" in message.get("content", "") for message in client.requests[1]
+    )
 
 
 def test_history_entry_ids_stay_aligned_with_conversation_history(tmp_path):

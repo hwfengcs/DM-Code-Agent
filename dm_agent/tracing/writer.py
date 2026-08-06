@@ -156,12 +156,23 @@ class TraceWriter:
             payload["response_chars"] = len(raw_response)
         self.record("llm_call", payload)
 
-    def record_parse_error(self, *, step_number: int, raw_response: str, error: str) -> None:
+    def record_parse_error(
+        self,
+        *,
+        step_number: int,
+        raw_response: str,
+        error: str,
+        context_replacement: str | None = None,
+    ) -> None:
         payload: dict[str, Any] = {
             "step_number": step_number,
             "error": error,
             "response_chars": len(raw_response),
         }
+        if context_replacement is not None:
+            # 原始 assistant message 仍由相邻的 message 条目保留；这里追加模型
+            # 下一轮实际看到的派生视图，保证未来修改占位文案后仍可逐字重建。
+            payload["context_replacement"] = context_replacement
         if self.capture_llm_io:
             payload["raw_response"] = raw_response
         self.record("parse_error", payload)

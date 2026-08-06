@@ -116,7 +116,10 @@ def parse_args(argv: Any) -> argparse.Namespace:
         dest="enable_edit_guard",
         action="store_false",
         default=saved_config.get("enable_edit_guard", True),
-        help="关闭 read-before-edit 守卫（默认开启：edit_file 前必须读过目标文件，写后需重读）。",
+        help=(
+            "关闭 read-before-edit 守卫（默认开启：首次 edit_file 前必须读过目标文件；"
+            "依赖行号的连续编辑在写后需重读）。"
+        ),
     )
     parser.add_argument(
         "--llm-max-retries",

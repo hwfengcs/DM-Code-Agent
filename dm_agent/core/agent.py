@@ -13,6 +13,7 @@ from dm_agent.clients.base_client import BaseLLMClient
 from dm_agent.memory.context_compressor import ContextCompressor
 from dm_agent.prompts import build_code_agent_prompt
 from dm_agent.tools.base import Tool
+from dm_agent.tracing.session import parse_failed_response_placeholder
 from dm_agent.tracing.writer import SessionWriter
 
 from .capabilities import AgentCapability, CapabilityContext
@@ -164,7 +165,8 @@ class ReactAgent:
             persistence=self._persistence,
             on_error=self._record_hook_error,
         )
-        # read-before-edit 守卫：edit_file 前必须读过目标文件，且写后需重读。
+        # read-before-edit 守卫：首次编辑前必须读过目标文件；依赖行号的连续编辑
+        # 在写后需重读，内容锚定编辑由唯一精确匹配保证当前性。
         self.enable_edit_guard = enable_edit_guard
         self._edit_guard = ReadBeforeEditGuard(
             enabled=enable_edit_guard, trace_writer=self.trace_writer
@@ -258,14 +260,26 @@ class ReactAgent:
         if self.trace_writer:
             self.trace_writer.record("hook_error", failure.to_trace_payload())
 
-    def _append_history(self, role: str, content: str, *, kind: str) -> None:
+    def _append_history(
+        self,
+        role: str,
+        content: str,
+        *,
+        kind: str,
+        context_content: str | None = None,
+    ) -> None:
         """把一条消息追加进对话历史，同时在会话日志里落一条 ``message`` 条目。
 
         ``conversation_history`` 与 ``RunContext.history_entry_ids`` 必须逐位对应——
         压缩条目的 ``first_kept_entry_id`` 靠这个映射把「第几条消息」翻译成 entry id。
         没有 trace_writer 时补一个空 id 占位，保证下标始终对齐。
+
+        ``context_content`` 只改变后续发给模型的派生视图；会话日志仍记录 ``content``
+        原文。解析失败响应用这条路径保留审计证据，同时不再污染上下文。
         """
-        self.conversation_history.append({"role": role, "content": content})
+        self.conversation_history.append(
+            {"role": role, "content": content if context_content is None else context_content}
+        )
         entry_id = ""
         if self.trace_writer:
             entry_id = self.trace_writer.record_message(
@@ -474,12 +488,23 @@ class ReactAgent:
                     raw_response=raw,
                 )
 
-            # 将 AI 响应添加到历史记录
-            self._append_history("assistant", raw, kind="model_response")
             try:
                 parsed_response = parse_agent_response(raw)
             except ValueError as exc:
+                context_replacement = parse_failed_response_placeholder(len(raw))
+                self._append_history(
+                    "assistant",
+                    raw,
+                    kind="model_response",
+                    context_content=context_replacement,
+                )
                 metadata["parse_error_count"] += 1
+                metadata["parse_error_context_omitted_count"] = (
+                    int(metadata.get("parse_error_context_omitted_count", 0)) + 1
+                )
+                metadata["parse_error_context_omitted_chars"] = int(
+                    metadata.get("parse_error_context_omitted_chars", 0)
+                ) + len(raw)
                 metadata["failure_reason"] = str(exc)
                 observation = f"Agent response parse failed: {exc}"
                 if self.trace_writer:
@@ -487,6 +512,7 @@ class ReactAgent:
                         step_number=step_num,
                         raw_response=raw,
                         error=str(exc),
+                        context_replacement=context_replacement,
                     )
                 step = Step(
                     thought="",
@@ -513,6 +539,7 @@ class ReactAgent:
                         ),
                     )
                 continue
+            self._append_history("assistant", raw, kind="model_response")
             parsed = parsed_response.data
             if parsed_response.repaired:
                 metadata["parse_repair_count"] += 1
@@ -630,7 +657,8 @@ class ReactAgent:
             action_input = invocation.arguments
             observation = invocation.observation
             error_kind = invocation.error_kind
-            guard_blocked = invocation.blocked  # 被守卫拦下的编辑不算计划完成
+            # ``no_change`` 是显式的“预期效果未发生”信号，不是“工具只读”。
+            no_progress = invocation.blocked or invocation.no_change
             accepted = False
             if action == "task_complete" and invocation.tool_succeeded:
                 accepted, observation = self._completion_gate.review(
@@ -660,9 +688,9 @@ class ReactAgent:
                     failed=self._is_failure_observation(observation, action=action),
                 )
 
-            # 更新计划进度（如果有计划；被守卫拦下的编辑不算完成）。
+            # 更新计划进度（如果有计划；被拦下或明确无进展的调用不算完成）。
             # 只有下一个待办步骤的动作匹配时才标记，消除同名动作的二义性。
-            if plan and self.planner and not guard_blocked:
+            if plan and self.planner and not no_progress:
                 next_step = self.planner.get_next_step()
                 if next_step and next_step.action == action:
                     self.planner.mark_completed(next_step.step_number, observation)

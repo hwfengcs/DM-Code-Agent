@@ -180,15 +180,22 @@ The current schema records these event types:
 - `plan`: initial planner steps.
 - `plan_error`: planning failure.
 - `llm_call`: message count, roles, temperature, prompt chars, estimated prompt tokens, and response chars.
-- `parse_error`: invalid model response information.
+- `parse_error`: invalid model response information. New runs also record the exact
+  `context_replacement` used for the next request: the original assistant `message` remains in
+  the append-only log for audit, while the live context carries a short placeholder. Historical
+  events without this field keep their original context semantics when rebuilt.
 - `tool_call`: action, action input, observation, and failure flag.
 - `observation_truncated`: a tool observation exceeded the cap; original/kept chars and line count.
 - `context_budget`: the estimated-token budget forced an early compression
   (`phase=forced_compress`), rejected a candidate with no token saving
   (`phase=compress_rejected_no_savings`), or the effective view is still over budget
   (`phase=post_compress_still_over`).
-- `edit_guard`: an `edit_file` call was blocked (`reason=never_read` or `stale_read`) until the
-  target range is re-read.
+- `edit_guard`: an `edit_file` call was blocked. `never_read` applies to every edit mode;
+  `stale_read` protects line-number edits after a write until the target range is re-read.
+  Content-anchored edits remain allowed because the tool re-validates one unique exact match
+  against the current file before writing.
+- `edit_noop`: a content-anchored `edit_file` call supplied identical `old_string` and
+  `new_string`; no file write or write-ledger transition occurred.
 - `memory_invalidation`: memory hygiene superseded failure memories after a later success.
   **Historical only** — the `--enable-memory-hygiene` switch was removed in v2.1, so new runs
   never emit this event; it is documented because old session logs still contain it.
@@ -198,7 +205,10 @@ The current schema records these event types:
 - `run_resumed`: a run continued from a `--resume` checkpoint (records the resume step).
 - `step`: ReAct step with thought, action, input, and observation.
 - `replan`: regenerated plan after a failure.
-- `run_end`: final answer, status, duration, and agent metadata.
+- `run_end`: final answer, status, duration, and agent metadata. Relevant direct counters include
+  `edit_guard_block_count`, `edit_noop_count`, `parse_error_context_omitted_count`, and
+  `parse_error_context_omitted_chars`; “omitted” means absent from later model context, not deleted
+  from the audit log.
 - `run_error`: unhandled runtime error.
 
 ## Trace Analysis
@@ -246,12 +256,23 @@ originals stay in the log, the same session can be replayed both ways:
 from dm_agent.tracing import load_session_entries, rebuild_context
 
 entries = load_session_entries("sessions/run.jsonl")
-sent = rebuild_context(entries, apply_compaction=True)    # what the model actually saw
-full = rebuild_context(entries, apply_compaction=False)   # as if compaction never happened
+sent = rebuild_context(entries, apply_compaction=True)    # compaction + parse replacements
+full = rebuild_context(entries, apply_compaction=False)   # no compaction; replacements still apply
 ```
 
 The difference between the two is exactly what compaction folded away, which is what makes the
 `no_compression` ablation attributable rather than just a pair of end-to-end scores.
+
+Malformed assistant responses follow the same non-destructive principle without being classified
+as compaction: the original `message` remains auditable, and a following `parse_error` may append
+the exact `context_replacement` used by later requests. `rebuild_context` applies that replacement
+only when the field is present, so traces written before this policy still reproduce their old
+raw-response context.
+
+`apply_compaction` controls compaction only. To inspect a malformed raw response, read the adjacent
+`message` / `parse_error` audit entries; `rebuild_context(..., False)` still applies an explicitly
+recorded parse-error replacement because that replacement was part of the actual conversation
+state, not a compression experiment.
 
 `rebuild_context` also takes `until_entry_id=` to reconstruct the window as of an earlier entry.
 If one JSONL contains multiple runs, the latest `run_start` in the selected prefix is a hard

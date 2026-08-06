@@ -58,6 +58,7 @@ these entries.
 | [37](37-step-budget-and-edit-self-damage.md) | Step budget is not the bottleneck; line-number edit self-damage is | v2.1 | measured (negative) |
 | [38](38-edit-file-precision.md) | Content-anchored edits and post-edit echo: self-damage 13 to 0 | v2.1 | measured |
 | [39](39-observation-failure-classification.md) | Failure verdict by provenance: 34 spurious replans to 0; first `--repeat 3` error bars (noise floor is +/-5 tasks) | v2.1 | measured |
+| [40](40-empty-patch-loops.md) | Empty-patch loops: mechanical fixes plus a SWE-only progress guard | v2.1 | measured: empty patches 2 → 0; official harness 1/2 |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

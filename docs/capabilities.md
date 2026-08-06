@@ -20,7 +20,8 @@ DM-Code-Agent 面向真实的代码维护任务：在本地工作区里读写文
 | 上下文折叠 | 开 | Mem0 风格本地原子记忆，**非破坏式**——原始条目一条不删，见 [会话与 trace](tracing.md#non-destructive-compaction) |
 | 观察截断 + 分页提示 | 开 | 单条观察超 `--max-observation-chars` 时截断 |
 | token 预算触发折叠 | 开 | 估算超 `--context-token-budget` 时提前折叠 |
-| read-before-edit 守卫 | 开 | `edit_file` 前必须读过目标文件，写后需重读 |
+| 解析失败上下文隔离 | 开 | malformed 原文保留在审计日志，后续模型上下文只携带显式记录的短占位 |
+| read-before-edit 守卫 | 开 | 首次 `edit_file` 前必须读过目标；内容锚定编辑可连续执行，行号编辑写后需重读；identity no-op 不写盘、不推进计划 |
 | 统一 LLM 重试 | 开 | 四家 provider 共用一套瞬时故障重试 |
 | 原子写 + 修改前备份 | 开 | 无开关；备份落在系统临时目录的 per-run 目录，不污染工作区 |
 | checkpoint / resume / fork | 按需 | run 级断点续跑，可从任意 entry 分叉 |
@@ -42,9 +43,9 @@ DM-Code-Agent 面向真实的代码维护任务：在本地工作区里读写文
 
 这是本项目一条明确的设计约定：
 
-- **基础设施护栏默认开**。观察截断、token 预算、read-before-edit 守卫、LLM 重试、
-  原子写+备份——它们防止 agent 因为上下文爆掉、瞬时网络故障或盲改文件而失败，
-  开着不会改变任务语义。
+- **基础设施护栏默认开**。观察截断、token 预算、解析失败上下文隔离、read-before-edit
+  守卫、LLM 重试、原子写+备份——它们防止 agent 因为上下文爆掉、瞬时网络故障或盲改
+  文件而失败，开着不会改变任务语义。
 - **行为/算法类默认关**。目前只剩 Adaptive Replanning——它会改变 agent 的决策路径，
   属于需要实验验证的假设，所以必须显式打开。
 
@@ -62,3 +63,7 @@ procedural 原子记忆，按当前任务检索成一段 `<agent_memory>`，同�
 精确量化折叠掉了什么——这是 `no_compression` ablation 可信的前提。
 
 实现在 `dm_agent/memory/context_compressor.py`，编排在 `dm_agent/core/context_window.py`。
+
+解析失败上下文隔离不是 compaction，也不删除消息：原始 assistant `message` 仍按 trace /
+checkpoint 的保真级别保存，`parse_error.context_replacement` 只记录派生上下文。所有已经穷尽
+容错解析的失败响应，无论长短，后续请求都使用占位；旧日志没有该字段时保持历史行为。

@@ -22,6 +22,13 @@ infrastructure guards:
 All three are auditable: new trace events `observation_truncated`,
 `context_budget`, and `edit_guard` (trace schema 1.0 → 1.1, additive).
 
+> **2026-08-06 correction:** this guard was designed when `edit_file` only had line-number
+> addressing. After content-anchored replacement landed, “re-read after any write” became an
+> over-broad legacy rule: an exact anchor is revalidated against the current file and does not use
+> stale line numbers. Devlog [40](40-empty-patch-loops.md) narrows `stale_read` to line-number mode
+> while keeping `never_read` for every edit mode. The original measurement below is retained as
+> the historical design record.
+
 ## Context
 
 The v2 review of long-context behavior found:

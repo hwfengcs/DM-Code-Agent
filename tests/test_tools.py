@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+import dm_agent.tools.file_tools as file_tools_module
 from dm_agent.core.observation import is_failure_observation
 from dm_agent.tools import task_complete
 from dm_agent.tools.code_analysis_tools import get_code_metrics, get_function_signature, parse_ast
@@ -101,6 +102,26 @@ def test_old_string_refuses_ambiguous_matches_without_writing(tmp_path):
     assert target.read_text(encoding="utf-8") == original
     assert "2 处" in observation
     assert not is_failure_observation(observation)
+
+
+def test_old_string_identity_is_reported_without_writing(tmp_path, monkeypatch):
+    target = tmp_path / "mod.py"
+    original = "value = 1\n"
+    target.write_text(original, encoding="utf-8")
+    writes = []
+
+    monkeypatch.setattr(
+        file_tools_module,
+        "_atomic_write_text",
+        lambda path, content: writes.append((path, content)) or "",
+    )
+
+    observation = edit_file({"path": str(target), "old_string": original, "new_string": original})
+
+    assert writes == []
+    assert target.read_text(encoding="utf-8") == original
+    assert observation.startswith("未改动：")
+    assert not is_failure_observation(observation, action="edit_file")
 
 
 def test_old_string_and_line_numbers_are_mutually_exclusive(tmp_path):

@@ -92,7 +92,8 @@ def _builtin_tools() -> list[Tool]:
                 "Edit a file. PREFERRED: content-anchored replace with "
                 '{"path": string, "old_string": string, "new_string": string} — '
                 "old_string must match exactly once (whitespace and indentation "
-                "included); if it matches zero or several times nothing is written. "
+                "included), and new_string must contain an actual change; if the strings "
+                "are identical or old_string matches zero or several times, nothing is written. "
                 "Fallback (line-numbered, use only when content anchoring will not do): "
                 '{"path": string, "operation": "insert"|"replace"|"delete", '
                 '"line_start": int, "line_end": int (for replace/delete), '
