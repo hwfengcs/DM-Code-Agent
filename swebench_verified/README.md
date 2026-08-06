@@ -36,15 +36,41 @@ Windows 额外需要 `_winshim/`：官方 harness `import resource`（Unix-only�
 
 ## 跑一轮
 
+### 先冻结选择
+
+`run.py` 不再按数据集顺序取前 N。它先读取完整 Verified test 候选集，再生成稳定的跨仓库
+选择序列：repo 之间 round-robin；每个 repo 内按 `<15 min fix`、`15 min - 1 hour`、
+`1-4 hours`、`>4 hours`、`unknown` difficulty bucket round-robin；bucket 内用固定 selection
+version 与 `instance_id` 的 SHA-256 排序。输入行顺序不会影响结果，`limit=N` 永远是
+`limit=N+1` 的前缀。
+
+先只看 20 题选择，不启动 Docker、不构造 LLM client、也不运行 Agent：
+
+```bash
+python -m swebench_verified.run --limit 20 --selection-only \
+  --output swebench_work/preds-20.jsonl
+```
+
+命令只写 `swebench_work/preds-20.selection.json`，其中有有序 instance IDs、repo/difficulty
+分布、完整候选集 fingerprint 与 selection signature，不含题面、`FAIL_TO_PASS` 或
+`PASS_TO_PASS`。首次运行若还没有带完整性 metadata 的 cache，会通过 HuggingFace
+datasets-server 拉取完整 test split；旧的 10 行 JSONL 没有完整性证明，会被识别为 partial
+并替换。cache 仍位于 `swebench_work/`，不会复制进 Agent 工作区。
+
 **第一步：预测**（在主 venv 里，需要 `.env` 的 API key）
 
 ```bash
-python -m swebench_verified.run --limit 10 --max-steps 60 \
-  --output swebench_work/preds.jsonl --trace-dir swebench_work/traces
+python -m swebench_verified.run --limit 20 --max-steps 60 \
+  --output swebench_work/preds-20.jsonl --trace-dir swebench_work/traces-20
 ```
 
 每题会：拉官方评测镜像 → `docker cp` 出 `/testbed` 当工作区 → 跑 ReactAgent →
-`git diff` 出 patch。断了用 `--resume` 接着跑。
+`git diff` 出 patch。断了用相同参数加 `--resume` 接着跑。续跑前会比较现有 manifest 与
+当前 dataset/config/split、selection version、candidate fingerprint、limit 和 selection
+signature；任何一项变化、manifest 缺失/损坏、prediction ID 越界或重复都会在 Docker/API
+之前拒绝续跑。`harness_error` 仍会从旧输出移除并重试，已经真正跑过 Agent 的记录继续跳过。
+
+如需显式指定 manifest 路径，使用 `--selection-manifest PATH`。
 
 预测记录除官方要求的三列外，还带 `dm_status/failure`、`dm_patch_chars`、
 `dm_duration_seconds`、`dm_difficulty`；正常完成 Agent run 时另带
@@ -69,6 +95,23 @@ patch”的调用；`dm_parse_error_context_omitted_chars` 只计未进入后续
 predictions、`agent_exception` 或 `harness_error` 没有 `dm_diagnostics_version` 或某个字段
 时表示**未测量**，不能按真实 0 解读。验收新诊断字段时要写新 output，不能用 `--resume`
 静默保留旧记录。
+
+### 从 20 题扩到 50 题
+
+改变 `--limit` 会改变 manifest，因此不能直接对 20 题输出加 `--limit 50 --resume`。安全的
+扩容流程是显式创建一套 50 题契约，再利用前缀稳定性迁移已完成记录：
+
+```powershell
+python -m swebench_verified.run --limit 50 --selection-only `
+  --output swebench_work/preds-50.jsonl
+Copy-Item swebench_work/preds-20.jsonl swebench_work/preds-50.jsonl
+python -m swebench_verified.run --limit 50 --max-steps 60 --resume `
+  --output swebench_work/preds-50.jsonl --trace-dir swebench_work/traces-50
+```
+
+第三条命令会验证迁入的每个 ID 都属于 50 题选择；由于 20 题选择是 50 题选择的前缀，已完成
+记录可以复用，剩余 30 题才进入预测。保留两套 output 与 manifest，报告即可追溯各自的样本
+边界。执行前仍应先检查 Docker 磁盘占用，并由使用者决定是否承担真实运行成本。
 
 **第二步：判分**（在 swebench venv 里）
 
@@ -131,8 +174,9 @@ resolved 1/2、harness error 0。14096 虽不再为空，仍跑满 60 步；44 �
 分支做了确定性契约收紧，没有再消耗模型调用，因此 1/2 也不冒充收紧后源码树的新端到端
 分数。细节与适用边界见 devlog 40。
 
-> 这 10 题按数据集顺序取前 N，**全部来自 astropy 单一仓库**，不构成对
-> SWE-bench Verified 整体的估计。扩子集时应改成跨仓库抽样。
+> 这 10 题是旧版本按数据集顺序取前 N 的历史结果，**全部来自 astropy 单一仓库**，
+> 不构成对 SWE-bench Verified 整体的估计。新的跨仓库选择契约只影响后续运行，不改写
+> 已归档实验的样本定义或分数。
 
 ## 四个踩过的坑
 

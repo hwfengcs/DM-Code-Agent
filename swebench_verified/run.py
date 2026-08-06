@@ -16,6 +16,13 @@ from pathlib import Path
 
 from .dataset import fetch_instances
 from .predict import docker_preflight, predict_one
+from .selection import (
+    build_selection_manifest,
+    load_selection_manifest,
+    resume_manifest_mismatches,
+    select_instances,
+    write_selection_manifest,
+)
 
 DEFAULT_CACHE = Path("swebench_work/instances.jsonl")
 
@@ -28,9 +35,30 @@ DEFAULT_CACHE = Path("swebench_work/instances.jsonl")
 DEFAULT_WORKSPACES = Path(tempfile.gettempdir()) / "dm-agent-swebench"
 
 
+def _default_manifest_path(output: Path) -> Path:
+    return output.with_suffix(".selection.json")
+
+
+def _load_resume_records(output: Path, selected_ids: set[str]) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line_number, line in enumerate(output.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        instance_id = record.get("instance_id")
+        if not isinstance(instance_id, str) or instance_id not in selected_ids:
+            raise ValueError(f"line {line_number} has an instance outside the current selection")
+        if instance_id in seen:
+            raise ValueError(f"line {line_number} duplicates instance_id {instance_id}")
+        seen.add(instance_id)
+        records.append(record)
+    return records
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run DM-Code-Agent over SWE-bench Verified.")
-    parser.add_argument("--limit", type=int, default=10, help="How many instances (dataset order).")
+    parser.add_argument("--limit", type=int, default=10, help="How many stratified instances.")
     parser.add_argument("--output", type=Path, required=True, help="predictions.jsonl path.")
     parser.add_argument("--provider", default="deepseek")
     parser.add_argument("--model", default=None)
@@ -39,6 +67,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--trace-dir", type=Path, default=None)
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument(
+        "--selection-manifest",
+        type=Path,
+        default=None,
+        help="Selection manifest path (default: <output>.selection.json).",
+    )
+    parser.add_argument(
+        "--selection-only",
+        action="store_true",
+        help="Write the selection manifest without Docker, an API client, or an agent run.",
+    )
     parser.add_argument("--workspace-root", type=Path, default=DEFAULT_WORKSPACES)
     parser.add_argument(
         "--keep-workspace",
@@ -52,31 +91,76 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.limit < 0:
+        parser.error("--limit must be non-negative")
+
+    candidates = fetch_instances(cache_path=args.cache)
+    instances = select_instances(candidates, args.limit)
+    manifest = build_selection_manifest(candidates, instances, args.limit)
+    manifest_path = args.selection_manifest or _default_manifest_path(args.output)
+
+    if args.resume and args.output.exists():
+        if not manifest_path.exists():
+            print(
+                "无法续跑：predictions 已存在，但对应 selection manifest 缺失；"
+                "请保留旧输出并使用新的 --output 重新开始。",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            existing_manifest = load_selection_manifest(manifest_path)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"无法续跑：selection manifest 无法读取：{exc}", file=sys.stderr)
+            return 2
+        mismatches = resume_manifest_mismatches(existing_manifest, manifest)
+        if mismatches:
+            print(
+                "无法续跑：selection manifest 与当前选择不一致（"
+                + ", ".join(mismatches)
+                + "）；请使用新的 --output。",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            resume_records = _load_resume_records(args.output, set(manifest["instance_ids"]))
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(f"无法续跑：predictions 内容与当前选择不兼容：{exc}", file=sys.stderr)
+            return 2
+    else:
+        resume_records = []
+
+    print(
+        f"selected {len(instances)}/{len(candidates)} instances across "
+        f"{len(manifest['repo_counts'])} repos; signature={manifest['selection_signature']}"
+    )
+
+    if args.selection_only:
+        write_selection_manifest(manifest_path, manifest)
+        print(f"selection manifest -> {manifest_path}")
+        return 0
+
     docker_error = docker_preflight()
     if docker_error:
         print(f"docker 不可用：{docker_error}", file=sys.stderr)
         print("请确认 Docker Desktop 正在运行（docker info 能返回版本号）后重试。", file=sys.stderr)
         return 2
 
-    instances = fetch_instances(args.limit, cache_path=args.cache)
-    print(f"loaded {len(instances)} instances from SWE-bench Verified")
+    write_selection_manifest(manifest_path, manifest)
+    print(f"selection manifest -> {manifest_path}")
 
     done: set[str] = set()
     kept: list[str] = []
     if args.resume and args.output.exists():
         retryable = 0
-        for line in args.output.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            record = json.loads(line)
+        for record in resume_records:
             # 只跳过真正跑过 agent 的题。harness_error 是环境问题（daemon 挂了、
             # 镜像拉不下来），把它当"已完成"会让重跑静默跳过全部失败题——
             # 实测踩过：daemon 中途退出，10 题全记成 harness_error。
             if record.get("dm_status") == "harness_error":
                 retryable += 1
                 continue
-            done.add(record["instance_id"])
-            kept.append(line)
+            done.add(str(record["instance_id"]))
+            kept.append(json.dumps(record, ensure_ascii=False))
         print(f"resume: {len(done)} already predicted, {retryable} will be retried")
         # 把可重试的记录从文件里清掉，避免同一 instance_id 出现两条。
         if retryable:

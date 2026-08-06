@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import urllib.parse
 import urllib.request
@@ -18,6 +19,7 @@ from typing import Any
 DATASET = "princeton-nlp/SWE-bench_Verified"
 _ROWS_API = "https://datasets-server.huggingface.co/rows"
 _PAGE = 100  # datasets-server 单次返回上限
+_CACHE_SCHEMA_VERSION = 1
 
 # 一条实例真正需要的字段。problem_statement 是喂给 agent 的题面；
 # FAIL_TO_PASS / PASS_TO_PASS 只有官方 harness 用得到，我们原样透传不解读。
@@ -33,7 +35,7 @@ _FIELDS = (
 )
 
 
-def _fetch_page(offset: int, length: int) -> list[dict[str, Any]]:
+def _fetch_page(offset: int, length: int) -> tuple[list[dict[str, Any]], int]:
     query = urllib.parse.urlencode(
         {
             "dataset": DATASET,
@@ -45,35 +47,107 @@ def _fetch_page(offset: int, length: int) -> list[dict[str, Any]]:
     )
     with urllib.request.urlopen(f"{_ROWS_API}?{query}", timeout=120) as response:
         payload = json.load(response)
-    if "rows" not in payload:
+    if "rows" not in payload or not isinstance(payload.get("num_rows_total"), int):
         raise RuntimeError(f"datasets-server 未返回 rows：{json.dumps(payload)[:400]}")
-    return [row["row"] for row in payload["rows"]]
+    return [row["row"] for row in payload["rows"]], payload["num_rows_total"]
 
 
-def fetch_instances(limit: int, *, cache_path: Path) -> list[dict[str, Any]]:
-    """取前 ``limit`` 条实例（数据集自带顺序，确定性可复现）。
+def _cache_metadata_path(cache_path: Path) -> Path:
+    return cache_path.with_suffix(".meta.json")
 
-    数据集按 instance_id 字典序排列，取前 N 条等价于一个稳定子集——换机器、
-    换时间跑同一个 ``--limit`` 拿到的是同一批题，报告之间才可比。
-    """
-    if cache_path.exists():
-        cached = [json.loads(line) for line in cache_path.read_text(encoding="utf-8").splitlines()]
-        if len(cached) >= limit:
-            return cached[:limit]
 
-    rows: list[dict[str, Any]] = []
-    while len(rows) < limit:
-        page = _fetch_page(len(rows), min(_PAGE, limit - len(rows)))
-        if not page:
-            break
-        rows.extend(page)
+def _instances_fingerprint(instances: list[dict[str, Any]]) -> str:
+    payload = "\n".join(
+        json.dumps(instance, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        for instance in instances
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    instances = [{field: row.get(field) for field in _FIELDS} for row in rows[:limit]]
+
+def _read_complete_cache(cache_path: Path) -> list[dict[str, Any]] | None:
+    metadata_path = _cache_metadata_path(cache_path)
+    if not cache_path.exists() or not metadata_path.exists():
+        return None
+    try:
+        instances = [
+            json.loads(line)
+            for line in cache_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    expected = {
+        "schema_version": _CACHE_SCHEMA_VERSION,
+        "dataset": DATASET,
+        "config": "default",
+        "split": "test",
+        "complete": True,
+        "row_count": len(instances),
+        "fingerprint": _instances_fingerprint(instances),
+    }
+    if any(metadata.get(key) != value for key, value in expected.items()):
+        return None
+    return instances
+
+
+def _write_complete_cache(cache_path: Path, instances: list[dict[str, Any]]) -> None:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(
+    cache_tmp = cache_path.with_name(f"{cache_path.name}.tmp")
+    metadata_path = _cache_metadata_path(cache_path)
+    metadata_tmp = metadata_path.with_name(f"{metadata_path.name}.tmp")
+    cache_tmp.write_text(
         "\n".join(json.dumps(item, ensure_ascii=False) for item in instances) + "\n",
         encoding="utf-8",
     )
+    metadata = {
+        "schema_version": _CACHE_SCHEMA_VERSION,
+        "dataset": DATASET,
+        "config": "default",
+        "split": "test",
+        "complete": True,
+        "row_count": len(instances),
+        "fingerprint": _instances_fingerprint(instances),
+    }
+    metadata_tmp.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    cache_tmp.replace(cache_path)
+    metadata_tmp.replace(metadata_path)
+
+
+def fetch_instances(*, cache_path: Path) -> list[dict[str, Any]]:
+    """读取完整 Verified test 候选集；旧 partial cache 会被重新拉取。
+
+    JSONL 旁的 metadata 明确记录完整性、行数与指纹。没有 metadata 的旧缓存无法证明
+    自己覆盖了完整 split，因此不能用于跨仓库抽样。
+    """
+    cached = _read_complete_cache(cache_path)
+    if cached is not None:
+        return cached
+
+    rows: list[dict[str, Any]] = []
+    expected_total: int | None = None
+    while expected_total is None or len(rows) < expected_total:
+        page, total = _fetch_page(len(rows), _PAGE)
+        if expected_total is None:
+            expected_total = total
+        elif total != expected_total:
+            raise RuntimeError(f"datasets-server 分页期间总行数变化：{expected_total} -> {total}")
+        if not page:
+            if expected_total == 0:
+                break
+            raise RuntimeError(f"datasets-server 在 {len(rows)}/{expected_total} 行处提前返回空页")
+        rows.extend(page)
+    if len(rows) != expected_total:
+        raise RuntimeError(f"datasets-server 返回 {len(rows)} 行，预期 {expected_total} 行")
+
+    instances = [{field: row.get(field) for field in _FIELDS} for row in rows]
+    instance_ids = [instance["instance_id"] for instance in instances]
+    if len(set(instance_ids)) != len(instance_ids):
+        raise RuntimeError("datasets-server 返回了重复 instance_id")
+    _write_complete_cache(cache_path, instances)
     return instances
 
 
