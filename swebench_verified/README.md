@@ -178,7 +178,21 @@ resolved 1/2、harness error 0。14096 虽不再为空，仍跑满 60 步；44 �
 > 不构成对 SWE-bench Verified 整体的估计。新的跨仓库选择契约只影响后续运行，不改写
 > 已归档实验的样本定义或分数。
 
-## 四个踩过的坑
+### 跨仓库 20 → 50 真实结果
+
+使用 selection manifest v1、DeepSeek `deepseek-chat`、temperature 0、max steps 60：
+
+| 范围 | resolved | completed | empty patch | error |
+| --- | ---: | ---: | ---: | ---: |
+| 前缀 1–20 | **11/20 = 55%** | 18 | 2 | 0 |
+| 新增 21–50 | **10/30 = 33.3%** | 25 | 5 | 0 |
+| 总体 1–50 | **21/50 = 42%** | 43 | 7 | 0 |
+
+20 题是 50 题的严格嵌套前缀，50 文件只新增运行后 30 题，因此两行不是独立复验。
+20/50 分别覆盖 12 个仓库；50 题 difficulty 为 easy 21、medium 18、hard 8、very hard 3。
+完整配置、失败分层、过程计数和 Windows host 修复见 [devlog 42](../docs/research-log/42-swebench-crossrepo-50.md)。
+
+## 六个踩过的坑
 
 都是「在 Windows 上跑 Linux 仓库」引出的，改错任何一个都会让分数无效：
 
@@ -216,6 +230,15 @@ resolved 1/2、harness error 0。14096 虽不再为空，仍跑满 60 步；44 �
 
    > 判读时记住：**`P2P 全 0` 是环境故障的指纹，不是能力信号**。agent 改一行不可能
    > 让 322 个原本通过的测试全挂。
+
+5. **Windows 不能直接 materialize 镜像里的 symlink**。Django 镜像的 `docker cp`
+   会因创建链接权限失败。现在从 stdout 接收 tar 并受控解包：Windows 写 Git link-target
+   文本并设置 `core.symlinks=false`，Linux/macOS 保留原生 symlink 与 mode；路径穿越、
+   重复目标、Windows 保留名和大小写冲突会被拒绝。
+
+6. **GBK 会在测试跑完后把成功判分变成 harness error**。官方代码存在未指定 encoding
+   的文本写入，输出含非 GBK 字符时抛 `UnicodeEncodeError`。`force_lf_writes()` 现在同时
+   显式使用 UTF-8；最终 20/50 报告均为 `error=0`，早期受编码故障影响的报告不作能力数字。
 
 另有一道安全闸 `_assert_git_root`：工作区必须自己就是 git 仓库根，否则拒绝执行
 `git add -A`——否则 git 会向上查找，作用到本项目的仓库上（实测差点中招）。

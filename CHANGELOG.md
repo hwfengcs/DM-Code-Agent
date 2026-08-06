@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Real SWE-bench Verified cross-repo run and Windows harness hardening (2026-08-06)
+
+- Added the archived 20/50 selection manifests, predictions, and official SWE-bench 4.1.0
+  reports. The deterministic 20-task prefix resolved 11/20 (55%); the nested 50-task run
+  resolved 21/50 (42%), with 0 harness errors.
+- Hardened Docker workspace materialization on Windows: safe tar extraction, Git symlink-text
+  semantics, traversal/collision checks, native symlink preservation on non-Windows, and
+  cleanup on Docker launch failure.
+- Patched the official evaluation boundary to force UTF-8 text writes and LF shell scripts;
+  this prevents host encoding/line-ending failures from being reported as model failures.
+
 ### `edit_file` gains content-anchored editing and a post-edit echo (2026-08)
 
 devlog 37 traced half of all benchmark failures to one mechanism: `edit_file`'s `replace`

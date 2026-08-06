@@ -174,10 +174,15 @@ external extension — that is precisely what the extension system is for.
 
 ### 🧪 No inflated scores
 
-**This project never claims an evaluation improvement it has not actually run.** Real
-SWE-bench / Docker Tier-2 verifier / cross-model scoring are **frozen**, and the SWE-bench Lite
-suite was removed in v2.1 because it did not work: the Tier-1 baseline was 0.0% resolved and
+**This project never claims an evaluation improvement it has not actually run.** Docker Tier-2
+verification and cross-model scoring are **frozen**, and the SWE-bench Lite suite was removed
+in v2.1 because it did not work: the Tier-1 baseline was 0.0% resolved and
 polluted by host verifier noise, and the Tier-2 verifier was never implemented.
+
+The independent `swebench_verified/` subsystem has now completed a real cross-repository run
+with the official SWE-bench 4.1.0 harness: 11/20 resolved (55%) and 21/50 resolved (42%), with
+zero final harness errors. The 20-task sample is a strict prefix of the 50-task sample, not an
+independent replication; see [devlog 42](docs/research-log/42-swebench-crossrepo-50.md).
 
 The scoreboard is now the bundled **coding + maintenance benchmark**: 30 tasks judged pass/fail
 by hidden tests, with no Docker or HuggingFace dependency. Measured: DeepSeek scores
@@ -281,6 +286,7 @@ The authoritative prose version is [docs/architecture.md](docs/architecture.md).
 | MCP integration | ✅ | ❌ | ✅ | ❌ | ❌ |
 | Bundled hidden-test benchmark | ✅ 30 tasks, scored | ❌ | ❌ | SWE-bench | ❌ |
 | Published SWE-bench Lite score | ❌ removed (did not work, see above) | ❌ | ✅ | ✅ | ❌ |
+| SWE-bench Verified (local cross-repo run) | ✅ 50 tasks, official harness, 21/50 | — | — | — | — |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
 Comparison protocol, module status, and roadmap: [project status](docs/project-status.md).

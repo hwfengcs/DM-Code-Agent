@@ -7,10 +7,12 @@
 
 **本项目不声明任何未实际运行过的评测分数提升。**
 
-真实 SWE-bench / Docker Tier-2 verifier / 跨模型跑分**冻结**，且 v2.1 已把
+SWE-bench Lite / Docker Tier-2 verifier / 跨模型跑分**冻结**，且 v2.1 已把
 SWE-bench Lite 子系统整个移除：它跑不通（Tier-1 baseline 0.0% resolved，且受 host
 verifier 环境噪声污染，按本项目自己的口径就不能与官方 leaderboard 比较），
-Tier-2 verifier 从未实现，CI 也从不跑它。
+Tier-2 verifier 从未实现，CI 也从不跑它。独立的 `swebench_verified/` 子系统随后使用
+官方 SWE-bench 4.1.0 harness 完成了一轮真实跨仓库运行：20 题 11/20（55%），50 题
+21/50（42%），最终报告 error=0；详见 [devlog 42](research-log/42-swebench-crossrepo-50.md)。
 
 **本项目的记分牌是自带的 coding + maintenance benchmark**：13 道题，本地建工作区 →
 agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overall_pass_rate`。
@@ -38,6 +40,7 @@ agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overal
 | MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
 | 自带 hidden-test benchmark | ✅ 30 题，可出分 | ❌ | ❌ | SWE-bench | ❌ |
 | 公开 SWE-bench Lite 分数 | ❌ 已移除（跑不通，见上） | ❌ | ✅ | ✅ | ❌ |
+| SWE-bench Verified（本地跨仓库实测） | ✅ 50 题，官方 harness，21/50 | — | — | — | — |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
 ## 算法模块状态
@@ -77,7 +80,8 @@ agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overal
 Self-Consistency / 工具熔断 / 记忆卫生 / LLM 摘要压缩。理由见
 [devlog 33](research-log/33-scope-reduction.md)。
 
-**冻结项**：Docker/Tier-2 verifier、真实 cross-model 跑分。
+**冻结项**：Docker/Tier-2 verifier、真实 cross-model 跑分。SWE-bench Verified 的本轮
+50 题结果已归档；后续只做固定 sentinel repeat 或离线失败分析，不把 20→50 当独立复验。
 
 短期在做的非算法方向：
 

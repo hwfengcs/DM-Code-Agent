@@ -18,10 +18,12 @@ import shutil
 import stat
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
 from contextlib import contextmanager, redirect_stdout
 from io import StringIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
@@ -33,6 +35,16 @@ from dm_agent.tracing import TraceWriter
 
 from .dataset import image_name
 from .progress_guard import SWEProgressLoopGuard
+
+IMAGE_PULL_TIMEOUT_SECONDS = 3600
+_WINDOWS_RESERVED_NAMES = {
+    "AUX",
+    "CON",
+    "NUL",
+    "PRN",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
 
 # 喂给 agent 的题面。SWE-bench 的约定是 agent 只看 problem_statement，
 # 看不到 test_patch，也不知道 FAIL_TO_PASS 具体是哪些用例。
@@ -103,7 +115,13 @@ def ensure_image(instance_id: str, *, quiet: bool = False, attempts: int = 3) ->
         if not quiet:
             suffix = f" (retry {attempt - 1})" if attempt > 1 else ""
             print(f"    pulling {image}{suffix} ...", flush=True)
-        pulled = _run(["docker", "pull", image])
+        try:
+            pulled = _run(["docker", "pull", image], timeout=IMAGE_PULL_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            last_error = f"超过 {IMAGE_PULL_TIMEOUT_SECONDS} 秒"
+            if attempt < attempts:
+                time.sleep(5 * attempt)
+            continue
         if pulled.returncode == 0:
             return image
         last_error = pulled.stderr.strip()[:300]
@@ -132,6 +150,115 @@ def _force_rmtree(path: Path) -> None:
         shutil.rmtree(path, onerror=_clear_readonly)
 
 
+def _archive_target(destination: Path, member_name: str, *, windows_semantics: bool) -> Path:
+    normalized = member_name.replace("\\", "/")
+    archive_path = PurePosixPath(normalized)
+    parts = [part for part in archive_path.parts if part not in ("", ".")]
+    if (
+        "\x00" in member_name
+        or archive_path.is_absolute()
+        or not parts
+        or any(part == ".." or ":" in part for part in parts)
+    ):
+        raise RuntimeError(f"Docker workspace archive 包含不安全路径：{member_name}")
+    if windows_semantics and any(
+        part.rstrip(" .") != part or part.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES
+        for part in parts
+    ):
+        raise RuntimeError(f"Docker workspace archive 包含 Windows 不兼容路径：{member_name}")
+    target = destination.joinpath(*parts)
+    if not target.resolve().is_relative_to(destination.resolve()):
+        raise RuntimeError(f"Docker workspace archive 路径越界：{member_name}")
+    return target
+
+
+def _extract_workspace_archive(
+    archive_path: Path,
+    destination: Path,
+    *,
+    windows_semantics: bool | None = None,
+) -> None:
+    """安全解包 docker cp tar；仅 Windows 把 symlink 写成 Git link text。"""
+    if windows_semantics is None:
+        windows_semantics = os.name == "nt"
+    destination_resolved = destination.resolve()
+    seen_targets: set[str] = set()
+    with tarfile.open(archive_path, mode="r:*") as archive:
+        for member in archive:
+            if member.name.replace("\\", "/").strip("/") in ("", "."):
+                continue
+            target = _archive_target(destination, member.name, windows_semantics=windows_semantics)
+            relative = target.relative_to(destination).as_posix()
+            target_key = relative.casefold() if windows_semantics else relative
+            if target_key in seen_targets:
+                raise RuntimeError(f"Docker workspace archive 包含重复目标：{member.name}")
+            seen_targets.add(target_key)
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+                if not windows_semantics:
+                    target.chmod(member.mode)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if member.issym():
+                if windows_semantics:
+                    target.write_bytes(member.linkname.encode(archive.encoding, archive.errors))
+                else:
+                    normalized_link = member.linkname.replace("\\", "/")
+                    link_path = PurePosixPath(normalized_link)
+                    if (
+                        "\x00" in member.linkname
+                        or link_path.is_absolute()
+                        or not link_path.parts
+                        or any(":" in part for part in link_path.parts)
+                    ):
+                        raise RuntimeError(
+                            f"Docker workspace archive 包含不安全 symlink：{member.name}"
+                        )
+                    resolved_link = target.parent.joinpath(*link_path.parts).resolve()
+                    if not resolved_link.is_relative_to(destination_resolved):
+                        raise RuntimeError(f"Docker workspace archive symlink 越界：{member.name}")
+                    target.symlink_to(member.linkname)
+                continue
+            if member.isfile() or member.islnk():
+                source = archive.extractfile(member)
+                if source is None:
+                    raise RuntimeError(f"Docker workspace archive 无法读取：{member.name}")
+                with source, target.open("wb") as handle:
+                    shutil.copyfileobj(source, handle)
+                if not windows_semantics:
+                    target.chmod(member.mode)
+                continue
+            raise RuntimeError(f"Docker workspace archive 含不支持的条目：{member.name}")
+
+
+def _copy_workspace_from_container(container: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    archive_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{destination.name}-",
+            suffix=".tar",
+            dir=destination.parent,
+            delete=False,
+        ) as archive_handle:
+            archive_path = Path(archive_handle.name)
+            copied = subprocess.run(
+                ["docker", "cp", f"{container}:/testbed/.", "-"],
+                stdout=archive_handle,
+                stderr=subprocess.PIPE,
+            )
+        if copied.returncode != 0:
+            error = copied.stderr.decode("utf-8", errors="replace").strip()[:300]
+            raise RuntimeError(f"复制 /testbed 失败：{error}")
+        _extract_workspace_archive(archive_path, destination)
+    except Exception:
+        _force_rmtree(destination)
+        raise
+    finally:
+        if archive_path is not None:
+            archive_path.unlink(missing_ok=True)
+
+
 def materialize_workspace(instance_id: str, destination: Path) -> Path:
     """把镜像里的 /testbed 取出来当工作区（含 .git，后面要靠它出 diff）。"""
     image = ensure_image(instance_id)
@@ -144,9 +271,7 @@ def materialize_workspace(instance_id: str, destination: Path) -> Path:
     if created.returncode != 0:
         raise RuntimeError(f"创建容器失败 {instance_id}: {created.stderr.strip()[:300]}")
     try:
-        copied = _run(["docker", "cp", f"{container}:/testbed", str(destination)])
-        if copied.returncode != 0:
-            raise RuntimeError(f"复制 /testbed 失败 {instance_id}: {copied.stderr.strip()[:300]}")
+        _copy_workspace_from_container(container, destination)
     finally:
         _run(["docker", "rm", "-f", container])
 
@@ -176,7 +301,7 @@ def _assert_git_root(workspace: Path, instance_id: str) -> None:
 
 
 def _neutralize_windows_git_noise(workspace: Path) -> None:
-    """关掉两个会把 Windows 平台差异写进 patch 的 git 行为。
+    """关掉三个会把 Windows 平台差异写进 patch 的 git 行为。
 
     镜像里的 /testbed 是在 Linux 上构建的，``docker cp`` 到 Windows 后：
 
@@ -184,14 +309,26 @@ def _neutralize_windows_git_noise(workspace: Path) -> None:
       于是一个还没被 agent 碰过的工作区，``git diff`` 就已经非空。
     - **行尾翻转**：全局 ``core.autocrlf=true`` 会在 git 下次触碰文件时把 LF 换成
       CRLF，agent 改一行就可能产出整文件级别的 diff。
+    - **symlink 权限**：Windows 无开发者模式时不能由 ``docker cp`` 创建 symlink；tar
+      解包会按 Git ``core.symlinks=false`` 语义写成 link-target 普通文件。
 
-    两者都会让 patch 里混进与题目无关的噪声，官方 harness 上 ``git apply`` 会失败
+    三者都会让 patch 里混进与题目无关的噪声，官方 harness 上 ``git apply`` 会失败
     或引入无关改动。仓库级配置只影响这个一次性工作区，不动用户的全局 git 设置。
     """
-    for key, value in (("core.fileMode", "false"), ("core.autocrlf", "false")):
-        _run(["git", "config", key, value], cwd=str(workspace))
+    if os.name != "nt":
+        return
+    for key, value in (
+        ("core.fileMode", "false"),
+        ("core.autocrlf", "false"),
+        ("core.symlinks", "false"),
+    ):
+        configured = _run(["git", "config", key, value], cwd=str(workspace))
+        if configured.returncode != 0:
+            raise RuntimeError(f"git config {key} 失败：{configured.stderr.strip()[:300]}")
     # autocrlf 是在配置生效后才重新判定的，把索引刷新一遍，抹掉 copy 阶段留下的假改动。
-    _run(["git", "checkout", "--", "."], cwd=str(workspace))
+    checked_out = _run(["git", "checkout", "--", "."], cwd=str(workspace))
+    if checked_out.returncode != 0:
+        raise RuntimeError(f"git checkout 清理平台噪声失败：{checked_out.stderr.strip()[:300]}")
 
 
 def extract_patch(workspace: Path) -> str:

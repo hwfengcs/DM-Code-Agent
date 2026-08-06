@@ -166,9 +166,13 @@ v2.1 做了一次减法：把 6 个**毕业标准依赖已冻结评测**的默�
 
 ### 🧪 不吹分数
 
-**本项目不声明任何未实际运行过的评测分数提升。** 真实 SWE-bench / Docker Tier-2 verifier /
+**本项目不声明任何未实际运行过的评测分数提升。** Docker Tier-2 verifier /
 跨模型跑分**冻结**，SWE-bench Lite 子系统已在 v2.1 移除（它跑不通：Tier-1 baseline
 0.0% resolved 且受 host verifier 噪声污染，Tier-2 verifier 从未实现）。
+
+独立的 `swebench_verified/` 子系统已用官方 SWE-bench 4.1.0 harness 完成真实跨仓库
+运行：20 题 resolved 11/20（55%），50 题 resolved 21/50（42%），最终 error=0。
+20 题是 50 题的严格前缀，不是独立复验；完整边界见 [devlog 42](docs/research-log/42-swebench-crossrepo-50.md)。
 
 记分牌换成自带的 **coding + maintenance benchmark**：13 道题，隐藏测试判 pass/fail，
 不依赖 Docker 与 HuggingFace。**30 道题**（coding 15 + maintenance 15）。
@@ -269,6 +273,7 @@ flowchart TD
 | MCP 集成 | ✅ | ❌ | ✅ | ❌ | ❌ |
 | 自带 hidden-test benchmark | ✅ 30 题，可出分 | ❌ | ❌ | SWE-bench | ❌ |
 | 公开 SWE-bench Lite 分数 | ❌ 已移除（跑不通，见「不吹分数」） | ❌ | ✅ | ✅ | ❌ |
+| SWE-bench Verified（本地跨仓库实测） | ✅ 50 题，官方 harness，21/50 | — | — | — | — |
 | License | MIT | Apache-2.0 | MIT | MIT | Apache-2.0 |
 
 对比口径、算法模块落地状态与 roadmap 见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。

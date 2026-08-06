@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import builtins
 import json
+import os
+import subprocess
+import tarfile
 from collections.abc import Callable
+from io import BytesIO
 from pathlib import Path
 from typing import Any, ClassVar
+
+import pytest
 
 from dm_agent.core import ReactAgent
 from dm_agent.core.capabilities import CapabilityContext
@@ -16,7 +23,7 @@ from dm_agent.core.events import (
 from dm_agent.tools.base import Tool
 from dm_agent.tools.file_tools import create_file, edit_file, read_file
 from dm_agent.tracing import TraceWriter, load_trace_events
-from swebench_verified import predict
+from swebench_verified import evaluate, predict
 from swebench_verified.progress_guard import SWEProgressLoopGuard
 
 
@@ -57,6 +64,182 @@ def _prepare_predict(monkeypatch, tmp_path: Path, result: dict[str, Any] | Excep
     monkeypatch.setattr(predict, "default_tools", lambda **_kwargs: [])
     monkeypatch.setattr(predict, "extract_patch", lambda _workspace: "diff --git a/a b/a\n")
     return workspace_root
+
+
+def test_extract_workspace_archive_materializes_symlinks_as_git_link_text(tmp_path):
+    archive_path = tmp_path / "workspace.tar"
+    regular = b"image bytes"
+    with tarfile.open(archive_path, "w") as archive:
+        directory = tarfile.TarInfo("docs/static")
+        directory.type = tarfile.DIRTYPE
+        archive.addfile(directory)
+        file_info = tarfile.TarInfo("docs/static/icon.png")
+        file_info.size = len(regular)
+        archive.addfile(file_info, BytesIO(regular))
+        link_info = tarfile.TarInfo("docs/theme/icon.png")
+        link_info.type = tarfile.SYMTYPE
+        link_info.linkname = "../static/icon.png"
+        archive.addfile(link_info)
+
+    destination = tmp_path / "workspace"
+    predict._extract_workspace_archive(archive_path, destination, windows_semantics=True)
+
+    assert (destination / "docs/static/icon.png").read_bytes() == regular
+    link = destination / "docs/theme/icon.png"
+    assert link.is_file()
+    assert not link.is_symlink()
+    assert link.read_bytes() == b"../static/icon.png"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows CI may not permit native symlink creation")
+def test_extract_workspace_archive_preserves_native_symlink_and_mode(tmp_path):
+    archive_path = tmp_path / "workspace.tar"
+    payload = b"#!/bin/sh\n"
+    with tarfile.open(archive_path, "w") as archive:
+        file_info = tarfile.TarInfo("bin/tool")
+        file_info.mode = 0o755
+        file_info.size = len(payload)
+        archive.addfile(file_info, BytesIO(payload))
+        link_info = tarfile.TarInfo("tool-link")
+        link_info.type = tarfile.SYMTYPE
+        link_info.linkname = "bin/tool"
+        archive.addfile(link_info)
+
+    destination = tmp_path / "workspace"
+    predict._extract_workspace_archive(archive_path, destination, windows_semantics=False)
+
+    assert (destination / "tool-link").is_symlink()
+    assert (destination / "tool-link").read_bytes() == payload
+    assert (destination / "bin/tool").stat().st_mode & 0o777 == 0o755
+
+
+@pytest.mark.parametrize(
+    "member_name", ["../outside.txt", "..\\outside.txt", "/outside.txt", "C:/outside.txt"]
+)
+def test_extract_workspace_archive_rejects_path_traversal(tmp_path, member_name):
+    archive_path = tmp_path / "unsafe.tar"
+    payload = b"outside"
+    with tarfile.open(archive_path, "w") as archive:
+        member = tarfile.TarInfo(member_name)
+        member.size = len(payload)
+        archive.addfile(member, BytesIO(payload))
+
+    with pytest.raises(RuntimeError, match="不安全路径"):
+        predict._extract_workspace_archive(
+            archive_path, tmp_path / "workspace", windows_semantics=True
+        )
+
+    assert not (tmp_path / "outside.txt").exists()
+
+
+@pytest.mark.parametrize("member_name", ["CON", "docs/NUL.txt", "name. "])
+def test_extract_workspace_archive_rejects_windows_incompatible_paths(tmp_path, member_name):
+    archive_path = tmp_path / "unsafe.tar"
+    with tarfile.open(archive_path, "w") as archive:
+        member = tarfile.TarInfo(member_name)
+        archive.addfile(member, BytesIO())
+
+    with pytest.raises(RuntimeError, match="Windows 不兼容路径"):
+        predict._extract_workspace_archive(
+            archive_path, tmp_path / "workspace", windows_semantics=True
+        )
+
+
+def test_extract_workspace_archive_rejects_duplicate_windows_targets(tmp_path):
+    archive_path = tmp_path / "duplicate.tar"
+    with tarfile.open(archive_path, "w") as archive:
+        for name in ("README.md", "readme.md"):
+            member = tarfile.TarInfo(name)
+            archive.addfile(member, BytesIO())
+
+    with pytest.raises(RuntimeError, match="重复目标"):
+        predict._extract_workspace_archive(
+            archive_path, tmp_path / "workspace", windows_semantics=True
+        )
+
+
+def test_copy_workspace_from_container_cleans_temp_tar_on_launch_error(monkeypatch, tmp_path):
+    destination = tmp_path / "workspace"
+
+    def fail_run(*_args, **_kwargs):
+        raise FileNotFoundError("docker missing")
+
+    monkeypatch.setattr(predict.subprocess, "run", fail_run)
+
+    with pytest.raises(FileNotFoundError, match="docker missing"):
+        predict._copy_workspace_from_container("container", destination)
+
+    assert list(tmp_path.glob(".workspace-*.tar")) == []
+    assert not destination.exists()
+
+
+def test_copy_workspace_from_container_streams_tar_and_cleans_temp(monkeypatch, tmp_path):
+    destination = tmp_path / "workspace"
+    payload = b"content"
+    tar_path = tmp_path / "source.tar"
+    with tarfile.open(tar_path, "w") as archive:
+        member = tarfile.TarInfo("file.txt")
+        member.size = len(payload)
+        archive.addfile(member, BytesIO(payload))
+    tar_bytes = tar_path.read_bytes()
+
+    def copy_run(command, *, stdout, stderr):
+        assert command == ["docker", "cp", "container:/testbed/.", "-"]
+        assert stderr == subprocess.PIPE
+        stdout.write(tar_bytes)
+        return subprocess.CompletedProcess(command, 0, stderr=b"")
+
+    monkeypatch.setattr(predict.subprocess, "run", copy_run)
+    predict._copy_workspace_from_container("container", destination)
+
+    assert (destination / "file.txt").read_bytes() == payload
+    assert list(tmp_path.glob(".workspace-*.tar")) == []
+
+
+def test_ensure_image_retries_timed_out_pulls(monkeypatch):
+    calls = 0
+
+    def run(command, **kwargs):
+        nonlocal calls
+        if command[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="missing")
+        calls += 1
+        assert kwargs["timeout"] == predict.IMAGE_PULL_TIMEOUT_SECONDS
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(predict, "_run", run)
+    monkeypatch.setattr(predict.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match="超过 3600 秒"):
+        predict.ensure_image("owner__repo-1", quiet=True)
+
+    assert calls == 3
+
+
+def test_force_lf_writes_uses_utf8_for_harness_text_outputs(tmp_path):
+    original_write_text = Path.write_text
+    original_open = builtins.open
+    original_python_utf8 = os.environ.get("PYTHONUTF8")
+    try:
+        evaluate.force_lf_writes()
+        script = tmp_path / "eval.sh"
+        script.write_text("echo ë ০\r\necho two\r\n")
+        output = tmp_path / "test_output.txt"
+        with open(output, "w") as handle:
+            handle.write("Unicode: ë ০")
+
+        assert script.read_bytes() == "echo ë ০\necho two\n".encode()
+        assert output.read_bytes() == "Unicode: ë ০".encode()
+        with open(output) as handle:
+            assert handle.read() == "Unicode: ë ০"
+        assert os.environ["PYTHONUTF8"] == "1"
+    finally:
+        Path.write_text = original_write_text
+        builtins.open = original_open
+        if original_python_utf8 is None:
+            os.environ.pop("PYTHONUTF8", None)
+        else:
+            os.environ["PYTHONUTF8"] = original_python_utf8
 
 
 def test_predict_one_exports_empty_patch_diagnostics(monkeypatch, tmp_path):
