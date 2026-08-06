@@ -7,14 +7,14 @@
 
 **本项目不声明任何未实际运行过的评测分数提升。**
 
-SWE-bench Lite / Docker Tier-2 verifier / 跨模型跑分**冻结**，且 v2.1 已把
+旧 SWE-bench Lite / Docker Tier-2 verifier / 跨模型跑分**冻结**，且 v2.1 已把
 SWE-bench Lite 子系统整个移除：它跑不通（Tier-1 baseline 0.0% resolved，且受 host
 verifier 环境噪声污染，按本项目自己的口径就不能与官方 leaderboard 比较），
 Tier-2 verifier 从未实现，CI 也从不跑它。独立的 `swebench_verified/` 子系统随后使用
 官方 SWE-bench 4.1.0 harness 完成了一轮真实跨仓库运行：20 题 11/20（55%），50 题
 21/50（42%），最终报告 error=0；详见 [devlog 42](research-log/42-swebench-crossrepo-50.md)。
 
-**本项目的记分牌是自带的 coding + maintenance benchmark**：13 道题，本地建工作区 →
+**本项目的记分牌是自带的 coding + maintenance benchmark**：**30 道题**（coding 15 + maintenance 15），本地建工作区 →
 agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overall_pass_rate`。
 它不依赖 Docker、不依赖 HuggingFace，需要一个真实 API key。已实测：DeepSeek 在
 **30 题**（coding 15 + maintenance 15）。13 题时代的存档 baseline 是
@@ -22,7 +22,7 @@ agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overal
 同一份报告里隐藏测试通过率是 **0.769**——落差来自「改了不该改的文件」（3 题）与
 「步数耗尽」（4 题），不是写不出代码。该报告对应旧任务集，**不可与 30 题分数直接比较**。
 
-读这个分数时请记住：30 题的规模下，**一题翻转就是 ±3.3 个百分点**。它适合用来对照
+读这个分数时请记住：30 题的规模下，**一题翻转就是 ±3.3 个百分点**（这是分辨率，不是实测噪声）；repeat-3 的经验噪声底约为 ±5 题。它适合用来对照
 「改了策略之后有没有变好」，不适合当作与其他项目横向比较的绝对值。所有离线报告都附 raw JSON。
 
 ## v.s. 同类项目（当前公开口径）
@@ -48,7 +48,7 @@ agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overal
 | 模块 | 状态 | 说明 | Devlog |
 | --- | --- | --- | --- |
 | ReAct + Planner + Replan | ✅ v1.5 | 基础 ReAct 循环 + 3–8 步全局计划 + 失败 replan | [00](research-log/00-kickoff.md) |
-| 自带 hidden-test benchmark | ✅ 现役记分牌 | coding 6 题 + maintenance 7 题，出 `overall_pass_rate` | [09](research-log/09-maintenance-realism.md) |
+| 自带 hidden-test benchmark | ✅ 现役记分牌 | coding 15 题 + maintenance 15 题，出 `overall_pass_rate` | [09](research-log/09-maintenance-realism.md) |
 | Mem0 风格上下文记忆 | ✅ 现役 | 原子记忆 + 按任务召回 + 保留最近轮次原文 | [24](research-log/24-memory-hygiene-and-recall.md) |
 | Adaptive Replanning + token economics | ✅ 实现落地 | 错误信号映射到 replan 策略；离线统计 token / cost-per-success | [05](research-log/05-adaptive-and-economics.md) |
 | 长上下文护栏 | ✅ 默认开 | 观察截断 + 分页提示、预算触发折叠、read-before-edit 拦截 | [23](research-log/23-observation-truncation-and-token-budget.md) |
@@ -80,7 +80,7 @@ agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overal
 Self-Consistency / 工具熔断 / 记忆卫生 / LLM 摘要压缩。理由见
 [devlog 33](research-log/33-scope-reduction.md)。
 
-**冻结项**：Docker/Tier-2 verifier、真实 cross-model 跑分。SWE-bench Verified 的本轮
+**冻结项**：旧 Docker/Tier-2 verifier、真实 cross-model 跑分。SWE-bench Verified 的本轮
 50 题结果已归档；后续只做固定 sentinel repeat 或离线失败分析，不把 20→50 当独立复验。
 
 短期在做的非算法方向：

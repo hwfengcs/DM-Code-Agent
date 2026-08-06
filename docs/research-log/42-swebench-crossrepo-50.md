@@ -3,6 +3,8 @@
 - 日期：2026-08-06
 - 前置工作：[41](41-swebench-selection-manifest.md)
 - 模型：DeepSeek `deepseek-chat`，temperature 0
+- 最终归档 commit：`74f96cea8f5fc4b92ea7b4919c96034eb12f46ac`
+- 环境：Windows，Python 3.13.9，Docker client/server 29.6.2，`swebench==4.1.0`
 
 ## TL;DR
 
@@ -75,9 +77,10 @@ edit-state revisit 1、edit-cycle block 0。`dm_status=success` 只表示 Agent 
 
 归档三件套：
 
-- `bench_reports/swebench-verified-crossrepo-{20,50}-20260806.json`
-- `bench_reports/swebench-verified-crossrepo-{20,50}-predictions-20260806.jsonl`
-- `bench_reports/swebench-verified-crossrepo-{20,50}-selection-20260806.json`
+- 20 题：[report](../../bench_reports/swebench-verified-crossrepo-20-20260806.json) · [predictions](../../bench_reports/swebench-verified-crossrepo-20-predictions-20260806.jsonl) · [selection](../../bench_reports/swebench-verified-crossrepo-20-selection-20260806.json)
+- 50 题：[report](../../bench_reports/swebench-verified-crossrepo-50-20260806.json) · [predictions](../../bench_reports/swebench-verified-crossrepo-50-predictions-20260806.jsonl) · [selection](../../bench_reports/swebench-verified-crossrepo-50-selection-20260806.json)
+
+逐题 harness 日志保留在本地 `logs/run_evaluation/...`，未归档进 Git；长期可提交证据是上面的 report / predictions / selection manifest。
 
 本轮实际发生 HuggingFace/GitHub 网络请求、Docker 镜像下载和 DeepSeek API 调用。最终
 Docker 本地镜像超过 90 GB。predictions 没有记录供应商账单 token 或精确费用，因此这里

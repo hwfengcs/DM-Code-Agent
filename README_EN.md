@@ -5,13 +5,13 @@
 **Local-first · Fully auditable · The kernel is just one ReAct loop**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-427%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-529%20passed%2C%201%20skipped-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/hwfengcs/DM-Code-Agent?color=informational)](https://github.com/hwfengcs/DM-Code-Agent/commits/main)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-purple.svg)](docs/)
-[![Research Log](https://img.shields.io/badge/Research%20Log-32%20entries-orange.svg)](docs/research-log/)
+[![Research Log](https://img.shields.io/badge/Research%20Log-42%20entries-orange.svg)](docs/research-log/)
 
 [中文](README.md) | **English**
 
@@ -24,7 +24,7 @@ workspace — reading and writing files, running tests and linters, calling MCP 
 records every plan, tool call, and observation into an **append-only session log**. When
 something goes wrong you can replay it, diagnose it, and **fork a new run from any single step**.
 
-Not another chat black box: the kernel is just the ReAct loop (847 lines), while optional
+Not another chat black box: the kernel is just the ReAct loop, while optional
 capabilities are extensions hanging off lifecycle hooks, and context compaction
 **never deletes history** — so ablation conclusions can actually be verified.
 
@@ -162,19 +162,18 @@ external extension — that is precisely what the extension system is for.
 
 | | |
 | --- | --- |
-| Unit tests | **427 cases**, 10.3k lines of test code (20.1k lines of backend source + 3.6k of frontend) |
+| Unit tests | **529 passed, 1 skipped** (no API key required) |
 | Deterministic evals | 14 tasks × 4 variants, driven by a scripted client, **zero network calls** |
 | Frontend | vitest covers the presentation-layer pure functions; CI rebuilds and **byte-compares** the committed bundle |
 | CI matrix | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12 — **6 combinations** |
 | Quality gates | ruff (`E F I UP B SIM TID RUF`) + black + mypy + `uv lock --check` + pre-commit |
 | Layering contract | `clients → tools → tracing → core → extensions → cli`, enforced by ruff `TID251` in CI |
 
-"Minimal kernel" is a number you can check, not a slogan: `agent.py` 1774 → **847** lines,
-`main.py` 2048 → **6** lines, `tracing/cli.py` 1111 → **171** lines.
+The minimal kernel is enforced by responsibility boundaries: `agent.py` assembles the ReAct loop, while context folding, parsing, tool invocation, persistence, and completion live in sibling collaborators.
 
 ### 🧪 No inflated scores
 
-**This project never claims an evaluation improvement it has not actually run.** Docker Tier-2
+**This project never claims an evaluation improvement it has not actually run.** The legacy SWE-bench Lite Docker/Tier-2
 verification and cross-model scoring are **frozen**, and the SWE-bench Lite suite was removed
 in v2.1 because it did not work: the Tier-1 baseline was 0.0% resolved and
 polluted by host verifier noise, and the Tier-2 verifier was never implemented.
@@ -184,7 +183,7 @@ with the official SWE-bench 4.1.0 harness: 11/20 resolved (55%) and 21/50 resolv
 zero final harness errors. The 20-task sample is a strict prefix of the 50-task sample, not an
 independent replication; see [devlog 42](docs/research-log/42-swebench-crossrepo-50.md).
 
-The scoreboard is now the bundled **coding + maintenance benchmark**: 30 tasks judged pass/fail
+The scoreboard is the bundled **coding + maintenance benchmark**: **30 tasks** judged pass/fail
 by hidden tests, with no Docker or HuggingFace dependency. Measured: DeepSeek scores
 **30 tasks** (15 coding + 15 maintenance). The archived 13-task baseline scored
 `pass_rate 0.385 (5/13)` while its hidden-test pass rate was `0.769` — the gap is entirely
@@ -197,9 +196,13 @@ dm-agent-score-diff bench_reports/before.json bench_reports/after.json
 ```
 
 It reports **which tasks flipped in each direction**, not just the total — regressions are listed
-separately even when the total goes up. At 30 tasks one flip is ±3.3 percentage points, and that
-noise floor is printed in the output so a single-task swing is not misread as an improvement.
+separately even when the total goes up. At 30 tasks one flip is ±3.3 percentage points; that is
+resolution, not measured noise. Repeat-3 observed a noise floor of roughly ±5 tasks.
 Full caveats in [project status](docs/project-status.md).
+
+### 📌 What the last seven rounds established
+
+The chain from guardrails for out-of-scope edits, edit self-injury, and false replans to deterministic manifests and an official-harness cross-repository run is summarized in [Recent progress](docs/recent-progress.md).
 
 ---
 
@@ -254,7 +257,7 @@ flowchart TD
     WEB["<b>server</b> — web console (a peer of cli)<br/>read-only audit API · SSE live stream · subprocess executor"]
     CLI["<b>cli</b> — outermost assembler<br/>dm-agent · -eval · -bench · -trace · -economics · -manifest-diff"]
     EXT["<b>extensions</b> — ExtensionAPI · registry · five-level discovery · project trust"]
-    CORE["<b>core</b> — agent.py is assembly + the ReAct loop only (847 lines)<br/>context_window · response_parser · tool_invoker · completion<br/>replan · persistence · run_state · observation · prompting"]
+    CORE["<b>core</b> — agent.py is assembly + the ReAct loop only<br/>context_window · response_parser · tool_invoker · completion<br/>replan · persistence · run_state · observation · prompting"]
     TRACING["<b>tracing</b> — session entry tree · append-only writes · privacy tiers · fork"]
     TOOLS["<b>tools</b> — 17 built-in tools + dynamic MCP tools"]
     CLIENTS["<b>clients</b> — deepseek / openai / claude / gemini + custom providers"]
@@ -307,7 +310,7 @@ Start at **[docs/](docs/)** for the full index. The six you will want first:
 | [Sessions and traces](docs/tracing.md) | Session tree, privacy tiers, checkpoints, fork |
 
 Motivation, experiments, and dead ends for every non-trivial design decision live in
-[`docs/research-log/`](docs/research-log/) (32 entries).
+[`docs/research-log/`](docs/research-log/) (42 entries).
 
 > Pages under `docs/` are maintained in Chinese only. This README is the English entry point.
 > Issues and PRs in English are welcome.

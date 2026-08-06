@@ -5,13 +5,13 @@
 **本地优先 · 全程可审计 · 内核只有一个 ReAct 循环**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-427%20passed-brightgreen.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-529%20passed%2C%201%20skipped-brightgreen.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/tests)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/hwfengcs/DM-Code-Agent/blob/main/LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/hwfengcs/DM-Code-Agent?color=informational)](https://github.com/hwfengcs/DM-Code-Agent/commits/main)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-purple.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs)
-[![Research Log](https://img.shields.io/badge/Research%20Log-32%20entries-orange.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log)
+[![Research Log](https://img.shields.io/badge/Research%20Log-42%20entries-orange.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log)
 
 **中文** | [English](https://github.com/hwfengcs/DM-Code-Agent/blob/main/README_EN.md)
 
@@ -23,7 +23,7 @@
 跑 lint、调 MCP 工具，并把每一步计划、工具调用和观察结果写成 **append-only 的会话日志**——
 出了问题可以回放、可以诊断、可以**从任意一步分叉重跑**。
 
-它不是又一个聊天黑盒：内核只有 ReAct 主循环（847 行），可选能力都是挂在
+它不是又一个聊天黑盒：内核只有 ReAct 主循环，可选能力都是挂在
 生命周期钩子上的扩展；上下文折叠**不删原文**，所以 ablation 结论真的能被验证。
 
 > 如果这个项目对你有用，点个 ⭐ 让更多人看到。
@@ -154,19 +154,18 @@ v2.1 做了一次减法：把 6 个**毕业标准依赖已冻结评测**的默�
 
 | | |
 | --- | --- |
-| 单元测试 | **427 个用例**，10.3k 行测试代码（后端源码 20.1k 行 + 前端 3.6k 行） |
+| 单元测试 | **529 passed，1 skipped**（默认不需要 API key） |
 | 确定性 eval | 14 个任务 × 4 个变体，scripted client 驱动，**零网络调用** |
 | 前端 | vitest 覆盖展示层纯函数；CI 重新构建并**逐字节比对**入库产物 |
 | CI 矩阵 | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12，**6 个组合** |
 | 质量门禁 | ruff（`E F I UP B SIM TID RUF`）+ black + mypy + `uv lock --check` + pre-commit |
 | 分层契约 | `clients → tools → tracing → core → extensions → cli`，由 ruff `TID251` 在 CI 强制 |
 
-内核最小化不是口号，是可查的数字：`agent.py` 1774 → **847** 行，
-`main.py` 2048 → **6** 行，`tracing/cli.py` 1111 → **171** 行。
+内核最小化体现在职责拆分：`agent.py` 只负责装配与 ReAct 主循环，折叠、解析、工具调用、持久化和完成判定均由同层协作者负责。
 
 ### 🧪 不吹分数
 
-**本项目不声明任何未实际运行过的评测分数提升。** Docker Tier-2 verifier /
+**本项目不声明任何未实际运行过的评测分数提升。** 旧 SWE-bench Lite 的 Docker/Tier-2 verifier 与
 跨模型跑分**冻结**，SWE-bench Lite 子系统已在 v2.1 移除（它跑不通：Tier-1 baseline
 0.0% resolved 且受 host verifier 噪声污染，Tier-2 verifier 从未实现）。
 
@@ -174,8 +173,8 @@ v2.1 做了一次减法：把 6 个**毕业标准依赖已冻结评测**的默�
 运行：20 题 resolved 11/20（55%），50 题 resolved 21/50（42%），最终 error=0。
 20 题是 50 题的严格前缀，不是独立复验；完整边界见 [devlog 42](docs/research-log/42-swebench-crossrepo-50.md)。
 
-记分牌换成自带的 **coding + maintenance benchmark**：13 道题，隐藏测试判 pass/fail，
-不依赖 Docker 与 HuggingFace。**30 道题**（coding 15 + maintenance 15）。
+记分牌是自带的 **coding + maintenance benchmark**：**30 道题**（coding 15 + maintenance 15），隐藏测试判 pass/fail，
+不依赖 Docker 与 HuggingFace；13 题只是历史 baseline。
 
 13 题时代的存档 baseline 是 `pass_rate 0.385（5/13）`，而隐藏测试通过率 `0.769`——
 差距全在「改了不该改的文件」和「步数耗尽」上（`bench_reports/baseline-20260803.json`，
@@ -187,8 +186,11 @@ dm-agent-score-diff bench_reports/before.json bench_reports/after.json
 ```
 
 输出**逐题 pass/fail 翻转**而不只是总分——回归即使在总分上升时也单独列出。
-30 题规模下一题翻转是 ±3.3 个百分点，这条噪声口径直接印在输出里，
-免得把一两题的抖动读成改进。完整口径见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
+30 题规模下一题翻转是 ±3.3 个百分点，这是分辨率而非实测噪声；repeat-3 的经验噪声底约为 ±5 题。完整口径见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
+
+### 📌 最近七轮做成了什么
+
+从越界修改、编辑自伤和误报 replan 的过程护栏，到确定性 manifest 与官方 harness 的真实跨仓库运行，关键结论和证据已整理在[最近七轮进展](docs/recent-progress.md)。
 
 ---
 
@@ -241,7 +243,7 @@ flowchart TD
     WEB["<b>server</b> — Web 控制台（与 cli 同级）<br/>只读审计 API · SSE 实时流 · 子进程执行器"]
     CLI["<b>cli</b> — 最外层装配者<br/>dm-agent · -eval · -bench · -trace · -economics · -manifest-diff"]
     EXT["<b>extensions</b> — ExtensionAPI · 注册表 · 五级发现 · 项目信任模型"]
-    CORE["<b>core</b> — agent.py 只做装配 + ReAct 主循环（847 行）<br/>context_window · response_parser · tool_invoker · completion<br/>replan · persistence · run_state · observation · prompting"]
+    CORE["<b>core</b> — agent.py 只做装配 + ReAct 主循环<br/>context_window · response_parser · tool_invoker · completion<br/>replan · persistence · run_state · observation · prompting"]
     TRACING["<b>tracing</b> — 会话条目树 · append-only 写入 · 隐私分档 · fork"]
     TOOLS["<b>tools</b> — 17 个内置工具 + MCP 动态工具"]
     CLIENTS["<b>clients</b> — deepseek / openai / claude / gemini + 可注册自定义"]
