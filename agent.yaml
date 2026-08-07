@@ -1,0 +1,51 @@
+spec_version: "0.1.0"
+name: dm-code-agent
+version: 2.0.0
+description: >
+  A local-first, auditable Python code-maintenance agent (~1500 LOC core) built
+  on a ReAct + Task Planner + Adaptive Replanning loop. Executes file, search,
+  test, lint, AST, and MCP tools against a local workspace; records every plan,
+  tool call, and observation as a structured JSONL trace for offline replay and
+  diff. Optional v2 modules — Reflexion (episodic-memory trial lessons), Critic
+  peer review, Self-Consistency N-way selection, and Adaptive Replanning — are
+  default-off and independently testable. Supports DeepSeek, OpenAI, Claude, and
+  Gemini via a pluggable LLM factory, plus custom base_url. Designed to be a
+  developer tool you can audit, reproduce, and benchmark rather than a black-box
+  coding chatbot.
+license: MIT
+model:
+  preferred: anthropic:claude-sonnet-4-6
+  alternates:
+    - deepseek:deepseek-chat
+    - openai:gpt-4o
+    - google:gemini-1.5-pro
+runtime:
+  entrypoint: dm-agent
+  max_turns: 50
+skills:
+  - name: react-loop
+    description: ReAct thought/action/action_input loop with per-step observation injection
+  - name: task-planner
+    description: Generates a 3-8 step global plan before execution; triggers replan on failure
+  - name: trace-writer
+    description: Writes JSONL traces (plan, tool calls, LLM summaries, results) with dry-replay and diff
+  - name: reflexion
+    description: Extracts failure lessons from prior trials and injects them into the next attempt (default-off)
+  - name: critic
+    description: Peer-review gate that evaluates candidate solutions before acceptance (default-off)
+  - name: self-consistency
+    description: N-way independent solution selection by majority-vote, critic score, or test-pass (default-off)
+  - name: adaptive-replanning
+    description: Maps tool/parse/test/critic errors to recovery strategies with token-economics reporting (default-off)
+  - name: context-memory
+    description: Mem0-style local memory compression — atomic episodic/semantic/procedural memories recalled per task
+  - name: mcp-integration
+    description: Attaches external MCP servers (Playwright, Context7, filesystem, SQLite) via config
+  - name: skill-system
+    description: Activates domain-specific prompts and tools (Python, database, frontend) based on task signals
+  - name: maintenance-benchmark
+    description: Hidden-test repository maintenance benchmark suite with changed-file constraints and trace analysis
+compliance:
+  risk_tier: standard
+  supervision:
+    human_in_the_loop: none
