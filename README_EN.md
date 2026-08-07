@@ -5,13 +5,13 @@
 **Local-first · Fully auditable · The kernel is just one ReAct loop**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-529%20passed%2C%201%20skipped-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-554%20passed%2C%201%20skipped-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/hwfengcs/DM-Code-Agent?color=informational)](https://github.com/hwfengcs/DM-Code-Agent/commits/main)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-purple.svg)](docs/)
-[![Research Log](https://img.shields.io/badge/Research%20Log-42%20entries-orange.svg)](docs/research-log/)
+[![Research Log](https://img.shields.io/badge/Research%20Log-43%20entries-orange.svg)](docs/research-log/)
 
 [中文](README.md) | **English**
 
@@ -162,7 +162,7 @@ external extension — that is precisely what the extension system is for.
 
 | | |
 | --- | --- |
-| Unit tests | **529 passed, 1 skipped** (no API key required) |
+| Unit tests | **554 passed, 1 skipped** (no API key required) |
 | Deterministic evals | 14 tasks × 4 variants, driven by a scripted client, **zero network calls** |
 | Frontend | vitest covers the presentation-layer pure functions; CI rebuilds and **byte-compares** the committed bundle |
 | CI matrix | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12 — **6 combinations** |
@@ -200,9 +200,9 @@ separately even when the total goes up. At 30 tasks one flip is ±3.3 percentage
 resolution, not measured noise. Repeat-3 observed a noise floor of roughly ±5 tasks.
 Full caveats in [project status](docs/project-status.md).
 
-### 📌 What the last seven rounds established
+### 📌 What the last eight rounds established
 
-The chain from guardrails for out-of-scope edits, edit self-injury, and false replans to deterministic manifests and an official-harness cross-repository run is summarized in [Recent progress](docs/recent-progress.md).
+The chain from guardrails for out-of-scope edits, edit self-injury, and false replans to deterministic manifests, an official-harness cross-repository run, and offline failure analysis is summarized in [Recent progress](docs/recent-progress.md).
 
 ---
 
@@ -310,7 +310,7 @@ Start at **[docs/](docs/)** for the full index. The six you will want first:
 | [Sessions and traces](docs/tracing.md) | Session tree, privacy tiers, checkpoints, fork |
 
 Motivation, experiments, and dead ends for every non-trivial design decision live in
-[`docs/research-log/`](docs/research-log/) (42 entries).
+[`docs/research-log/`](docs/research-log/) (43 entries).
 
 > Pages under `docs/` are maintained in Chinese only. This README is the English entry point.
 > Issues and PRs in English are welcome.

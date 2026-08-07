@@ -1,4 +1,4 @@
-# 最近七轮进展（36–42）
+# 最近八轮进展（36–43）
 
 这页把最近几轮从“修一个现象”串成可复核的证据链。每一轮都保留原始研究日志；这里只记录结论、边界和可复现的归档。
 
@@ -13,6 +13,7 @@
 | [40](research-log/40-empty-patch-loops.md) | 对两个已知空 patch 题做定向复跑，空 patch 从 2 降到 0；但这不是 50 题总体空 patch 消失，打破循环也不等于修好题。 |
 | [41](research-log/41-swebench-selection-manifest.md) | 建成完整 500 题候选集与确定性 selection manifest；20 题是 50 题的严格前缀，支持 resume 守卫和可审计复跑。 |
 | [42](research-log/42-swebench-crossrepo-50.md) | 使用官方 SWE-bench 4.1.0 harness 跨 12 个仓库真实运行：20 题 11/20（55%），50 题 21/50（42%），最终 `error=0`。 |
+| [43](research-log/43-swebench-failure-analysis.md) | 新增完全离线的三轴失败分析器，把官方结论、harness detail 与 Agent/trace 过程指标确定性对齐；没有重新运行模型、Docker 或 verifier。 |
 
 ## Verified 归档
 

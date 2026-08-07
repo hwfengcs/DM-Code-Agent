@@ -81,7 +81,8 @@ Self-Consistency / 工具熔断 / 记忆卫生 / LLM 摘要压缩。理由见
 [devlog 33](research-log/33-scope-reduction.md)。
 
 **冻结项**：旧 Docker/Tier-2 verifier、真实 cross-model 跑分。SWE-bench Verified 的本轮
-50 题结果已归档；后续只做固定 sentinel repeat 或离线失败分析，不把 20→50 当独立复验。
+50 题结果已归档；离线失败分析器已落地，后续只在明确成本后做固定 sentinel repeat，
+不把 20→50 当独立复验，也不把分析工具冒充 resolved rate 提升。
 
 短期在做的非算法方向：
 

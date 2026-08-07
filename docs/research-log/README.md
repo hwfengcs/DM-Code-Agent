@@ -61,6 +61,7 @@ these entries.
 | [40](40-empty-patch-loops.md) | Empty-patch loops: mechanical fixes plus a SWE-only progress guard | v2.1 | measured: empty patches 2 → 0; official harness 1/2 |
 | [41](41-swebench-selection-manifest.md) | Deterministic cross-repo SWE-bench selection and safe manifests | v2.1 | live 20/50 contract verified |
 | [42](42-swebench-crossrepo-50.md) | Real cross-repo SWE-bench Verified 20 → 50 run | v2.1 | measured: 21/50 resolved, error 0 |
+| [43](43-swebench-failure-analysis.md) | Offline SWE-bench failure analysis across official, harness-detail, and Agent axes | v2.1 | implementation landed; archived 50-task regression verified |
 | [Distribution](DISTRIBUTION_CHECKLIST.md) | Launch checklist and external posting plan | P6 | local checklist |
 | [Interview](INTERVIEW_TALKING_POINTS.md) | Resume/interview talking points | P6 | private prep notes |
 

@@ -125,6 +125,73 @@ PYTHONPATH=swebench_verified/_winshim \
 只想重看结论：`--summarize-only <report.json>`。空 patch 只进入汇总报告的
 `empty_patch_ids`，不会生成该实例的 `patch.diff` / `eval.sh` / `test_output.txt` 目录。
 
+## 第三步：离线失败分析
+
+预测与官方判分完成后，可以在**不启动 Docker、不联网、不构造 LLM client**的情况下，把
+prediction、Agent trace、selection manifest 和官方 harness detail 对齐：
+
+```powershell
+python -m swebench_verified.analyze `
+  --predictions bench_reports/swebench-verified-crossrepo-50-predictions-20260806.jsonl `
+  --report bench_reports/swebench-verified-crossrepo-50-20260806.json `
+  --manifest bench_reports/swebench-verified-crossrepo-50-selection-20260806.json `
+  --trace-dir swebench_work/traces-crossrepo-20-20260806 `
+  --trace-dir swebench_work/traces-crossrepo-50-20260806 `
+  --harness-log-dir logs/run_evaluation/verified-crossrepo-50-utf8-20260806/dm-agent-deepseek `
+  --prefix-count 20 `
+  --json $env:TEMP\swebench-analysis.json `
+  --markdown $env:TEMP\swebench-analysis.md
+```
+
+`--trace-dir` 可重复。映射以每个 JSONL 的 `runtime.payload.instance_id` 为准；只有旧 trace
+缺该字段时才使用文件名，并给出 warning。同一 instance 出现在多个 trace 目录会直接拒绝，
+避免静默混合两次运行。显式传入但不存在的 trace/detail 目录同样 fail fast；目录存在但少
+实例时继续分析，缺失项标为 `missing` 并给 warning。一条坏 trace 或逐题 detail 只隔离该
+文件，不拖垮整批。若同一个 append-only trace 文件含多轮复跑，分析器只读取最后一个完整
+`run_start` → `run_end` 区间；尾部半写入的 run 会被忽略并给 warning，避免跨轮累计 steps、
+重复调用或验证动作。
+
+输入校验刻意区分两种“相等”：
+
+- 官方 report 必须包含 submitted/completed/resolved/unresolved/empty/error 的计数和逐题 ID
+  数组；缺任一核心数组都会 fail fast，不能把损坏 report 降级成全体 `unknown`；
+- predictions 的 ID **顺序**必须逐项等于 manifest；输出也保持这个顺序；
+- 官方 report 的 `submitted_ids` 只要求唯一且与 manifest **集合相等**。官方 harness 会
+  重排列表，不能把 report 顺序当选择顺序；
+- resolved / unresolved / empty / error 四类 ID 必须互斥且并集等于 submitted，所有计数
+  与数组长度一致，`completed_ids` 必须等于 resolved 与 unresolved 的并集；
+- 不使用 report 的 `incomplete_ids` 判断本批缺失。它描述完整 500 题 split 中未提交的题，
+  不是当前 20/50 题的分母。
+
+当前 selection manifest v1 只有有序 `instance_ids` 与 repo/difficulty 聚合计数，没有逐题
+映射。分析器因此从 trace runtime（若有）或标准 instance ID 推导 repo，从 prediction 的
+`dm_difficulty` 读取 difficulty，再与 manifest 聚合计数交叉核对；缺失时保持 `null`，绝不从
+aggregate counts 猜某一道题的属性。未来 manifest 若带逐题 `instances` 元数据也可直接读取。
+
+分析结果保留三个互不替代的轴：
+
+1. **官方结果轴**：`resolved` / `unresolved` / `empty_patch` / `harness_error` /
+   `incomplete`；
+2. **harness detail 轴**：`all_passed`、`f2p_only`、`f2p_and_p2p`、`p2p_only`、
+   `patch_apply_failure`、`detail_unavailable`；只输出成功/失败数量，不输出测试名称；
+3. **Agent / trace 轴**：Agent 主循环的 success/max-steps/exception、步数、时长、replan、
+   parse/truncation/guard 计数、重复工具签名、直接写调用和验证缺口。
+
+`dm_status=success`、非空 patch、F2P 全过或 max-steps 都不等于官方 resolved。失败标签是稳定
+顺序的多选信号：`empty_patch`、`no_edit`、`max_steps`、`parse_error`、`guard_block`、
+`f2p_unresolved`、`p2p_regression`、`harness_error`、`unknown`。其中 `no_edit` 只在有效
+trace 中既没有 `edit_file/create_file`，也没有可能改文件的 `run_shell/run_python` 时作为
+保守 advisory；“调用过直接写工具但最终 patch 为空”也只是一条审计信号，不能命名为已证明
+的根因。
+
+没有传 trace/detail 时分析仍会完成 predictions + report + manifest 级别的合并。未提供的
+数据是 `unmeasured`，显式目录中缺实例是 `missing`，旧 prediction 缺诊断字段时是 `null`；
+坏文件是 `invalid`，其派生计数不会进入 measured 聚合。这些状态都不会伪装成真实 0。
+JSON、Markdown 和 console 均包含逐题 Agent 诊断与 trace 审计表，字段、标签、warning 与
+实例顺序确定；输出不包含题面、patch 内容、`FAIL_TO_PASS`、`PASS_TO_PASS`、测试名称或
+trace 原文。
+`--json` / `--markdown` 若与任何输入文件同路径会在写入前拒绝。
+
 ## 成本
 
 | 项 | 量级 |

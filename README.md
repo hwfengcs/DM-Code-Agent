@@ -5,13 +5,13 @@
 **本地优先 · 全程可审计 · 内核只有一个 ReAct 循环**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-529%20passed%2C%201%20skipped-brightgreen.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-554%20passed%2C%201%20skipped-brightgreen.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/tests)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/hwfengcs/DM-Code-Agent/blob/main/LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/hwfengcs/DM-Code-Agent?color=informational)](https://github.com/hwfengcs/DM-Code-Agent/commits/main)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-purple.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs)
-[![Research Log](https://img.shields.io/badge/Research%20Log-42%20entries-orange.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log)
+[![Research Log](https://img.shields.io/badge/Research%20Log-43%20entries-orange.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log)
 
 **中文** | [English](https://github.com/hwfengcs/DM-Code-Agent/blob/main/README_EN.md)
 
@@ -154,7 +154,7 @@ v2.1 做了一次减法：把 6 个**毕业标准依赖已冻结评测**的默�
 
 | | |
 | --- | --- |
-| 单元测试 | **529 passed，1 skipped**（默认不需要 API key） |
+| 单元测试 | **554 passed，1 skipped**（默认不需要 API key） |
 | 确定性 eval | 14 个任务 × 4 个变体，scripted client 驱动，**零网络调用** |
 | 前端 | vitest 覆盖展示层纯函数；CI 重新构建并**逐字节比对**入库产物 |
 | CI 矩阵 | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12，**6 个组合** |
@@ -188,9 +188,9 @@ dm-agent-score-diff bench_reports/before.json bench_reports/after.json
 输出**逐题 pass/fail 翻转**而不只是总分——回归即使在总分上升时也单独列出。
 30 题规模下一题翻转是 ±3.3 个百分点，这是分辨率而非实测噪声；repeat-3 的经验噪声底约为 ±5 题。完整口径见[项目现状](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/project-status.md)。
 
-### 📌 最近七轮做成了什么
+### 📌 最近八轮做成了什么
 
-从越界修改、编辑自伤和误报 replan 的过程护栏，到确定性 manifest 与官方 harness 的真实跨仓库运行，关键结论和证据已整理在[最近七轮进展](docs/recent-progress.md)。
+从越界修改、编辑自伤和误报 replan 的过程护栏，到确定性 manifest、官方 harness 真实跨仓库运行与离线失败分析，关键结论和证据已整理在[最近八轮进展](docs/recent-progress.md)。
 
 ---
 
@@ -295,7 +295,7 @@ flowchart TD
 | [扩展开发](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/extensions.md) | 不改内核加工具 / 守卫 / 供应商，含安全模型 |
 | [会话与 trace](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/tracing.md) | 会话树、隐私分档、checkpoint、fork |
 
-设计决策的动机、实验与踩坑都在 [`docs/research-log/`](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log)（32 篇）。
+设计决策的动机、实验与踩坑都在 [`docs/research-log/`](https://github.com/hwfengcs/DM-Code-Agent/tree/main/docs/research-log)（43 篇）。
 
 ---
 
