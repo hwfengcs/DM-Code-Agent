@@ -34,6 +34,7 @@
 | --- | --- |
 | [项目现状与对标](project-status.md) | 同类项目对比、算法模块状态、评测口径说明、roadmap |
 | [最近七轮进展](recent-progress.md) | devlog 36–42 的实验结论、SWE-bench Verified 20/50 归档与边界 |
+| [改进 agent 系统](改进agent系统.md) | 基于 50 题实测的瓶颈诊断与 S0–S3 可执行方案、决策记录、不做清单、判读纪律 |
 | [发布到 PyPI](releasing.md) | Trusted Publishing 原理、一次性设置、每次发版流程 |
 | [研究日志](research-log/) | 每个非平凡设计决策的动机、实验、ablation、踩坑 |
 | [产品定位](product.md) | 目标用户与落地场景 |
