@@ -3,7 +3,7 @@
 这是「改了策略之后到底有没有变好」的判据。只读已有的 JSON 报告，
 不跑 benchmark、不调模型、不联网——和 ``manifest_diff`` 同样是纯离线工具。
 
-三条设计约定：
+三条设计约定如下：
 
 - **逐题翻转比总分更有指导性**。总分从 0.46 变 0.54 只说明「多过了一题」，
   而「哪题修好了、哪题跑坏了」才指向下一步该看什么。回归（原本过、现在挂）
@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import argparse
-import json
+import json 
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
