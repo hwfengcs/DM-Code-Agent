@@ -13,8 +13,8 @@
 
 from __future__ import annotations
 
-import json
 import shutil
+import threading
 import time
 from pathlib import Path
 from typing import Annotated, Any
@@ -53,6 +53,7 @@ _CARD_CACHE: dict[str, tuple[int, int, dict[str, Any]]] = {}
 # **文件**是另一回事。搬进回收站是两者之间诚实的折中：列表里干净了，证据还在磁盘上，
 # 误删可以直接从文件夹里拖回来。
 TRASH_DIR_NAME = ".trash"
+_TRASH_LOCK = threading.Lock()
 
 # 单次批量删除的上限。防止一个请求把整个目录搬空之后才发现点错了。
 MAX_BULK_DELETE = 200
@@ -83,7 +84,7 @@ def _load(settings: ServerSettings, name: str) -> list[dict[str, Any]]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     try:
         return load_session_entries(path)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"会话文件无法解析：{exc}",
@@ -136,8 +137,9 @@ def list_sessions(
             if not path.is_file() or _is_hidden(settings, path):
                 continue
             try:
+                resolve_session_path(settings, path.relative_to(settings.sessions_dir).as_posix())
                 cards.append(_session_card(settings, path))
-            except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+            except (OSError, KeyError, TypeError, ValueError) as exc:
                 # 坏文件不能让整个列表 500——单独列出来，前端标成不可读。
                 errors.append({"name": relative_session_name(settings, path), "error": str(exc)})
     cards.sort(key=lambda card: card["modified"], reverse=True)
@@ -314,9 +316,14 @@ def _trash_one(request: Request, settings: ServerSettings, name: str) -> dict[st
 
     trash_dir = settings.sessions_dir / TRASH_DIR_NAME
     try:
-        trash_dir.mkdir(parents=True, exist_ok=True)
-        target = _unique_trash_path(trash_dir, source.name)
-        shutil.move(str(source), str(target))
+        with _TRASH_LOCK:
+            try:
+                trash_dir.resolve().relative_to(settings.sessions_dir)
+            except ValueError as exc:
+                raise OSError("回收站目录越出了 sessions 目录。") from exc
+            trash_dir.mkdir(parents=True, exist_ok=True)
+            target = _unique_trash_path(trash_dir, source.name)
+            shutil.move(str(source), str(target))
     except OSError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

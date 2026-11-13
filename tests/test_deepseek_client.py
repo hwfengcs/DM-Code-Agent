@@ -84,6 +84,15 @@ def test_deepseek_does_not_retry_auth_errors():
     assert len(session.calls) == 1
 
 
+@pytest.mark.parametrize("detail", [None, "bad key", ["bad key"]])
+def test_deepseek_error_with_non_object_detail_remains_llm_error(detail):
+    session = FakeSession([FakeResponse(401, {"error": detail}, reason="Unauthorized")])
+    client = _client_with_session(session, max_retries=0)
+
+    with pytest.raises(DeepSeekError, match="401 Unauthorized"):
+        client.complete([{"role": "user", "content": "hello"}])
+
+
 def test_deepseek_retries_network_exceptions():
     session = FakeSession(
         [

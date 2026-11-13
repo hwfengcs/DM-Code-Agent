@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 
 def evaluate_gate(
@@ -24,23 +25,39 @@ def evaluate_gate(
     min_variant_rate: float,
 ) -> list[str]:
     """Return a list of human-readable violations (empty when the gate passes)."""
-    violations: list[str] = []
+    violations = [
+        f"{name} must be a finite number between 0 and 1"
+        for name, value in (
+            ("min_success_rate", min_success_rate),
+            ("min_variant_rate", min_variant_rate),
+        )
+        if not _valid_rate(value)
+    ]
+    if violations:
+        return violations
     summary = report.get("summary")
     if not isinstance(summary, dict):
         return ["report has no summary object"]
 
     overall = summary.get("overall_success_rate")
-    if not isinstance(overall, (int, float)):
-        violations.append("summary.overall_success_rate is missing")
+    if not _valid_rate(overall):
+        violations.append("summary.overall_success_rate must be a finite number between 0 and 1")
     elif overall < min_success_rate:
         violations.append(
             f"overall_success_rate {overall:.3f} is below the required {min_success_rate:.3f}"
         )
 
-    variants = summary.get("variants") or {}
+    variants = summary.get("variants")
+    if not isinstance(variants, dict) or not variants:
+        violations.append("summary.variants must be a non-empty object")
+        variants = {}
     for name, data in sorted(variants.items()):
-        rate = data.get("success_rate")
-        if not isinstance(rate, (int, float)) or rate < min_variant_rate:
+        rate = data.get("success_rate") if isinstance(data, dict) else None
+        if not _valid_rate(rate):
+            violations.append(
+                f"variant '{name}' success_rate must be a finite number between 0 and 1"
+            )
+        elif rate < min_variant_rate:
             violations.append(
                 f"variant '{name}' success_rate "
                 f"{rate if isinstance(rate, (int, float)) else 'missing'} "
@@ -55,6 +72,15 @@ def evaluate_gate(
                     f"{result.get('failure_reason', '')}"
                 )
     return violations
+
+
+def _valid_rate(value: Any) -> TypeGuard[int | float]:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and 0 <= value <= 1
+    )
 
 
 def main(argv: Any = None) -> int:

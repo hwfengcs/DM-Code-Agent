@@ -17,7 +17,8 @@ npm --version
 
 ### 2. 配置 Playwright MCP（已预置）
 
-项目已经预置了 Playwright MCP 配置。只需确保 `mcp_config.json` 文件存在：
+仓库提供 `mcp_config.json.example`，复制为 `mcp_config.json` 后按需启用服务器。
+例如仅配置 Playwright：
 
 ```json
 {
@@ -54,42 +55,29 @@ python main.py
 
 ## Playwright MCP 使用示例
 
-Playwright MCP 提供以下工具（工具名称会自动加上 `mcp_playwright_` 前缀）：
-
-1. **mcp_playwright_navigate** - 导航到网页
-2. **mcp_playwright_screenshot** - 截取网页截图
-3. **mcp_playwright_click** - 点击页面元素
-4. **mcp_playwright_fill** - 填写表单
-5. **mcp_playwright_evaluate** - 执行 JavaScript 代码
+工具通过服务器的 `tools/list` 动态发现，名称自动加上 `mcp_playwright_` 前缀。
+导航、截图、点击和表单操作的具体名称与数量以启动后菜单中的工具列表为准。
 
 ## Context7 MCP 使用示例 ⭐ 新增
 
-Context7 MCP 提供智能上下文管理功能（工具名称会自动加上 `mcp_context7_` 前缀）：
-
-1. **mcp_context7_store** - 存储上下文信息
-2. **mcp_context7_search** - 语义搜索上下文
-3. **mcp_context7_retrieve** - 检索相关上下文
-4. **mcp_context7_analyze** - 分析上下文关系
+Context7 提供第三方库文档检索，不是项目历史或记忆存储服务。
+工具通过 `tools/list` 动态发现，名称自动加上 `mcp_context7_` 前缀。
 
 ### Context7 配置说明
 
-Context7 需要 Upstash API Key：
-1. 访问 https://console.upstash.com/
-2. 注册并创建账号
-3. 创建 Context7 项目
-4. 复制 API Key
-5. 配置到 `mcp_config.json` 或 `.env` 文件
+安装、认证与当前工具说明见 <https://github.com/upstash/context7>。
+基础 stdio 配置如下；如需认证，按该服务器文档设置，不能把 Upstash 数据库 key 当作
+Context7 的通用认证参数。
 
 **配置示例**：
 ```json
 {
-  "context7": {
-    "command": "npx",
-    "args": ["-y", "@upstash/context7-mcp"],
-    "env": {
-      "UPSTASH_API_KEY": "ctx7sk-your-api-key"
-    },
-    "enabled": true
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "enabled": true
+    }
   }
 }
 ```
@@ -116,22 +104,22 @@ Agent 会自动调用 Playwright MCP 工具来完成任务。
 "访问 https://news.ycombinator.com，提取前 10 条新闻标题"
 ```
 
-#### 示例 4：Context7 - 存储项目上下文 ⭐ 新增
+#### 示例 4：Context7 - 查找库文档
 
 ```bash
-python main.py "分析当前项目的架构，并将关键信息存储到 Context7"
+python main.py "用 Context7 查找 FastAPI 的依赖注入文档"
 ```
 
-#### 示例 5：Context7 - 语义搜索 ⭐ 新增
+#### 示例 5：Context7 - 核对 API 用法
 
 ```bash
-python main.py "在 Context7 中搜索所有与数据库设计相关的上下文"
+python main.py "用 Context7 核对当前 React 版本的 useEffect 清理函数用法"
 ```
 
-#### 示例 6：Context7 - 智能检索 ⭐ 新增
+#### 示例 6：Context7 - 检索库示例
 
 ```bash
-python main.py "从 Context7 获取与当前任务相关的历史决策和代码片段"
+python main.py "从 Context7 获取 SQLAlchemy 的事务管理示例"
 ```
 
 ---
@@ -238,11 +226,11 @@ python main.py
   "mcpServers": {
     "<服务器名称>": {
       "command": "<启动命令>",
-      "args": ["<参数1>", "<参数2>", ...],
+      "args": ["<参数1>", "<参数2>"],
       "env": {
         "<环境变量名>": "<环境变量值>"
       },
-      "enabled": true/false
+      "enabled": true
     }
   }
 }
@@ -253,9 +241,10 @@ python main.py
 | 字段 | 必填 | 说明 | 示例 |
 |------|------|------|------|
 | `command` | ✅ | 启动命令 | `"npx"`, `"node"`, `"python"` |
-| `args` | ✅ | 命令参数列表 | `["@playwright/mcp@latest"]` |
+| `args` | ❌ | 命令参数列表，默认空列表 | `["@playwright/mcp@latest"]` |
 | `env` | ❌ | 环境变量字典 | `{"API_KEY": "xxx"}` |
 | `enabled` | ❌ | 是否启用（默认 `true`） | `true` 或 `false` |
+| `timeout` | ❌ | 单次请求超时秒数，默认 `5` | `30` |
 
 ### 禁用某个 MCP 服务器
 
@@ -267,7 +256,7 @@ python main.py
     "playwright": {
       "command": "npx",
       "args": ["@playwright/mcp@latest"],
-      "enabled": false  // 设置为 false 即可禁用
+      "enabled": false
     }
   }
 }
@@ -276,6 +265,9 @@ python main.py
 ---
 
 ## 常见 MCP 服务器推荐
+
+以下配置块是 `mcpServers` 内的服务器映射，需放入完整文件的 `mcpServers` 对象中。
+Filesystem 的参数还需添加允许访问的工作区绝对路径；各外部包的安装与认证参数以其文档为准。
 
 ### 1. Playwright（浏览器自动化）✅ 已预置
 
@@ -291,24 +283,21 @@ python main.py
 
 **用途**：网页自动化、截图、表单填写、数据爬取
 
-### 2. Context7（智能上下文管理）⭐ 已预置
+### 2. Context7（第三方库文档检索）
 
 ```json
 {
   "context7": {
     "command": "npx",
     "args": ["-y", "@upstash/context7-mcp"],
-    "env": {
-      "UPSTASH_API_KEY": "your_upstash_api_key"
-    },
     "enabled": true
   }
 }
 ```
 
-**用途**：智能上下文存储、语义搜索、知识管理、历史决策追溯
+**用途**：查找第三方库的文档、API 用法和示例
 
-**获取 API Key**：https://console.upstash.com/
+**安装与认证说明**：https://github.com/upstash/context7
 
 ### 3. Filesystem（文件系统操作）
 
@@ -425,7 +414,7 @@ Agent 会自动调用 GitHub MCP 工具来完成任务！
 **解决方法**：
 ```bash
 # 检查 Node.js
-node --version  # 需要 v14+
+node --version  # 版本需满足所选 MCP 包的 engines 要求
 
 # 手动安装 MCP 包
 npx @playwright/mcp@latest

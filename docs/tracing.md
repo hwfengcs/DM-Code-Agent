@@ -113,7 +113,7 @@ the fork point, which is what links the two JSONL files into a tree. `--at` acce
 or a unique prefix; an existing output file is never overwritten.
 
 Whether the branch can actually keep running depends on there being a `checkpoint` entry at or
-before the fork point. If there is, `fork` prints the ready-to-paste command:
+before the fork point in the same run. If there is, `fork` prints the ready-to-paste command:
 
 ```bash
 dm-agent --resume sessions/branch.jsonl
@@ -138,6 +138,8 @@ dm-agent --resume sessions/run.json
 `--resume` sniffs the file: a file that parses as one JSON object is the legacy snapshot, anything
 else is read as a session log. `--resume-at` only applies to session logs and resolves to that
 entry *or the closest `checkpoint` entry before it*.
+Checkpoint lookup stops at the current `run_start`: a new task without a checkpoint cannot
+accidentally resume a previous task. `--resume-at` can still select an entry in an earlier run.
 
 ## Tool Replay
 

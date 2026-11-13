@@ -156,8 +156,10 @@ def atomic_write_json(path: Path, payload: Any) -> None:
     与 ``extensions/trust.py`` 里的私有实现是同一套逻辑，暂未合并——那属于重构，
     不该夹带进这次的修复（见 ``docs/research-log/32-user-level-config-and-env.md``）。
     """
+    parent_existed = path.parent.exists()
     path.parent.mkdir(parents=True, exist_ok=True)
-    restrict_permissions(path.parent, directory=True)
+    if not parent_existed:
+        restrict_permissions(path.parent, directory=True)
 
     temporary_path: Path | None = None
     try:
@@ -169,11 +171,11 @@ def atomic_write_json(path: Path, payload: Any) -> None:
             suffix=".tmp",
             delete=False,
         ) as temporary:
+            temporary_path = Path(temporary.name)
             json.dump(payload, temporary, ensure_ascii=False, indent=2)
             temporary.write("\n")
             temporary.flush()
             os.fsync(temporary.fileno())
-            temporary_path = Path(temporary.name)
         restrict_permissions(temporary_path, directory=False)
         os.replace(temporary_path, path)
         restrict_permissions(path, directory=False)

@@ -69,7 +69,7 @@ TestPyPI 同样操作一遍（<https://test.pypi.org/manage/account/publishing/>
 仓库 → Actions → Release → Run workflow，target 选 `testpypi`。
 
 它会先跑完整验证（测试、eval gate、lint、类型、前端产物比对），构建 wheel 与 sdist，
-然后在 Ubuntu 和 Windows 上**把 wheel 装进干净环境**验证七个命令可用、UI 在包里、
+然后在 Ubuntu 和 Windows 上**把 wheel 装进干净环境**验证八个命令可用、UI 在包里、
 配置路径不落进 site-packages、Web 服务能起。全过了才上传。
 
 装下来试一次：

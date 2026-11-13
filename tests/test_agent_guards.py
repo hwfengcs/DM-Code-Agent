@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from dm_agent.core.agent import ReactAgent
 from dm_agent.core.events import EventBus
 from dm_agent.tools.base import Tool
@@ -38,6 +40,56 @@ def _action(action: str, action_input) -> str:
         {"thought": "step", "action": action, "action_input": action_input},
         ensure_ascii=False,
     )
+
+
+@pytest.mark.parametrize("old_string", ["missing", "value"])
+def test_unmatched_content_edit_does_not_stale_the_last_read(tmp_path, monkeypatch, old_string):
+    monkeypatch.chdir(tmp_path)
+    target = Path("app.py")
+    target.write_text("value = 1\nvalue = 2\n", encoding="utf-8")
+    client = FakeRespondClient(
+        [
+            _action("read_file", {"path": "app.py"}),
+            _action("edit_file", {"path": "app.py", "old_string": old_string, "new_string": "x"}),
+            _action(
+                "edit_file",
+                {
+                    "path": "app.py",
+                    "operation": "replace",
+                    "line_start": 1,
+                    "line_end": 1,
+                    "content": "value = 3",
+                },
+            ),
+            _action("finish", "changed first line"),
+        ]
+    )
+    agent = ReactAgent(client, _file_tools(), enable_planning=False, enable_compression=False)
+
+    result = agent.run("edit app.py")
+
+    assert target.read_text(encoding="utf-8") == "value = 3\nvalue = 2\n"
+    assert result["metadata"]["edit_guard_block_count"] == 0
+
+
+@pytest.mark.parametrize("old_string", ["missing", "value"])
+def test_unmatched_content_edit_does_not_complete_plan_step(tmp_path, monkeypatch, old_string):
+    monkeypatch.chdir(tmp_path)
+    Path("app.py").write_text("value = 1\nvalue = 2\n", encoding="utf-8")
+    client = FakeRespondClient(
+        [
+            json.dumps({"plan": [{"step": 1, "action": "edit_file", "reason": "change"}]}),
+            _action("read_file", {"path": "app.py"}),
+            _action("edit_file", {"path": "app.py", "old_string": old_string, "new_string": "x"}),
+            _action("finish", "stopped after trying edit"),
+        ]
+    )
+    agent = ReactAgent(client, _file_tools(), enable_compression=False)
+
+    result = agent.run("edit app.py")
+
+    assert agent.planner.current_plan[0].completed is False
+    assert result["metadata"]["replan_count"] == 0
 
 
 def test_edit_guard_blocks_unread_file_then_allows_after_read(tmp_path, monkeypatch):

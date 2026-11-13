@@ -72,7 +72,7 @@ def _extract_imports(tree: ast.AST) -> list[dict[str, Any]]:
                 imports.append(
                     {
                         "type": "from_import",
-                        "module": node.module or "",
+                        "module": "." * node.level + (node.module or ""),
                         "name": alias.name,
                         "alias": alias.asname,
                         "line": node.lineno,
@@ -92,7 +92,7 @@ def _extract_classes(tree: ast.AST) -> list[dict[str, Any]]:
             # 提取方法
             methods = []
             for item in node.body:
-                if isinstance(item, ast.FunctionDef):
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     methods.append(
                         {
                             "name": item.name,
@@ -212,14 +212,8 @@ def get_function_signature(arguments: dict[str, Any]) -> str:
                 and node.name == function_name
             ):
                 # 构建签名
-                args_str = []
-                for arg in node.args.args:
-                    arg_str = arg.arg
-                    if arg.annotation:
-                        arg_str += f": {_get_name(arg.annotation)}"
-                    args_str.append(arg_str)
-
-                signature = f"def {node.name}({', '.join(args_str)})"
+                prefix = "async def" if isinstance(node, ast.AsyncFunctionDef) else "def"
+                signature = f"{prefix} {node.name}({ast.unparse(node.args)})"
                 if node.returns:
                     signature += f" -> {_get_name(node.returns)}"
 
@@ -278,18 +272,19 @@ def find_dependencies(arguments: dict[str, Any]) -> str:
             module = imp.get("module", "")
             if not module:
                 continue
+            if module.startswith("."):
+                local_modules.add(module)
+                continue
 
             # 获取顶层模块名
             top_module = module.split(".")[0]
 
             if top_module in stdlib_module_names:
                 stdlib_modules.add(module)
-            elif top_module.startswith("."):
-                local_modules.add(module)
             else:
                 # 简单判断：如果路径中存在对应文件夹，认为是本地模块
                 parent_path = path.parent / top_module
-                if parent_path.exists():
+                if parent_path.exists() or parent_path.with_suffix(".py").is_file():
                     local_modules.add(module)
                 else:
                     third_party_modules.add(module)

@@ -1,7 +1,6 @@
 """``dm-agent-web`` 入口：解析参数、生成 token、起 uvicorn。
 
-默认姿势是**最保守的那一档**：只绑 127.0.0.1、生成一次性 token、
-不开写权限（``--read-only`` 之外的写操作要等阶段 3 的运行能力接进来）。
+默认只绑定 127.0.0.1 并生成一次性 token；``--read-only`` 可禁用写操作。
 """
 
 from __future__ import annotations

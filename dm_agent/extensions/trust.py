@@ -50,11 +50,11 @@ class ProjectTrustStore:
                 suffix=".tmp",
                 delete=False,
             ) as temporary:
+                temporary_path = Path(temporary.name)
                 json.dump(payload, temporary, ensure_ascii=False, indent=2, sort_keys=True)
                 temporary.write("\n")
                 temporary.flush()
                 os.fsync(temporary.fileno())
-                temporary_path = Path(temporary.name)
             _restrict_permissions(temporary_path, directory=False)
             os.replace(temporary_path, self.path)
             _restrict_permissions(self.path, directory=False)

@@ -13,7 +13,9 @@ from __future__ import annotations
 import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from typing import TYPE_CHECKING
 
 import pytest
@@ -400,6 +402,34 @@ def test_concurrency_limit_returns_409(writable_client: TestClient, tmp_path: Pa
     finally:
         for record in (first, second):
             record.process.stop(grace_seconds=1.0)
+
+
+def test_simultaneous_create_requests_cannot_exceed_capacity(
+    writable_client: TestClient, fake_agent: Callable[..., None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_agent(entries=2, delay=1.0)
+    registry = registry_of(writable_client)
+    registry._max_concurrent = 1
+    original_start = RunProcess.start
+
+    def slow_start(self: RunProcess, *, stdin_pipe: bool = False) -> None:
+        time.sleep(0.2)
+        original_start(self, stdin_pipe=stdin_pipe)
+
+    monkeypatch.setattr(RunProcess, "start", slow_start)
+    ready = Barrier(2)
+
+    def create() -> int:
+        ready.wait(timeout=5)
+        return writable_client.post("/api/runs", json={"task": "x"}).status_code
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            statuses = list(executor.map(lambda _index: create(), range(2)))
+        assert sorted(statuses) == [201, 409]
+        assert registry.running_count() == 1
+    finally:
+        registry.stop_all()
 
 
 def test_capacity_frees_up_after_cancel(writable_client: TestClient, tmp_path: Path) -> None:

@@ -1,4 +1,5 @@
 import json
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -35,6 +36,33 @@ from dm_agent.benchmarks.runner import (
 )
 from dm_agent.benchmarks.tasks import get_benchmark_tasks, get_coding_tasks, get_maintenance_tasks
 from dm_agent.tracing import TraceWriter
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr"),
+    [
+        (b"partial stdout\xff", b"partial stderr\xff"),
+        ("partial stdout", "partial stderr"),
+        (None, None),
+    ],
+)
+def test_benchmark_timeout_preserves_text_output(monkeypatch, tmp_path, stdout, stderr):
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"], output=stdout, stderr=stderr)
+
+    monkeypatch.setattr(runner_module.subprocess, "run", timeout)
+
+    result = runner_module.run_command(["{python}", "script.py"], tmp_path, timeout=1)
+
+    assert result.returncode == 124
+    assert isinstance(result.stdout, str)
+    assert isinstance(result.stderr, str)
+    if stdout:
+        assert result.stdout.startswith("partial stdout")
+    if stderr:
+        assert result.stderr.startswith("partial stderr")
+    assert "Command timed out after 1s" in result.stderr
+    json.dumps(result.to_dict())
 
 
 def test_coding_benchmark_manifest_is_hidden_test_based():
@@ -709,6 +737,22 @@ def test_benchmark_economics_warns_on_manifest_signature_mismatch():
     assert set(guard["suite_signatures"]) == {"suite-a", "suite-b"}
     assert guard["missing_suite_signature"] == ["legacy:scripted:old"]
     assert "different benchmark suite signatures" in render_markdown(economics)
+
+
+@pytest.mark.parametrize("price", [0.0, 0.002])
+def test_economics_price_override_recalculates_existing_costs(price):
+    report = {
+        "summary": {"total_runs": 1, "overall_pass_rate": 1.0},
+        "token_economics": {"cost_per_1k_tokens": 0.01},
+        "results": [{"success": True, "estimated_tokens": 1000, "estimated_cost_usd": 0.01}],
+    }
+
+    original = build_economics_report([report])["entries"][0]
+    overridden = build_economics_report([report], cost_per_1k_tokens=price)["entries"][0]
+
+    assert original["estimated_cost_usd"] == 0.01
+    assert overridden["estimated_cost_usd"] == price
+    assert overridden["cost_per_success_usd"] == price
 
 
 def test_benchmark_summary_recovery_rate_and_tags():

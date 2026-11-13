@@ -22,7 +22,7 @@ class ClaudeClient(BaseLLMClient):
         api_key: str,
         *,
         model: str = "claude-sonnet-4-5",
-        base_url: str = "",  # Claude SDK 不需要 base_url
+        base_url: str = "",
         timeout: int = 600,
         anthropic_version: str = "2023-06-01",
         respond_retries: int = 2,
@@ -40,8 +40,12 @@ class ClaudeClient(BaseLLMClient):
         self.anthropic_version = anthropic_version
 
         # 创建 Anthropic 客户端实例
-        # 官方 SDK 不需要手动设置 base_url
-        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.client = anthropic.Anthropic(
+            api_key=self.api_key,
+            timeout=self.timeout,
+            base_url=self.base_url or None,
+            max_retries=0,
+        )
 
     def complete(
         self,

@@ -150,10 +150,14 @@ class ToolInvoker:
             action_input=action_input,
             context=context,
         )
-        confirmed_no_change = (
-            tool_succeeded
-            and identity_edit_noop
-            and not observation_reports_missing_path(bounded_observation)
+        unmatched_edit = (
+            action == "edit_file"
+            and tool.runner is builtin_edit_file
+            and raw_observation.startswith(("未命中：", "未替换："))
+        )
+        confirmed_no_change = tool_succeeded and (
+            unmatched_edit
+            or (identity_edit_noop and not observation_reports_missing_path(bounded_observation))
         )
         after_event = AfterToolResultEvent(
             tool_name=action,
@@ -163,7 +167,11 @@ class ToolInvoker:
             run_id=context.run_id,
             tool_succeeded=tool_succeeded,
             no_change=confirmed_no_change,
-            no_change_reason="identical_content" if confirmed_no_change else "",
+            no_change_reason=(
+                "unmatched_content"
+                if unmatched_edit
+                else "identical_content" if confirmed_no_change else ""
+            ),
             metadata=metadata,
         )
         observation = self.event_bus.emit_after_tool_result(after_event, on_error=self.on_error)

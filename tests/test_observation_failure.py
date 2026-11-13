@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dm_agent.core.observation import _STRUCTURED_OUTPUT_TOOLS, is_failure_observation
 from dm_agent.tools import _builtin_tools
 
@@ -109,6 +111,28 @@ def test_returncode_inside_read_source_does_not_flip_the_verdict() -> None:
     # 被读取的测试代码里提到 returncode，不该被当成本次调用的退出码。
     observation = "def test_exit():\n    assert result.returncode == 1\n"
     assert not is_failure_observation(observation, action="read_file")
+
+
+@pytest.mark.parametrize(
+    "observation",
+    ["returncode: 1", "[语法检查] 未通过：example output"],
+)
+def test_read_file_treats_status_shaped_content_as_file_text(observation) -> None:
+    assert not is_failure_observation(observation, action="read_file")
+
+
+@pytest.mark.parametrize(
+    ("action", "observation"),
+    [
+        ("parse_ast", "Python 语法错误：invalid syntax"),
+        ("parse_ast", "解析失败：invalid encoding"),
+        ("get_function_signature", "提取函数签名失败：invalid syntax"),
+        ("find_dependencies", "分析依赖关系失败：invalid syntax"),
+        ("get_code_metrics", "获取代码度量失败：permission denied"),
+    ],
+)
+def test_analysis_tool_failures_are_recognized(action, observation) -> None:
+    assert is_failure_observation(observation, action=action)
 
 
 # --- 兼容性：未知来源仍走全文扫描 ---

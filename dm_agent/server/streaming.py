@@ -103,7 +103,7 @@ async def stream_session_lines(
             continue
 
         chunk, offset = _read_from(path, offset)
-        if chunk:
+        if chunk or b"\n" in buffer:
             buffer += chunk
             # 最后一段若不以换行结尾就是半行，留到下一轮。
             *complete, buffer = buffer.split(b"\n")
@@ -116,7 +116,7 @@ async def stream_session_lines(
                     continue
                 try:
                     entry = json.loads(text)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, UnicodeDecodeError):
                     # 单条坏行不该终止整个流；标出来让前端能显示。
                     yield sse_message(
                         event="malformed",

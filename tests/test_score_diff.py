@@ -102,6 +102,26 @@ def test_mismatched_suite_signature_refuses_to_compare():
     assert "无法对比" in render_markdown(comparison)
 
 
+@pytest.mark.parametrize("signature", ["sig-a", ""])
+def test_missing_task_refuses_to_compare_even_with_equal_or_missing_signatures(signature):
+    left = _report({"a": True, "b": False}, signature=signature)
+    right = _report({"a": True}, signature=signature)
+
+    comparison = compare_reports(left, right)
+
+    assert comparison.comparable is False
+    assert comparison.total == 0
+    assert "集合不同" in comparison.incomparable_reason
+
+
+def test_missing_variant_refuses_to_compare():
+    left = _report({"a": True})
+    left["results"].append({"task_id": "a", "variant": "no_planning", "success": False})
+    right = _report({"a": True})
+
+    assert compare_reports(left, right).comparable is False
+
+
 def test_repeated_runs_only_count_as_passing_when_every_repeat_passed():
     left = _report({"a": True})
     right = {

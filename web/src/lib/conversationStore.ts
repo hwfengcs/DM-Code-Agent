@@ -88,6 +88,7 @@ function attach(conversationId: string): void {
             ? state.entries
             : [...state.entries, event.entry],
         })
+        if (event.entry.event === 'run_end') void refresh(conversationId)
         break
       case 'malformed':
         set({ notice: `会话日志第 ${event.lineIndex} 行无法解析，已跳过。` })
@@ -110,7 +111,8 @@ function attach(conversationId: string): void {
  */
 async function refresh(conversationId: string): Promise<void> {
   try {
-    set({ record: await api.conversation(conversationId) })
+    const record = await api.conversation(conversationId)
+    if (state.record?.run_id === conversationId) set({ record })
   } catch (cause) {
     set({ notice: describe(cause) })
   }

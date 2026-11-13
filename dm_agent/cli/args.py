@@ -11,6 +11,8 @@ from .config import load_config_from_file
 
 def validate_feature_args(args: argparse.Namespace) -> str:
     """Validate default-off advanced feature CLI arguments."""
+    if args.max_steps <= 0:
+        return "--max-steps must be greater than 0."
     if args.max_replans < -1:
         return "--max-replans must be -1 or greater."
     if args.max_observation_chars != 0 and args.max_observation_chars < 200:
@@ -26,10 +28,15 @@ def validate_feature_args(args: argparse.Namespace) -> str:
         return conversation_error
     checkpoint_path = getattr(args, "checkpoint", None)
     trace_path = getattr(args, "trace", None)
-    if checkpoint_path and trace_path and Path(checkpoint_path) == Path(trace_path):
-        # checkpoint 里有完整对话（含模型原始输出），trace 默认是可分享的脱敏档。
-        # 指向同一个文件会让脱敏档被完整历史悄悄污染，直接拒绝。
-        return "--trace 与 --checkpoint 不能指向同一个文件（前者默认脱敏，后者含完整对话）。"
+    if checkpoint_path and trace_path:
+        checkpoint = Path(checkpoint_path)
+        trace = Path(trace_path)
+        same_file = checkpoint.resolve() == trace.resolve()
+        if not same_file and checkpoint.exists() and trace.exists():
+            same_file = checkpoint.samefile(trace)
+        if same_file:
+            # checkpoint 含完整对话，同文件会污染默认脱敏的 trace。
+            return "--trace 与 --checkpoint 不能指向同一个文件（前者默认脱敏，后者含完整对话）。"
     return ""
 
 
@@ -72,13 +79,13 @@ def parse_args(argv: Any) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default=saved_config.get("model", "deepseek-chat"),
+        default=None,
         help="模型标识符（默认根据提供商选择）。",
     )
     parser.add_argument(
         "--base-url",
         dest="base_url",
-        default=saved_config.get("base_url"),
+        default=None,
         help="API 基础 URL（可选，使用提供商默认值）。",
     )
     parser.add_argument(
@@ -203,4 +210,10 @@ def parse_args(argv: Any) -> argparse.Namespace:
         type=Path,
         help="将本次任务的人类可读运行报告写入 Markdown 文件。",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.provider.casefold() == saved_config.get("provider", "deepseek").casefold():
+        if args.model is None:
+            args.model = saved_config.get("model")
+        if args.base_url is None:
+            args.base_url = saved_config.get("base_url")
+    return args

@@ -45,7 +45,9 @@ def require_token(
         return
     presented = credentials.credentials if credentials is not None else (token or "")
     # compare_digest 做常数时间比较，避免按字节提前返回泄漏 token 前缀。
-    if not presented or not secrets.compare_digest(presented, settings.token):
+    if not presented or not secrets.compare_digest(
+        presented.encode("utf-8"), settings.token.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="缺少或错误的访问 token。",

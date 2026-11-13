@@ -10,6 +10,7 @@ from dm_agent.core.agent import ReactAgent
 from dm_agent.core.checkpoint import (
     CHECKPOINT_SCHEMA_VERSION,
     RunCheckpoint,
+    backup_file,
     load_checkpoint,
     save_checkpoint,
 )
@@ -20,6 +21,20 @@ from dm_agent.memory.context_budget import estimate_messages_tokens
 from dm_agent.memory.context_compressor import Compaction, apply_compaction
 from dm_agent.tools.base import Tool
 from dm_agent.tracing import TraceWriter, load_trace_events, rebuild_context
+
+
+def test_repeated_backup_for_same_run_and_step_preserves_both_versions(tmp_path, monkeypatch):
+    monkeypatch.setattr("dm_agent.core.checkpoint.backup_root", lambda: tmp_path / "backups")
+    source = tmp_path / "app.py"
+    source.write_text("first version\n", encoding="utf-8")
+    first = backup_file(source, run_id="same-run", step=1)
+    source.write_text("second version\n", encoding="utf-8")
+
+    second = backup_file(source, run_id="same-run", step=1)
+
+    assert first is not None and second is not None and first != second
+    assert first.read_text(encoding="utf-8") == "first version\n"
+    assert second.read_text(encoding="utf-8") == "second version\n"
 
 
 class FakeRespondClient:

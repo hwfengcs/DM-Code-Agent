@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -56,7 +57,9 @@ def build_code_index(arguments: dict[str, Any]) -> str:
             {
                 "path": relative,
                 "module": module,
-                "imports": _index_imports(tree, module),
+                "imports": _index_imports(
+                    tree, f"{module}.__init__" if path.name == "__init__.py" else module
+                ),
                 "symbols": symbols,
             }
         )
@@ -141,7 +144,8 @@ def dependency_graph(arguments: dict[str, Any]) -> str:
             tree = ast.parse(source, filename=str(path))
         except SyntaxError:
             continue
-        for imported in _imported_modules(tree, module):
+        import_context = f"{module}.__init__" if path.name == "__init__.py" else module
+        for imported in _imported_modules(tree, import_context):
             target = _match_local_module(imported, module_to_path)
             if target:
                 edges.append({"from": module, "to": target, "import": imported})
@@ -158,15 +162,19 @@ def dependency_graph(arguments: dict[str, Any]) -> str:
 
 
 def _iter_python_files(root: Path, *, max_files: int, include_tests: bool) -> Iterable[Path]:
-    count = 0
-    for path in sorted(root.rglob("*.py")):
-        relative_parts = path.relative_to(root).parts
-        if any(part in DEFAULT_INDEX_EXCLUDES for part in relative_parts):
-            continue
-        if not include_tests and any(part in {"test", "tests"} for part in relative_parts):
-            continue
+    if max_files < 1:
+        raise ValueError("max_files must be at least 1")
+    paths: list[Path] = []
+    for directory, subdirectories, filenames in os.walk(root):
+        subdirectories[:] = [
+            name
+            for name in subdirectories
+            if name not in DEFAULT_INDEX_EXCLUDES
+            and (include_tests or name not in {"test", "tests"})
+        ]
+        paths.extend(Path(directory) / name for name in filenames if Path(name).match("*.py"))
+    for count, path in enumerate(sorted(paths), start=1):
         yield path
-        count += 1
         if count >= max_files:
             break
 

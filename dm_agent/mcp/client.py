@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from queue import Empty, Queue
 from threading import Lock, Thread
 from typing import Any
@@ -95,11 +96,13 @@ class MCPClient:
             if is_windows:
                 # Windows 需要 shell=True 来找到 npx 等命令
                 self.process = subprocess.Popen(
-                    " ".join(full_command),  # Windows 下使用字符串命令
+                    subprocess.list2cmdline(full_command),
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     bufsize=1,
                     env=process_env,
                     shell=True,  # Windows 必需
@@ -112,6 +115,8 @@ class MCPClient:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     bufsize=1,
                     env=process_env,
                 )
@@ -120,6 +125,8 @@ class MCPClient:
             self._running = True
             self._stdout_thread = Thread(target=self._read_stdout, daemon=True)
             self._stdout_thread.start()
+            self._stderr_thread = Thread(target=self._read_stderr, daemon=True)
+            self._stderr_thread.start()
 
             # 初始化 MCP 连接并获取工具列表
             if not self._initialize():
@@ -130,6 +137,7 @@ class MCPClient:
             return True
 
         except Exception as e:
+            self.stop()
             print(f"❌ 启动 MCP 服务器 '{self.name}' 失败: {e}")
             return False
 
@@ -206,6 +214,7 @@ class MCPClient:
             if params:
                 message["params"] = params
 
+            deferred: list[str] = []
             try:
                 # 发送消息
                 # 将消息转为JSON字符串并通过标准输入发送
@@ -213,12 +222,13 @@ class MCPClient:
                 # 刷新缓冲区确保消息立即发送
                 self.process.stdin.flush()
 
-                timeout_count = 0
-                max_polls = max(1, int(self.request_timeout / 0.1))
-                while timeout_count < max_polls:
+                deadline = time.monotonic() + self.request_timeout
+                while (remaining := deadline - time.monotonic()) > 0:
                     try:
-                        response_line = self._stdout_queue.get(timeout=0.1)
+                        response_line = self._stdout_queue.get(timeout=remaining)
                         response = json.loads(response_line)
+                        if not isinstance(response, dict):
+                            continue
 
                         if response.get("id") == self._message_id:
                             if "error" in response:
@@ -226,10 +236,10 @@ class MCPClient:
                                 return None
                             return response.get("result")
 
-                        # Keep unrelated server notifications available for the next read.
-                        self._stdout_queue.put(response_line)
+                        # 本次请求结束前不重新入队，避免同一通知形成无限忙循环。
+                        deferred.append(response_line)
                     except Empty:
-                        timeout_count += 1
+                        break
                     except json.JSONDecodeError:
                         continue
 
@@ -239,6 +249,33 @@ class MCPClient:
             except Exception as e:
                 print(f"❌ 发送 MCP 消息失败: {e}")
                 return None
+            finally:
+                for response_line in deferred:
+                    self._stdout_queue.put(response_line)
+
+    def _read_stderr(self) -> None:
+        """持续排空诊断管道，避免服务器因 stderr 缓冲区写满而阻塞。"""
+        process = self.process
+        if process is None or process.stderr is None:
+            return
+        try:
+            for line in process.stderr:
+                print(f"[MCP:{self.name}] {line.rstrip()}", file=sys.stderr)
+        except (OSError, ValueError):
+            return
+
+    def _send_notification(self, method: str) -> bool:
+        """发送不带请求 id、无需等待响应的 JSON-RPC 通知。"""
+        if self.process is None or self.process.stdin is None:
+            return False
+        with self._lock:
+            try:
+                self.process.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method}) + "\n")
+                self.process.stdin.flush()
+                return True
+            except OSError as exc:
+                print(f"❌ 发送 MCP 通知失败: {exc}")
+                return False
 
     def _initialize(self) -> bool:
         """
@@ -260,11 +297,13 @@ class MCPClient:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "dm-code-agent", "version": "1.1.0"},
+                "clientInfo": {"name": "dm-code-agent", "version": "2.0.0"},
             },
         )
 
         if not result:
+            return False
+        if not self._send_notification("notifications/initialized"):
             return False
 
         # 获取工具列表
@@ -299,12 +338,15 @@ class MCPClient:
             # 提取内容（可能是数组）
             content = result["content"]
             if isinstance(content, list) and len(content) > 0:
-                # 获取第一个内容项的文本
-                first_item = content[0]
-                if isinstance(first_item, dict) and "text" in first_item:
-                    return first_item["text"]
-                return str(first_item)
-            return str(content)
+                observation = "\n".join(
+                    str(item["text"]) if isinstance(item, dict) and "text" in item else str(item)
+                    for item in content
+                )
+            else:
+                observation = str(content)
+            if result.get("isError"):
+                return f"MCP tool error: {observation}"
+            return observation
 
         return None
 

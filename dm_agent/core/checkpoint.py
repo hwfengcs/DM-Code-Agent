@@ -39,7 +39,11 @@ def backup_file(path: str | Path, *, run_id: str, step: int) -> Path | None:
             return None
         target_dir = backup_root() / run_id
         target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / f"{step:03d}-{source.name}"
+        fd, target_name = tempfile.mkstemp(
+            prefix=f"{step:03d}-", suffix=f"-{source.name}", dir=target_dir
+        )
+        os.close(fd)
+        target = Path(target_name)
         # 跨卷场景（临时目录与工作区不同盘）用 copy 而非 rename。
         shutil.copy2(source, target)
         return target

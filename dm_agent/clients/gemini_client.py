@@ -6,6 +6,7 @@ from typing import Any
 
 try:
     from google import genai
+    from google.genai import types
 
     GENAI_AVAILABLE = True
 except ImportError:
@@ -22,7 +23,7 @@ class GeminiClient(BaseLLMClient):
         api_key: str,
         *,
         model: str = "gemini-2.5-flash",
-        base_url: str = "",  # Gemini 不需要 base_url
+        base_url: str = "",
         timeout: int = 600,
         respond_retries: int = 2,
     ) -> None:
@@ -38,7 +39,12 @@ class GeminiClient(BaseLLMClient):
         )
 
         # 创建 genai 客户端实例
-        self.client = genai.Client(api_key=self.api_key)
+        http_options = types.HttpOptions(
+            timeout=self.timeout * 1000,
+            retry_options=types.HttpRetryOptions(attempts=1),
+            base_url=self.base_url or None,
+        )
+        self.client = genai.Client(api_key=self.api_key, http_options=http_options)
 
     def complete(
         self,

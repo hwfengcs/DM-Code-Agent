@@ -67,12 +67,6 @@ def create_conversation(
     registry: Annotated[RunRegistry, Depends(get_registry)],
 ) -> dict[str, Any]:
     """spawn 一个长驻 ``dm-agent --conversation-stdin`` 子进程，立刻返回 id。"""
-    if registry.at_capacity():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="已有运行或对话在进行中。同时跑多个 agent 会互相踩同一个工作区。",
-        )
-
     spec = RunSpec(task="", provider=payload.provider, model=payload.model, options=payload.options)
     try:
         # 建对话时还没有任务（详见 RunSpec.validate）。
@@ -90,14 +84,6 @@ def create_conversation(
         cwd=settings.workspace,
         trace_path=trace_path,
     )
-    try:
-        process.start(stdin_pipe=True)
-    except OSError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"子进程启动失败：{exc}",
-        ) from exc
-
     record = RunRecord(
         run_id=run_id,
         task="",
@@ -106,7 +92,18 @@ def create_conversation(
         process=process,
         kind="conversation",
     )
-    registry.register(record)
+    try:
+        started = registry.start(record, stdin_pipe=True)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"子进程启动失败：{exc}",
+        ) from exc
+    if not started:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="已有运行或对话在进行中。同时跑多个 agent 会互相踩同一个工作区。",
+        )
     return record.to_payload()
 
 

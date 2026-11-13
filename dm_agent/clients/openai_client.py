@@ -22,7 +22,7 @@ class OpenAIClient(BaseLLMClient):
         api_key: str,
         *,
         model: str = "gpt-5",
-        base_url: str = "",  # OpenAI SDK 不需要 base_url
+        base_url: str = "",
         timeout: int = 600,
         respond_retries: int = 2,
     ) -> None:
@@ -38,10 +38,11 @@ class OpenAIClient(BaseLLMClient):
         )
 
         # 创建 OpenAI 客户端实例
-        # 官方 SDK 不需要手动设置 base_url
         self.client = OpenAI(
             api_key=self.api_key,
             timeout=self.timeout,
+            base_url=self.base_url or None,
+            max_retries=0,
         )
 
     def complete(

@@ -129,13 +129,13 @@ jobs:
       # import 到的是源码树而不是安装的包，配置路径类的 bug 会被完全掩盖。
       - name: Install the built wheel
         shell: bash
-        run: pip install "$(ls dist/*.whl)[web]"
+        run: pip install "$(ls dist/*.whl)[web]" "httpx>=0.27.0"
 
       - name: Every console script is present and runnable
         shell: bash
         run: |
           for cmd in dm-agent dm-agent-eval dm-agent-bench dm-agent-trace \
-                     dm-agent-economics dm-agent-manifest-diff dm-agent-web; do
+                     dm-agent-economics dm-agent-manifest-diff dm-agent-score-diff dm-agent-web; do
             "$cmd" --help > /dev/null || { echo "::error::$cmd 不可用"; exit 1; }
             echo "  ok  $cmd"
           done

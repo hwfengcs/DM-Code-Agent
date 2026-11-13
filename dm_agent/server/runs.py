@@ -171,6 +171,17 @@ class RunRegistry:
         with self._lock:
             self._records[record.run_id] = record
 
+    def start(self, record: RunRecord, *, stdin_pipe: bool = False) -> bool:
+        """原子地检查容量、启动并注册，防止并发创建请求越过上限。"""
+        self.reap_idle()
+        with self._lock:
+            running = sum(self._refresh(current).is_running for current in self._records.values())
+            if running >= self._max_concurrent:
+                return False
+            record.process.start(stdin_pipe=stdin_pipe)
+            self._records[record.run_id] = record
+            return True
+
     def get(self, run_id: str) -> RunRecord | None:
         with self._lock:
             record = self._records.get(run_id)
@@ -243,6 +254,9 @@ class RunRegistry:
                 and not record.is_busy
                 and record.idle_seconds(moment) >= self._idle_timeout
             ]
+            # 与投递共用这把锁，先关 stdin，避免筛选后又接下新任务再把它杀掉。
+            for record in stale:
+                record.process.close_stdin()
         reaped = []
         for record in stale:
             record.process.shutdown(grace_seconds=2.0)
@@ -312,9 +326,9 @@ def _count_run_ends(trace_path: Path) -> int:
             continue
         try:
             entry = json.loads(text)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             continue
-        if entry.get("event") == "run_end":
+        if isinstance(entry, dict) and entry.get("event") == "run_end":
             count += 1
     _RUN_END_SCAN[key] = (offset + consumed, count)
     return count
@@ -348,8 +362,10 @@ def _read_agent_status(trace_path: Path) -> str:
             entry = json.loads(text)
         except json.JSONDecodeError:
             continue
-        if entry.get("event") == "run_end":
+        if isinstance(entry, dict) and entry.get("event") == "run_end":
             payload = entry.get("payload") or {}
+            if not isinstance(payload, dict):
+                continue
             status = payload.get("status")
             return str(status) if status else ""
     return ""

@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -38,6 +40,7 @@ mimetypes.add_type("font/woff2", ".woff2")
 # Vite 开发服务器的默认来源。只放行 loopback：真正的鉴权靠 token，
 # CORS 在这里只是让 `npm run dev` 能直连后端，不承担安全职责。
 _DEV_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
+IDLE_REAP_INTERVAL_SECONDS = 30.0
 
 
 def default_static_dir() -> Path | None:
@@ -49,10 +52,24 @@ def default_static_dir() -> Path | None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """关停时把还在跑的子进程收掉，不留孤儿 agent 继续改你的工作区。"""
-    yield
     registry = getattr(app.state, "registry", None)
-    if isinstance(registry, RunRegistry):
-        registry.stop_all()
+    if not isinstance(registry, RunRegistry):
+        yield
+        return
+
+    async def reap_idle() -> None:
+        while True:
+            await asyncio.sleep(IDLE_REAP_INTERVAL_SECONDS)
+            await asyncio.to_thread(registry.reap_idle)
+
+    reaper = asyncio.create_task(reap_idle())
+    try:
+        yield
+    finally:
+        reaper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reaper
+        await asyncio.to_thread(registry.stop_all)
 
 
 class SPAStaticFiles(StaticFiles):

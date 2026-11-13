@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import os
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -53,10 +54,14 @@ def _atomic_write_text(path: Path, content: str) -> str:
     Windows 上编辑一个 LF 文件会把**整份文件**转成 CRLF。实测代价：在真实仓库上
     改一行，产出的 diff 是 +317/-317 的整文件重写。
     """
+    if path.is_symlink():
+        path = path.resolve()
     payload = _with_newline(content, _dominant_newline(path))
     tmp_path = path.with_name(f"{path.name}.tmp-{os.getpid()}")
     try:
         tmp_path.write_text(payload, encoding="utf-8", newline="")
+        if path.exists():
+            shutil.copymode(path, tmp_path)
         try:
             os.replace(tmp_path, path)
             return ""
@@ -339,7 +344,7 @@ def edit_file(arguments: dict[str, Any]) -> str:
         if start_idx > len(lines):
             return f"行号 {line_start} 超出文件范围（共 {len(lines)} 行）。"
 
-        lines.insert(start_idx, content)
+        lines[start_idx:start_idx] = content.splitlines(keepends=True)
         updated = "".join(lines)
         _atomic_write_text(path, updated)
         inserted_lines = content.count("\n") if content else 0
@@ -367,7 +372,7 @@ def edit_file(arguments: dict[str, Any]) -> str:
             if content and not content.endswith("\n"):
                 content += "\n"
 
-            lines[start_idx:end_idx] = [content]
+            lines[start_idx:end_idx] = content.splitlines(keepends=True)
             updated = "".join(lines)
             _atomic_write_text(path, updated)
             replaced_lines = content.count("\n") if content else 0

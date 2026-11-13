@@ -11,7 +11,9 @@ from __future__ import annotations
 import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from typing import TYPE_CHECKING
 
 import pytest
@@ -76,6 +78,49 @@ def test_deleting_twice_keeps_both_copies(client: TestClient, sessions_dir: Path
     assert second.status_code == 200
     assert second.json()["trashed_as"] != f"{TRASH_DIR_NAME}/clean.jsonl"
     assert len(list((sessions_dir / TRASH_DIR_NAME).glob("clean*.jsonl"))) == 2
+
+
+def test_concurrent_deletes_preserve_both_same_named_sessions(
+    client: TestClient, sessions_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dm_agent.server.routes import sessions
+
+    first = copy_session(sessions_dir / "clean.jsonl", sessions_dir / "a" / "same.jsonl")
+    second = copy_session(sessions_dir / "recovered.jsonl", sessions_dir / "b" / "same.jsonl")
+    originals = {first.read_bytes(), second.read_bytes()}
+    unique_path = sessions._unique_trash_path
+
+    def slow_unique_path(directory: Path, name: str) -> Path:
+        target = unique_path(directory, name)
+        time.sleep(0.1)
+        return target
+
+    monkeypatch.setattr(sessions, "_unique_trash_path", slow_unique_path)
+    ready = Barrier(2)
+
+    def delete(name: str) -> int:
+        ready.wait(timeout=5)
+        return client.delete("/api/sessions", params={"name": name}).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        assert list(executor.map(delete, ["a/same.jsonl", "b/same.jsonl"])) == [200, 200]
+    trashed = list((sessions_dir / TRASH_DIR_NAME).glob("same*.jsonl"))
+    assert len(trashed) == 2
+    assert {path.read_bytes() for path in trashed} == originals
+
+
+def test_trash_directory_cannot_be_a_symlink_outside_sessions(
+    client: TestClient, sessions_dir: Path, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside-trash"
+    outside.mkdir()
+    try:
+        (sessions_dir / TRASH_DIR_NAME).symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("当前环境不允许创建符号链接")
+    assert client.delete("/api/sessions", params={"name": "clean.jsonl"}).status_code == 500
+    assert (sessions_dir / "clean.jsonl").is_file()
+    assert list(outside.iterdir()) == []
 
 
 def test_delete_is_still_bounded_by_the_sessions_dir(client: TestClient) -> None:

@@ -24,7 +24,7 @@ real repository maintenance, traceability, reproducibility, and benchmark qualit
 - Keep benchmark tasks executable with plain pytest hidden tests.
 - When changing benchmark behavior, update tests and docs together.
 - Do not claim evaluation numbers that were not actually run. The scoreboard is the bundled
-  coding + maintenance benchmark (13 hidden-test tasks). Real SWE-bench / Docker /
+  coding + maintenance benchmark (30 hidden-test tasks). Real SWE-bench / Docker /
   cross-model scoring is frozen.
 - Do not mix a fix into a pure-refactor commit — it destroys the "eval identical field by
   field" check that makes the refactor verifiable.

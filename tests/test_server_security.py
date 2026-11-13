@@ -48,6 +48,14 @@ def test_query_token_works_for_eventsource(make_client: Callable[..., TestClient
     assert client.get("/api/sessions", params={"token": "tok-xyz"}).status_code == 401
 
 
+def test_unicode_query_token_is_rejected_without_server_error(
+    make_client: Callable[..., TestClient],
+) -> None:
+    client = make_client(token="ascii-token")
+    del client.headers["Authorization"]
+    assert client.get("/api/sessions", params={"token": "错误"}).status_code == 401
+
+
 def test_no_token_mode_allows_anonymous(make_client: Callable[..., TestClient]) -> None:
     client = make_client(token="")
     # token 为空时 fixture 本来就没设这个头，pop 掉是为了断言「确实不需要它」。
@@ -75,6 +83,8 @@ def test_generated_tokens_are_unique_and_long() -> None:
         ("192.168.1.10", False),
         ("example.com", False),
         ("not-an-address", False),
+        ("", False),
+        ("   ", False),
     ],
 )
 def test_loopback_detection(host: str, expected: bool) -> None:
@@ -97,6 +107,30 @@ def test_public_url_carries_token(tmp_path: Path) -> None:
     # 通配绑定要打印一个真的能点开的地址，不能打印 0.0.0.0。
     wildcard = ServerSettings(sessions_dir=tmp_path, host="0.0.0.0", port=9000, token="abc")
     assert wildcard.public_url().startswith("http://127.0.0.1:9000/")
+
+
+def test_public_url_encodes_custom_tokens(tmp_path: Path) -> None:
+    settings = ServerSettings(sessions_dir=tmp_path, token="a&b#c")
+    assert settings.public_url().endswith("?token=a%26b%23c")
+
+
+def test_session_list_does_not_read_symlink_targets_outside_sessions(
+    make_client: Callable[..., TestClient], sessions_dir: Path, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text(
+        '{"event":"run_start","payload":{"task":"private-outside-task"}}\n',
+        encoding="utf-8",
+    )
+    link = sessions_dir / "linked.jsonl"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("当前环境不允许创建符号链接")
+    response = make_client().get("/api/sessions")
+    assert response.status_code == 200
+    assert "private-outside-task" not in response.text
+    assert "linked.jsonl" not in [card["name"] for card in response.json()["sessions"]]
 
 
 # --- 只读模式 -----------------------------------------------------------

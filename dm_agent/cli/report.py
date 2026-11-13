@@ -91,6 +91,7 @@ def write_run_report(
         observation = str(step.get("observation", "")).replace("\n", " ")
         if len(observation) > 180:
             observation = observation[:177] + "..."
+        observation = observation.replace("|", "\\|")
         lines.append(f"| {index} | `{step.get('action', '')}` | {observation} |")
 
     lines.extend(

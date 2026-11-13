@@ -56,8 +56,10 @@ def load_config_from_file() -> dict[str, Any]:
     if path is None:
         return {}
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8-sig") as f:
             data: dict[str, Any] = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError("配置文件顶层必须是 JSON 对象。")
             return data
     except Exception as e:
         UI.status("warn", "配置文件加载失败，使用默认设置", f"{path}：{e}")

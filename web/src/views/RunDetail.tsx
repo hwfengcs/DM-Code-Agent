@@ -119,8 +119,8 @@ export function RunDetail({
 
   // 老 1.x trace / 只含 checkpoint 条目的文件读不成对话，退回执行链而不是显示空白。
   useEffect(() => {
-    if (!canReadAsConversation && tab === 'conversation') setTab('timeline')
-  }, [canReadAsConversation, tab])
+    if (data && !canReadAsConversation && tab === 'conversation') setTab('timeline')
+  }, [data, canReadAsConversation, tab])
 
   const folded = useMemo(() => foldedEntryIds(visibleEntries), [visibleEntries])
   const selected = useMemo(

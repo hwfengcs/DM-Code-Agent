@@ -215,6 +215,7 @@ class TaskPlanner:
             Exception: 当LLM响应解析失败时会打印警告信息，但不会抛出异常，
                       而是返回空列表以启用回退机制
         """
+        self.clear_plan()
         # 构建工具描述
         tool_descriptions = "\n".join([f"- {tool.name}: {tool.description}" for tool in self.tools])
 
@@ -482,7 +483,7 @@ class TaskPlanner:
             ... else:
             ...     print("等待新任务...")
         """
-        return len(self.current_plan) > 0
+        return any(not step.completed for step in self.current_plan)
 
     def clear_plan(self) -> None:
         """

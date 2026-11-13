@@ -156,6 +156,11 @@ def compare_reports(
         )
     elif not shared:
         reason = "两份报告没有共同的 (task_id, variant)，无法对比。"
+    elif set(left_outcomes) != set(right_outcomes):
+        reason = (
+            "两份报告的 (task_id, variant) 集合不同；"
+            "请使用相同任务和变体的完整报告，不能只比较交集。"
+        )
 
     left_tokens, left_cost = _totals(left)
     right_tokens, right_cost = _totals(right)

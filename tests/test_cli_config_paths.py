@@ -228,3 +228,40 @@ def test_env_file_with_utf8_bom_still_works(
 
     assert os.environ["DM_TEST_BOM"] == "survived"
     assert not [key for key in os.environ if key.startswith("﻿")]
+
+
+@pytest.mark.parametrize("payload", ["[]", "null", '"provider"', "42"])
+def test_non_object_config_degrades_to_defaults(tmp_path, monkeypatch, payload):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text(payload, encoding="utf-8")
+
+    assert load_config_from_file() == {}
+
+
+def test_config_with_utf8_bom_still_loads(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text('{"max_steps": 42}', encoding="utf-8-sig")
+
+    assert load_config_from_file() == {"max_steps": 42}
+
+
+def test_atomic_write_serialization_failure_preserves_file_and_cleans_temp(tmp_path):
+    target = tmp_path / "config.json"
+    target.write_text('{"max_steps": 42}', encoding="utf-8")
+
+    with pytest.raises(TypeError):
+        paths.atomic_write_json(target, {"invalid": object()})
+
+    assert json.loads(target.read_text(encoding="utf-8")) == {"max_steps": 42}
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_atomic_write_does_not_change_existing_parent_permissions(tmp_path, monkeypatch):
+    restricted = []
+    monkeypatch.setattr(
+        paths, "restrict_permissions", lambda path, **kwargs: restricted.append(path)
+    )
+
+    paths.atomic_write_json(tmp_path / "config.json", {})
+
+    assert tmp_path not in restricted

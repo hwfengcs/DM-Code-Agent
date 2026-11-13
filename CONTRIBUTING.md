@@ -71,7 +71,7 @@ PowerShell 环境变量：`Remove-Item Env:SKIP`。
 - Do not add `# noqa` to source files. If a lint rule is genuinely wrong for this project,
   disable it in `pyproject.toml` with a written justification.
 - **Never claim evaluation numbers you have not actually run.** The scoreboard is the bundled
-  coding + maintenance benchmark (13 hidden-test tasks). Real SWE-bench / Docker /
+  coding + maintenance benchmark (30 hidden-test tasks). Real SWE-bench / Docker /
   cross-model scoring is currently frozen.
 
 ## The first question to ask

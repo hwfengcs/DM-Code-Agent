@@ -2,8 +2,8 @@
 
 `dm-agent-web` 提供一套浏览器界面，做两件事：
 
-1. **本地工作台** — 用对话的方式交任务、看实时步骤、审计会话、从任意一步分叉重跑。
-2. **只读展厅** — 不需要 API key、可静态托管的会话查看器，用来把项目讲给别人看。
+1. **本地工作台** — 用对话的方式交任务、看实时步骤、审计会话、从条目分叉会话。
+2. **只读展厅** — 不需要 API key 的会话查看器，通过只读服务审计本地会话。
 
 这两件事**共用一套渲染器**，因为 live run 与历史 trace 是同一份 append-only JSONL
 条目流。没有第二套数据模型，也不可能出现「实时看到的」与「事后审计到的」不一致。
@@ -87,7 +87,7 @@ python -m dm_agent.cli --provider deepseek --trace sessions/chat-xxx.jsonl --con
 
 一份对话 = 一个 JSONL = N 段 run。会话库里它显示为「N 轮对话」。
 
-### 三条必须知道的边界
+### 两条必须知道的边界
 
 | 边界 | 为什么 |
 | --- | --- |
@@ -101,6 +101,8 @@ python -m dm_agent.cli --provider deepseek --trace sessions/chat-xxx.jsonl --con
 - 与一次性运行**共用**并发上限（默认 2）——它们抢的是同一个工作区。
 - **30 分钟空闲自动回收**。用户开了对话直接关浏览器时，进程不会一直挂着。
   正在跑一轮的对话永远不会被当成空闲收掉。
+
+如果 agent 进程先自行退出，其遗留的子进程可能无法自动回收，需检查仍在运行的 MCP 服务。
 
 前端把 `conversation_id` 存在 `sessionStorage` 里，刷新页面后会自动重连（后端进程
 还活着，`Last-Event-ID` 负责把断线期间的条目补回来）。**切换视图不会中断运行**——
@@ -138,7 +140,7 @@ SSE 订阅挂在模块级的 store 上，不跟着组件卸载走。
 
 对应测试：`tests/test_server_security.py`、`tests/test_server_process.py`。
 
-**它不是给公网部署的。** 要给别人看，用下面的静态托管方式，而不是把这个服务暴露出去。
+**它不是给公网部署的。** 分享会话时先检查日志中的敏感信息；可使用 trace CLI 导出供审查的内容。
 
 ## 为什么运行走子进程
 
@@ -202,16 +204,16 @@ SSE，数据源就是会话日志本身（`TraceWriter.record()` 每条都 `flus
 **只允许经过 `web/src/lib/paths.ts` 的 `workspaceName()`** 去取 `workspace_name`。
 那个模块存在的意义就是给这条约定一个可 grep 的落点。
 
-## 静态托管（拿去传播）
+## 前端构建与托管边界
 
-前端用 hash 路由、`base: './'`，所以同一份构建既能被 uvicorn 挂在 `/` 下，也能直接
-静态托管。把会话 JSONL 和构建产物一起放上去即可：
+前端用 hash 路由、`base: './'`，构建产物可以由 uvicorn 或静态文件服务器提供：
 
 ```bash
 npm --prefix web run build      # 产物落到 dm_agent/server/static/
 ```
 
-只读展厅不需要 API key，也不需要后端——这是把项目讲清楚最省事的方式。
+会话列表、摘要、诊断和 diff 仍通过同源 `/api` 请求读取，必须提供只读后端或相应反向代理。
+当前没有静态 JSONL 数据源适配，单独上传 JSONL 和前端产物到 GitHub Pages 无法运行查看器。
 
 ## 前端开发
 

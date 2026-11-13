@@ -198,13 +198,15 @@ def latest_checkpoint_entry(
     *,
     until_entry_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """取最后一条 ``checkpoint`` 条目；``until_entry_id`` 限定不晚于该条目。"""
+    """取当前 run 最后一条 checkpoint；until_entry_id 限定不晚于该条目。"""
     scoped = entries
     if until_entry_id is not None:
         scoped = entries[: find_entry_index(entries, until_entry_id) + 1]
     for entry in reversed(scoped):
         if entry.get("event") == CHECKPOINT_EVENT:
             return entry
+        if entry.get("event") == RUN_START_EVENT:
+            break
     return None
 
 

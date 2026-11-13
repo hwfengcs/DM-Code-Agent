@@ -80,7 +80,7 @@ export function HealthDetail({ health }: { health: TraceHealth }) {
  */
 export function StatusChip({ status }: { status: string }) {
   const style =
-    status === 'success' || status === 'completed'
+    status === 'success' || status === 'completed' || status === 'idle'
       ? 'border-line-strong bg-muted text-ink-2'
       : status === 'running'
         ? 'border-blue/25 bg-blue/10 text-blue-ink'
@@ -89,11 +89,12 @@ export function StatusChip({ status }: { status: string }) {
           : status
             ? 'border-red/25 bg-red/10 text-red-ink'
             : 'border-line-strong bg-muted text-ink-3'
-  return <span className={`chip ${style}`}>{STATUS_LABEL[status] ?? status ?? '未完成'}</span>
+  return <span className={`chip ${style}`}>{STATUS_LABEL[status] ?? (status || '未完成')}</span>
 }
 
 const STATUS_LABEL: Record<string, string> = {
   running: '运行中',
+  idle: '等待下一轮',
   completed: '已完成',
   success: '已完成',
   incomplete: '未做完',

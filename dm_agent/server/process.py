@@ -22,6 +22,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ __all__ = [
 
 # 任务文本上限。防止有人把一整个仓库粘进来撑爆 argv（Windows 命令行约 32K 上限）。
 MAX_TASK_CHARS = 8000
+MAX_OUTPUT_BYTES = 64 * 1024
 
 
 class SpecError(ValueError):
@@ -96,6 +98,8 @@ class RunSpec:
                 _, low, high = NUMBER_FLAGS[key]
                 if isinstance(value, bool) or not isinstance(value, (int, float)):
                     raise SpecError(f"{key} 必须是数值。")
+                if key != "temperature" and not isinstance(value, int):
+                    raise SpecError(f"{key} 必须是整数。")
                 if not low <= value <= high:
                     raise SpecError(f"{key} 超出允许范围 [{low}, {high}]。")
             # 其余键静默忽略——前端可能比后端新，多传字段不该让整个请求失败。
@@ -110,7 +114,7 @@ def _base_argv(spec: RunSpec, *, trace_path: Path) -> list[str]:
     argv = [sys.executable, "-m", "dm_agent.cli"]
     argv += ["--provider", spec.provider]
     if spec.model:
-        argv += ["--model", spec.model]
+        argv.append(f"--model={spec.model}")
     # 会话日志是控制台实时流的唯一数据源，必须落盘。
     argv += ["--trace", str(trace_path)]
 
@@ -154,6 +158,9 @@ class RunProcess:
         self.cwd = cwd
         self.trace_path = trace_path
         self._process: subprocess.Popen[bytes] | None = None
+        self._output = bytearray()
+        self._output_lock = threading.Lock()
+        self._output_thread: threading.Thread | None = None
 
     def start(self, *, stdin_pipe: bool = False) -> None:
         """拉起子进程。
@@ -178,6 +185,23 @@ class RunProcess:
             shell=False,
             **kwargs,
         )
+        self._output_thread = threading.Thread(target=self._drain_output, daemon=True)
+        self._output_thread.start()
+
+    def _drain_output(self) -> None:
+        """持续排空输出管道，避免详细 CLI 输出填满管道后卡住 agent。"""
+        process = self._process
+        if process is None or process.stdout is None:
+            return
+        try:
+            while chunk := process.stdout.read(8192):
+                with self._output_lock:
+                    self._output.extend(chunk)
+                    del self._output[:-MAX_OUTPUT_BYTES]
+        except (OSError, ValueError):
+            pass
+        finally:
+            process.stdout.close()
 
     def send_line(self, payload: dict[str, Any]) -> bool:
         """往子进程 stdin 写一行 JSON。写不进去（进程已死 / 管道已关）返回 False。
@@ -287,13 +311,10 @@ class RunProcess:
         return self.stop()
 
     def read_output(self, limit: int = 8000) -> str:
-        """读子进程的 stdout/stderr 合流。只在运行结束后调用，用于展示失败原因。"""
-        process = self._process
-        if process is None or process.stdout is None:
-            return ""
-        try:
-            data = process.stdout.read() or b""
-        except (OSError, ValueError):
-            return ""
+        """取 stdout/stderr 的有限尾部，用于展示失败原因。"""
+        if self._output_thread is not None and self.poll() is not None:
+            self._output_thread.join(timeout=1.0)
+        with self._output_lock:
+            data = bytes(self._output)
         text = data.decode("utf-8", errors="replace")
         return text[-limit:] if len(text) > limit else text

@@ -158,7 +158,9 @@ class DeepSeekClient(BaseLLMClient):
             body = response.text
         message = f"DeepSeek API error: {response.status_code} {response.reason}"
         if isinstance(body, dict):
-            detail = body.get("error", {}).get("message") or body.get("error_msg")
+            error = body.get("error")
+            detail = error.get("message") if isinstance(error, dict) else error
+            detail = detail or body.get("error_msg")
             if not detail:
                 detail = body.get("message")
             if detail:

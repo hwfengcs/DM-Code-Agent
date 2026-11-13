@@ -7,7 +7,7 @@ black-box chatbot. I am a developer tool: every plan I make, every tool I call, 
 every observation I receive is written to a structured JSONL trace that you can inspect,
 replay, and diff without asking me again.
 
-My core fits in roughly 1,500 lines of readable Python so that engineers can understand,
+My core uses small, readable Python modules so that engineers can understand,
 reproduce, extend, and benchmark against me. Transparency and auditability are not
 features I bolt on — they are the point.
 
@@ -34,12 +34,6 @@ When you give me a task I:
 
 ## My optional superpowers (default-off)
 
-- **Reflexion** — I write a lesson from each failed trial and inject it into the next
-  attempt, so I learn within a session without changing my weights.
-- **Critic** — before I hand you an answer, a peer-review step evaluates it and blocks
-  acceptance if the score is too low.
-- **Self-Consistency** — I run N independent attempts and select the best by majority
-  vote, critic score, or test-pass count.
 - **Adaptive Replanning** — I map specific failure signals (tool errors, parse errors,
   test failures, max-step exceeded) to targeted recovery strategies and track token
   economics offline.

@@ -1,8 +1,8 @@
 # CLI 参考
 
-## 七个入口
+## 八个入口
 
-`pyproject.toml` 的 `[project.scripts]` 定义了七个命令：
+`pyproject.toml` 的 `[project.scripts]` 定义了八个命令：
 
 | 命令 | 实现 | 用途 |
 | --- | --- | --- |
@@ -33,6 +33,9 @@ API key 是例外：**只从环境变量读**（`DEEPSEEK_API_KEY` / `OPENAI_API
 `./.env` → `~/.dm_agent/.env` 顺序加载，且**已导出的环境变量始终优先**——
 所以 `DEEPSEEK_API_KEY=sk-xxx dm-agent "..."` 永远压过任何文件。
 
+也可用 `--api-key` 显式传入；它优先于环境变量。切换 `--provider` 时，配置文件中旧
+供应商的 model / base_url 不会沿用；未显式指定的值采用新供应商默认值。
+
 MCP 配置独立于当前工作目录的 `mcp_config.json`，见 [MCP 配置](mcp.md)。
 
 ## 基础参数
@@ -40,9 +43,9 @@ MCP 配置独立于当前工作目录的 `mcp_config.json`，见 [MCP 配置](mc
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
 | `--provider` | `deepseek` | 已注册的供应商；扩展可注册新的 |
-| `--model` | `deepseek-chat` | 模型标识 |
+| `--model` | 供应商默认 | 模型标识；deepseek 默认 `deepseek-chat` |
 | `--base-url` | 供应商默认 | 自建网关 / 代理 |
-| `--max-steps` | `100` | ReAct 步数上限（`ReactAgent` 作为库使用时默认 200） |
+| `--max-steps` | `100` | 正整数 ReAct 步数上限（`ReactAgent` 作为库使用时默认 200） |
 | `--temperature` | `0.7` | 采样温度（`ReactAgent` 库默认 0.0） |
 | `--show-steps` | 关 | 实时打印中间步骤 |
 | `--interactive` | — | 进入交互式菜单（不给 task 时也会进） |

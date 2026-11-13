@@ -419,7 +419,9 @@ class SessionWriter:
         if resolved in self._disabled_checkpoint_paths:
             return
         for name, writer in self._sinks.items():
-            if writer.path.resolve() == resolved:
+            if writer.path.resolve() == resolved or (
+                target.exists() and writer.path.exists() and target.samefile(writer.path)
+            ):
                 if name == "trace":
                     raise ValueError("--trace 与 --checkpoint 不能指向同一个文件。")
                 return

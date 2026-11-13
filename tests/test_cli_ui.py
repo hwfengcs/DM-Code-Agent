@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from dm_agent import Tool
 from dm_agent.cli import (
     Config,
@@ -184,3 +186,70 @@ def test_cli_advanced_feature_validation(monkeypatch):
 
     ok = parse_args(["task", "--enable-adaptive-replanning"])
     assert validate_feature_args(ok) == ""
+
+
+@pytest.mark.parametrize("max_steps", ["0", "-1"])
+def test_cli_rejects_non_positive_step_budget(monkeypatch, max_steps):
+    monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
+
+    args = parse_args(["task", "--max-steps", max_steps])
+
+    assert "--max-steps" in validate_feature_args(args)
+
+
+def test_cli_rejects_trace_checkpoint_path_aliases(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
+    args = parse_args(
+        ["task", "--trace", "same.jsonl", "--checkpoint", str(tmp_path / "same.jsonl")]
+    )
+
+    assert "不能指向同一个文件" in validate_feature_args(args)
+
+
+def test_cli_rejects_trace_checkpoint_hardlinks(tmp_path, monkeypatch):
+    monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
+    trace = tmp_path / "trace.jsonl"
+    trace.touch()
+    checkpoint = tmp_path / "checkpoint.jsonl"
+    checkpoint.hardlink_to(trace)
+    args = parse_args(["task", "--trace", str(trace), "--checkpoint", str(checkpoint)])
+
+    assert "不能指向同一个文件" in validate_feature_args(args)
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "expected_model", "expected_url"),
+    [
+        ([], "gpt-5", ""),
+        (["--model", "deepseek-chat"], "deepseek-chat", ""),
+        (["--base-url", "http://localhost:8000/v1"], "gpt-5", "http://localhost:8000/v1"),
+    ],
+)
+def test_cli_provider_override_uses_its_own_defaults(
+    monkeypatch, extra_args, expected_model, expected_url
+):
+    from dm_agent.cli import main
+
+    monkeypatch.setattr(
+        "dm_agent.cli.args.load_config_from_file",
+        lambda: {
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "base_url": "https://api.deepseek.com",
+        },
+    )
+    captured = []
+
+    def run_task(config, task, **kwargs):
+        captured.append(config)
+        return 0
+
+    monkeypatch.setattr("dm_agent.cli.run_single_task", run_task)
+
+    assert (
+        main(["task", "--provider", "openai", "--api-key", "test", "--no-extensions", *extra_args])
+        == 0
+    )
+    assert captured[0].model == expected_model
+    assert captured[0].base_url == expected_url

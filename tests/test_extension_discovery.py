@@ -238,3 +238,21 @@ def test_cli_extension_flags(monkeypatch):
 
     with pytest.raises(SystemExit):
         parse_args(["task", "--no-extensions", "--extension", "one.py"])
+
+
+def test_trust_store_cleans_temporary_file_when_fsync_fails(monkeypatch, tmp_path):
+    trust_path = tmp_path / "trust.json"
+    store = ProjectTrustStore(trust_path)
+    store.set(tmp_path / "old-project", trusted=True)
+    original = trust_path.read_bytes()
+
+    def fail_fsync(descriptor):
+        raise OSError("disk failure")
+
+    monkeypatch.setattr("dm_agent.extensions.trust.os.fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="disk failure"):
+        store.set(tmp_path / "new-project", trusted=True)
+
+    assert trust_path.read_bytes() == original
+    assert list(tmp_path.glob(".trust.json.*.tmp")) == []

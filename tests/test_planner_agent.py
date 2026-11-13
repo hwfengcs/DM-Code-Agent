@@ -43,6 +43,21 @@ def test_task_planner_parses_json_inside_text():
     assert planner.get_next_step().action == "task_complete"
 
 
+def test_task_planner_has_plan_only_while_steps_remain():
+    client = FakeRespondClient(
+        ['{"plan": [{"step": 1, "action": "echo", "reason": "inspect"}]}', "invalid"]
+    )
+    planner = TaskPlanner(client, [Tool("echo", "Echo", lambda arguments: "ok")])
+    planner.plan("inspect")
+    assert planner.has_plan()
+
+    planner.mark_completed(1, "ok")
+    assert not planner.has_plan()
+
+    assert planner.plan("another task") == []
+    assert planner.current_plan == []
+
+
 def test_react_agent_can_finish_without_tool_call():
     client = FakeRespondClient(
         [
@@ -67,6 +82,52 @@ def test_react_agent_can_finish_without_tool_call():
     assert result["final_answer"] == "done"
     assert result["steps"][0]["action"] == "finish"
     assert result["metadata"]["status"] == "success"
+
+
+@pytest.mark.parametrize("thought", [None, 1, {"reason": "ready"}])
+def test_react_agent_handles_non_string_thought_without_aborting(thought):
+    client = FakeRespondClient(
+        [json.dumps({"thought": thought, "action": "finish", "action_input": "done"})]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("task_complete", "Finish", lambda arguments: "finished")],
+        enable_planning=False,
+        enable_compression=False,
+    )
+
+    result = agent.run("finish immediately")
+
+    assert result["metadata"]["status"] == "success"
+    assert result["steps"][0]["thought"] == ("" if thought is None else str(thought))
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_react_agent_does_not_mark_failed_plan_step_completed(raises):
+    client = FakeRespondClient(
+        [
+            json.dumps({"plan": [{"step": 1, "action": "run_tests", "reason": "verify"}]}),
+            json.dumps({"thought": "Verify", "action": "run_tests", "action_input": {}}),
+            json.dumps({"thought": "Stop", "action": "finish", "action_input": "done"}),
+        ]
+    )
+
+    def fail(arguments):
+        if raises:
+            raise RuntimeError("test process could not start")
+        return "returncode: 1"
+
+    agent = ReactAgent(
+        client,
+        [Tool("run_tests", "Test", fail)],
+        enable_compression=False,
+        max_replans=0,
+    )
+
+    agent.run("verify project")
+
+    assert agent.planner.current_plan[0].completed is False
+    assert agent.planner.current_plan[0].result is None
 
 
 def test_react_agent_stops_on_common_terminal_action_alias():

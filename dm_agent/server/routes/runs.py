@@ -47,12 +47,6 @@ def create_run(
 
     进度不在这个响应里——客户端接着连 ``/api/runs/{id}/stream`` 看实时条目。
     """
-    if registry.at_capacity():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="已有运行在进行中。同时跑多个 agent 会互相踩同一个工作区，请先等它结束或取消。",
-        )
-
     spec = RunSpec(
         task=payload.task,
         provider=payload.provider,
@@ -74,14 +68,6 @@ def create_run(
         cwd=settings.workspace,
         trace_path=trace_path,
     )
-    try:
-        process.start()
-    except OSError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"子进程启动失败：{exc}",
-        ) from exc
-
     record = RunRecord(
         run_id=run_id,
         task=spec.task,
@@ -89,7 +75,18 @@ def create_run(
         trace_path=trace_path,
         process=process,
     )
-    registry.register(record)
+    try:
+        started = registry.start(record)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"子进程启动失败：{exc}",
+        ) from exc
+    if not started:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="已有运行在进行中。同时跑多个 agent 会互相踩同一个工作区，请先等它结束或取消。",
+        )
     return record.to_payload()
 
 

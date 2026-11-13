@@ -108,11 +108,6 @@ def main(argv: Any = None) -> int:
     if args.max_replans < -1:
         print("--max-replans must be -1 or greater.", file=sys.stderr)
         return 2
-    validation_error = _validate_feature_args(args)
-    if validation_error:
-        print(validation_error, file=sys.stderr)
-        return 2
-
     if args.manifest_only:
         tasks = get_benchmark_tasks(args.suite)
         manifest = build_benchmark_manifest(
@@ -185,10 +180,6 @@ def main(argv: Any = None) -> int:
 
     print(json.dumps(report["summary"], indent=2, ensure_ascii=False))
     return 0
-
-
-def _validate_feature_args(args: argparse.Namespace) -> str:
-    return ""
 
 
 if __name__ == "__main__":

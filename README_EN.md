@@ -5,7 +5,7 @@
 **Local-first · Fully auditable · The kernel is just one ReAct loop**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-554%20passed%2C%201%20skipped-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-offline%20regression-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
@@ -117,8 +117,9 @@ Three boundaries keep it from becoming a second source of truth:
 - **Launching a run spawns a CLI subprocess** (`python -m dm_agent.cli`) rather than assembling
   a second `ReactAgent` inside the service. The console always does what the CLI does.
 
-The read-only gallery uses hash routing and `base: './'`, so dropping the build output next to
-your session JSONL on any static host just works — **no backend, no API key**. Details in
+The read-only gallery needs no model API key. It reads sessions and diagnostics through
+`/api/*`, so run the `dm-agent-web --read-only` backend. Hash routing supports static page
+paths; reading JSONL directly from a static host is not implemented. Details in
 [Web console](docs/web.md).
 
 ### 🔌 Add tools / guards / providers without touching a single kernel line
@@ -162,7 +163,7 @@ external extension — that is precisely what the extension system is for.
 
 | | |
 | --- | --- |
-| Unit tests | **554 passed, 1 skipped** (no API key required) |
+| Unit tests | Offline behavior regressions; see CI for current results (no API key required) |
 | Deterministic evals | 14 tasks × 4 variants, driven by a scripted client, **zero network calls** |
 | Frontend | vitest covers the presentation-layer pure functions; CI rebuilds and **byte-compares** the committed bundle |
 | CI matrix | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12 — **6 combinations** |

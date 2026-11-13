@@ -49,8 +49,8 @@ def classify_retryable_exception(exc: Exception) -> bool:
     status = getattr(exc, "status_code", None)
     if not isinstance(status, int):
         status = getattr(exc, "code", None)
-    if isinstance(status, int) and status in RETRYABLE_STATUS_CODES:
-        return True
+    if isinstance(status, int):
+        return status in RETRYABLE_STATUS_CODES
     name = type(exc).__name__.lower()
     if any(token in name for token in _RETRYABLE_NAME_TOKENS):
         return True

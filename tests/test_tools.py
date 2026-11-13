@@ -1,11 +1,18 @@
 import json
+import os
+import stat
 
 import pytest
 
 import dm_agent.tools.file_tools as file_tools_module
 from dm_agent.core.observation import is_failure_observation
 from dm_agent.tools import task_complete
-from dm_agent.tools.code_analysis_tools import get_code_metrics, get_function_signature, parse_ast
+from dm_agent.tools.code_analysis_tools import (
+    find_dependencies,
+    get_code_metrics,
+    get_function_signature,
+    parse_ast,
+)
 from dm_agent.tools.code_index_tools import build_code_index, dependency_graph, search_symbol
 from dm_agent.tools.execution_tools import available_linters, run_linter, run_python
 from dm_agent.tools.file_tools import (
@@ -54,6 +61,101 @@ def test_file_tools_create_read_edit_and_search(tmp_path):
     search_result = search_in_file({"path": str(target), "pattern": "return", "context_lines": 1})
     assert "return 'hi'" in search_result
     assert ">>>" in search_result
+
+
+@pytest.mark.parametrize("operation", ["insert", "replace"])
+def test_multiline_line_edit_echo_uses_physical_lines(tmp_path, operation):
+    target = tmp_path / "sample.py"
+    target.write_text("before = 1\nold = 2\nafter = 3\n", encoding="utf-8")
+    arguments = {
+        "path": str(target),
+        "operation": operation,
+        "line_start": 2,
+        "content": "first = 4\nsecond = 5\n",
+    }
+    if operation == "replace":
+        arguments["line_end"] = 2
+
+    observation = edit_file(arguments)
+
+    total = 5 if operation == "insert" else 4
+    assert f"共 {total} 行" in observation
+    assert ">    2 | first = 4" in observation
+    assert ">    3 | second = 5" in observation
+    assert f"    {total} | after = 3" in observation
+
+
+def test_empty_line_replacement_echo_reports_empty_file(tmp_path):
+    target = tmp_path / "sample.py"
+    target.write_text("old = 1\n", encoding="utf-8")
+
+    observation = edit_file(
+        {"path": str(target), "operation": "replace", "line_start": 1, "line_end": 1}
+    )
+
+    assert target.read_text(encoding="utf-8") == ""
+    assert "文件为空" in observation
+
+
+def test_ast_lists_async_class_methods(tmp_path):
+    target = tmp_path / "async_service.py"
+    target.write_text(
+        "class Service:\n    async def fetch(self):\n        return 1\n", encoding="utf-8"
+    )
+
+    result = json.loads(parse_ast({"path": str(target)}))
+
+    assert result["classes"][0]["methods"] == [
+        {"name": "fetch", "line": 2, "args": ["self"], "is_async": True}
+    ]
+
+
+def test_function_signature_preserves_all_argument_kinds(tmp_path):
+    target = tmp_path / "service.py"
+    target.write_text(
+        "async def fetch(key: str, /, retries=2, *items, timeout: int = 10, **options) -> str:\n"
+        "    return key\n",
+        encoding="utf-8",
+    )
+
+    result = json.loads(get_function_signature({"path": str(target), "function_name": "fetch"}))
+
+    assert result["signature"] == (
+        "async def fetch(key: str, /, retries=2, *items, timeout: int=10, **options) -> str"
+    )
+
+
+def test_dependency_analysis_recognizes_relative_and_sibling_modules(tmp_path):
+    target = tmp_path / "service.py"
+    target.write_text(
+        "from . import helper\nfrom ..shared import value\nimport sibling\n", encoding="utf-8"
+    )
+    (tmp_path / "sibling.py").write_text("", encoding="utf-8")
+
+    result = json.loads(find_dependencies({"path": str(target)}))
+
+    assert result["local_modules"] == [".", "..shared", "sibling"]
+    assert result["third_party"] == []
+
+
+def test_dependency_index_resolves_package_initializer_relative_imports(tmp_path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("from .helper import value\n", encoding="utf-8")
+    (package / "helper.py").write_text("value = 1\n", encoding="utf-8")
+    nested = package / "nested"
+    nested.mkdir()
+    (nested / "__init__.py").write_text("from ..helper import value\n", encoding="utf-8")
+
+    index = json.loads(build_code_index({"root": str(tmp_path)}))
+    files = {file["path"]: file for file in index["files"]}
+    assert files["pkg/__init__.py"]["imports"][0]["module"] == "pkg.helper"
+    assert files["pkg/nested/__init__.py"]["imports"][0]["module"] == "pkg.helper"
+    graph = json.loads(dependency_graph({"root": str(tmp_path)}))
+    assert graph["edges"] == [
+        {"from": "pkg", "to": "pkg.helper", "import": "pkg.helper"},
+        {"from": "pkg.nested", "to": "pkg.helper", "import": "pkg.helper"},
+    ]
 
 
 # --- edit_file 的两处防自伤改动 -------------------------------------------
@@ -331,6 +433,33 @@ def test_atomic_write_replaces_content_without_tmp_residue(tmp_path):
     assert target.read_text(encoding="utf-8") == "after"
     leftovers = [p.name for p in tmp_path.iterdir() if ".tmp-" in p.name]
     assert leftovers == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX executable permissions are not available")
+def test_atomic_write_preserves_executable_permission(tmp_path):
+    target = tmp_path / "script.py"
+    target.write_text("print('before')\n", encoding="utf-8")
+    target.chmod(0o755)
+
+    _atomic_write_text(target, "print('after')\n")
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o755
+
+
+def test_atomic_write_through_symlink_keeps_link_and_updates_target(tmp_path):
+    target = tmp_path / "target.py"
+    target.write_text("before = 1\n", encoding="utf-8")
+    link = tmp_path / "link.py"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("This environment does not permit creating symbolic links")
+
+    _atomic_write_text(link, "after = 2\n")
+
+    assert link.is_symlink()
+    assert target.read_text(encoding="utf-8") == "after = 2\n"
+    assert link.read_text(encoding="utf-8") == "after = 2\n"
 
 
 def test_create_and_edit_file_use_atomic_write(tmp_path):

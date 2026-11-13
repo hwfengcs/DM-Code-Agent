@@ -98,6 +98,14 @@ def test_classify_retryable_exception_by_status_and_text() -> None:
     assert classify_retryable_exception(ValueError("invalid schema")) is False
 
 
+@pytest.mark.parametrize("status", [400, 401, 403, 404])
+def test_semantic_status_is_not_overridden_by_retryable_message(status) -> None:
+    error = RuntimeError("connection to model 503 failed: rate limit configuration invalid")
+    error.status_code = status
+
+    assert not classify_retryable_exception(error)
+
+
 def test_llm_error_defaults_to_non_retryable() -> None:
     assert LLMError("boom").retryable is False
     assert LLMError("boom", retryable=True).retryable is True

@@ -94,6 +94,18 @@ _STRUCTURED_OUTPUT_TOOLS = frozenset(
     }
 )
 
+_EXECUTION_TOOLS = frozenset({"run_python", "run_shell", "run_tests", "run_linter"})
+_ANALYSIS_TOOLS = frozenset(
+    {"parse_ast", "get_function_signature", "find_dependencies", "get_code_metrics"}
+)
+_ANALYSIS_FAILURE_PREFIXES = (
+    "Python 语法错误：",
+    "解析失败：",
+    "提取函数签名失败：",
+    "分析依赖关系失败：",
+    "获取代码度量失败：",
+)
+
 
 def is_failure_observation(observation: str, *, action: str | None = None) -> bool:
     """这条观察是否代表一次失败（进而触发重规划）。
@@ -104,14 +116,20 @@ def is_failure_observation(observation: str, *, action: str | None = None) -> bo
     text = str(observation or "")
     if text.startswith(_KERNEL_FAILURE_PREFIXES):
         return True
-    if _SYNTAX_FAILURE_MARK in text:
+    if action in {None, "create_file", "edit_file"} and _SYNTAX_FAILURE_MARK in text:
         return True
-    matches = _RETURNCODE_RE.findall(text)
+    matches = (
+        _RETURNCODE_RE.findall(text)
+        if action in _EXECUTION_TOOLS or action not in _STRUCTURED_OUTPUT_TOOLS
+        else []
+    )
     if matches:
         # 退出码是权威信号，压过正文里出现的任何 "error"/"Traceback" 字样——
         # 那可能只是探测脚本自己打印的预期输出。
         return matches[-1] != "0"
     if _TOOL_REFUSAL_RE.search(text):
+        return True
+    if action in _ANALYSIS_TOOLS and text.startswith(_ANALYSIS_FAILURE_PREFIXES):
         return True
     if action in _STRUCTURED_OUTPUT_TOOLS:
         return False

@@ -70,6 +70,8 @@ Regressions are always listed separately, **even when the total went up** — th
 mode a single aggregate number hides. Exit code is `1` when any task regressed, so it can gate
 a script. If the two reports have different task sets, the tool refuses to compare
 (`exit 2`) instead of printing a meaningless delta.
+The `(task_id, variant)` sets must also match, even if the manifest signatures match or are
+missing; incomplete reports are rejected instead of silently comparing their intersection.
 
 ## Commands
 
@@ -115,7 +117,6 @@ Opt-in adaptive replanning and local token accounting:
 dm-agent-bench --suite maintenance \
   --provider deepseek \
   --enable-adaptive-replanning \
-  --enable-repeated-failure-policy-experiment \
   --max-replans 3 \
   --cost-per-1k-tokens 0.00027 \
   --output bench_reports/maintenance.json \
@@ -132,8 +133,10 @@ dm-agent-economics bench_reports/maintenance.json \
 ```
 
 `dm-agent-economics` never runs a model, downloads a dataset, or queries live pricing. Prices are
-explicit inputs for local accounting. When source benchmark reports include pass-rate confidence
-intervals, the economics Markdown carries those intervals into the pass-rate column. When multiple
+explicit inputs for local accounting. Use `--cost-per-1k-tokens` to recalculate costs at a new price,
+including reports that already contain per-run estimated costs; the source reports remain unchanged.
+When source benchmark reports include pass-rate confidence intervals, the economics Markdown
+carries those intervals into the pass-rate column. When multiple
 input reports carry different `manifest.suite_signature` values, the economics summary and Markdown
 emit a warning because cost/pass-rate rankings may not be comparable.
 
@@ -168,6 +171,14 @@ The maintenance suite currently includes:
   documentation.
 - `packaging_ci_contract`: multi-file packaging metadata and CI workflow repair with required
   regression-test updates.
+- `billing_period_boundary`: billing-period date arithmetic at month boundaries.
+- `sql_where_builder`: parameterized SQL filters.
+- `idempotent_job_runner`: job deduplication and retry behavior.
+- `sort_stability_regression`: stable ranking when keys are equal.
+- `filename_sanitizer`: cross-platform filename sanitizing.
+- `error_propagation_contract`: cross-file exception translation.
+- `settings_env_precedence`: environment and file settings across modules.
+- `log_redaction`: structured log secret redaction.
 
 These tasks are intentionally closer to repository upkeep than puzzle-style algorithms. They
 include hidden tests, edge cases, and changed-file constraints.
@@ -197,6 +208,7 @@ The report includes:
 - per-run changed files
 - optional per-run trace paths
 - hidden test stdout/stderr tail
+- hidden-test timeouts are recorded with exit code `124`, retaining any available output as text
 - agent metadata such as replan, parse repair, and tool error counts
 - adaptive replanning metadata when enabled: signal kind, selected strategy, skipped replans,
   and replan budget exhaustion

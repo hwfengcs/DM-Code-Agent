@@ -69,7 +69,11 @@ def summarize_report(
     pass_rate_ci = _pass_rate_ci(summary, successes, total_runs)
     total_tokens = _total_tokens(results, summary)
     configured_cost = _resolve_cost_per_1k(report, cost_per_1k_tokens)
-    total_cost = _total_cost(results, total_tokens, configured_cost)
+    total_cost = (
+        (total_tokens / 1000.0) * cost_per_1k_tokens
+        if cost_per_1k_tokens is not None
+        else _total_cost(results, total_tokens, configured_cost)
+    )
     cost_per_success = (total_cost / successes) if total_cost is not None and successes else None
     tokens_per_success = (total_tokens / successes) if successes else None
 

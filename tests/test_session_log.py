@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -632,12 +633,51 @@ def test_resume_reports_a_session_without_checkpoint_entries(tmp_path):
         load_resume_state(trace_path)
 
 
+def test_resume_and_fork_do_not_use_an_earlier_runs_checkpoint(tmp_path):
+    from dm_agent.core.persistence import load_resume_state
+    from dm_agent.tracing import fork_session
+
+    checkpoint_path = tmp_path / "run.jsonl"
+    _stalled_run(checkpoint_path)
+    old_checkpoint = load_resume_state(checkpoint_path)
+    old_entries = load_session_entries(checkpoint_path)
+    with TraceWriter(checkpoint_path) as writer:
+        writer.start_run("a different task")
+        at = writer.record_message(
+            role="user", content="a different task", step_number=0, kind="task"
+        )
+
+    with pytest.raises(ValueError, match="No resumable checkpoint entry"):
+        load_resume_state(checkpoint_path)
+    with pytest.raises(ValueError, match="No resumable checkpoint entry"):
+        load_resume_state(checkpoint_path, at=at)
+    assert load_resume_state(checkpoint_path, at=old_entries[-1]["id"]).task == old_checkpoint.task
+    result = fork_session(load_session_entries(checkpoint_path), source=checkpoint_path, at=at)
+    assert result["resumable_checkpoint_entry_id"] == ""
+
+
 def test_trace_and_checkpoint_may_not_share_one_file():
     from dm_agent.cli.args import parse_args, validate_feature_args
 
     args = parse_args(["task", "--trace", "same.jsonl", "--checkpoint", "same.jsonl"])
 
     assert "不能指向同一个文件" in validate_feature_args(args)
+
+
+def test_trace_and_checkpoint_may_not_share_hard_linked_files(tmp_path):
+    from dm_agent.tracing.writer import SessionWriter
+
+    trace_path = tmp_path / "trace.jsonl"
+    checkpoint_path = tmp_path / "checkpoint.jsonl"
+    trace_path.write_text("existing trace\n", encoding="utf-8")
+    checkpoint_path.hardlink_to(trace_path)
+    original = trace_path.read_bytes()
+    session_writer = SessionWriter(TraceWriter(trace_path))
+
+    with pytest.raises(ValueError, match="不能指向同一个文件"):
+        session_writer.ensure_checkpoint_sink(checkpoint_path)
+
+    assert trace_path.read_bytes() == original
 
 
 # --- 7.3 fork -------------------------------------------------------------
@@ -708,6 +748,28 @@ def test_fork_refuses_to_overwrite_and_reports_unknown_entries(tmp_path):
         fork_session(entries, source=checkpoint_path, at=at, output=output)
     with pytest.raises(ValueError, match="No session entry"):
         fork_session(entries, source=checkpoint_path, at="nope-9999")
+
+
+def test_fork_preserves_a_file_created_after_the_destination_check(monkeypatch, tmp_path):
+    from dm_agent.tracing import fork_session
+
+    source = tmp_path / "source.jsonl"
+    output = tmp_path / "branch.jsonl"
+    entries = normalize_entries([{"event": "run_start", "payload": {"task": "x"}}])
+    original_open = Path.open
+
+    def racing_open(path, mode="r", *args, **kwargs):
+        if path == output and mode in {"w", "x"}:
+            with original_open(output, "w", encoding="utf-8") as handle:
+                handle.write("created by another fork\n")
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", racing_open)
+
+    with pytest.raises(ValueError, match="Refusing to overwrite"):
+        fork_session(entries, source=source, at=entries[0]["id"], output=output)
+
+    assert output.read_text(encoding="utf-8") == "created by another fork\n"
 
 
 def test_fork_works_on_a_legacy_trace_but_says_it_cannot_be_resumed(tmp_path, capsys):

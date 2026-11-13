@@ -187,9 +187,9 @@ def main(argv: Any = None) -> int:
     if not args.base_url:
         args.base_url = provider_defaults.get("base_url", "")
 
-    # 如果模型是默认的 deepseek-chat 但提供商不是 deepseek，更新模型
-    if args.model == "deepseek-chat" and provider_name != "deepseek":
-        args.model = provider_defaults.get("model", args.model)
+    # 未指定模型时才取供应商默认值，显式模型名称始终保留。
+    if not args.model:
+        args.model = provider_defaults.get("model", "deepseek-chat")
 
     # 创建配置
     config = Config(

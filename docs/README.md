@@ -7,7 +7,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [快速开始](getting-started.md) | 安装、配置 API key、跑第一个任务、本地验证 |
-| [CLI 参考](cli.md) | 七个命令行入口、配置优先级、全部开关及其默认值 |
+| [CLI 参考](cli.md) | 八个命令行入口、配置优先级、全部开关及其默认值 |
 | [Web 控制台](web.md) | `dm-agent-web`：会话审计、实时运行、安全模型、静态托管 |
 | [能力清单](capabilities.md) | 能力总表、默认开/关的分类原则、上下文记忆 |
 
@@ -33,7 +33,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [项目现状与对标](project-status.md) | 同类项目对比、算法模块状态、评测口径说明、roadmap |
-| [最近七轮进展](recent-progress.md) | devlog 36–42 的实验结论、SWE-bench Verified 20/50 归档与边界 |
+| [最近八轮进展](recent-progress.md) | devlog 36–43 的实验结论、SWE-bench Verified 20/50 归档与边界 |
 | [改进 agent 系统](改进agent系统.md) | 基于 50 题实测的瓶颈诊断与 S0–S3 可执行方案、决策记录、不做清单、判读纪律 |
 | [发布到 PyPI](releasing.md) | Trusted Publishing 原理、一次性设置、每次发版流程 |
 | [研究日志](research-log/) | 每个非平凡设计决策的动机、实验、ablation、踩坑 |

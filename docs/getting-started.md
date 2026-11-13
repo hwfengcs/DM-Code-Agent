@@ -32,11 +32,11 @@ source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 ```
 
-安装后有七个命令行入口，见 [CLI 参考](cli.md)。
+安装后有八个命令行入口，见 [CLI 参考](cli.md)。
 
 ## 配置 API key
 
-API key **只从环境变量读取**，不会从 `config.json` 读，也不会被写进 trace。
+API key 从环境变量或显式的 `--api-key` 读取，不会从 `config.json` 读，也不会被写进运行配置。
 `.env` 按下面的顺序查找，**已经导出的环境变量始终压过文件**：
 
 | 顺序 | 位置 | 适合 |

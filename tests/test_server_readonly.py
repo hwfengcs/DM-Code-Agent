@@ -15,6 +15,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from dm_agent.tracing.analysis import analyze_events
 from dm_agent.tracing.session import load_session_entries
 
@@ -206,6 +208,17 @@ def test_unreadable_session_does_not_break_the_listing(
     assert [error["name"] for error in payload["errors"]] == ["broken.jsonl"]
     # 好文件照常返回。
     assert len(payload["sessions"]) == 2
+
+
+@pytest.mark.parametrize("content", [b"null\n", b'"not-an-entry"\n', b'{"bad":"\xff"}\n'])
+def test_invalid_session_content_is_reported_as_unreadable(
+    client: TestClient, sessions_dir: Path, content: bytes
+) -> None:
+    (sessions_dir / "invalid.jsonl").write_bytes(content)
+    assert client.get("/api/sessions/entries", params={"name": "invalid.jsonl"}).status_code == 422
+    payload = client.get("/api/sessions").json()
+    assert payload["aggregate"]["unreadable"] == 1
+    assert [error["name"] for error in payload["errors"]] == ["invalid.jsonl"]
 
 
 def test_listing_reflects_appended_entries(client: TestClient, sessions_dir: Path) -> None:

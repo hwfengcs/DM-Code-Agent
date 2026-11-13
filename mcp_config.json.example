@@ -13,9 +13,6 @@
         "-y",
         "@upstash/context7-mcp"
       ],
-      "env": {
-        "UPSTASH_API_KEY": "your_upstash_api_key_here"
-      },
       "enabled": true
     },
     "filesystem": {

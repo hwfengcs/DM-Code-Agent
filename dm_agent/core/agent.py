@@ -557,7 +557,8 @@ class ReactAgent:
                         "normalized": action,
                     }
                 )
-            thought = parsed.get("thought", "").strip()
+            thought_value = parsed.get("thought")
+            thought = "" if thought_value is None else str(thought_value).strip()
             action_input = parsed.get("action_input")
 
             # 检查是否完成
@@ -690,7 +691,14 @@ class ReactAgent:
 
             # 更新计划进度（如果有计划；被拦下或明确无进展的调用不算完成）。
             # 只有下一个待办步骤的动作匹配时才标记，消除同名动作的二义性。
-            if plan and self.planner and not no_progress:
+            if (
+                plan
+                and self.planner
+                and not no_progress
+                and invocation.tool_succeeded
+                and not self._is_failure_observation(observation, action=action)
+                and (action != "task_complete" or accepted)
+            ):
                 next_step = self.planner.get_next_step()
                 if next_step and next_step.action == action:
                     self.planner.mark_completed(next_step.step_number, observation)

@@ -90,6 +90,22 @@ def test_rejects_wrong_types() -> None:
         spec(options={"max_steps": True}).validate(PROVIDERS)
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        "max_steps",
+        "max_observation_chars",
+        "context_token_budget",
+        "llm_max_retries",
+        "max_replans",
+    ],
+)
+@pytest.mark.parametrize("value", [1.0, 1.5])
+def test_integer_options_reject_floats(key: str, value: float) -> None:
+    with pytest.raises(SpecError, match="必须是整数"):
+        spec(options={key: value}).validate(PROVIDERS)
+
+
 def test_unknown_option_keys_are_ignored_not_rejected() -> None:
     """前端可能比后端新。多传字段不该让整个请求失败，但也不该进 argv。"""
     request = spec(options={"some_future_flag": True, "max_steps": 5})
@@ -153,7 +169,15 @@ def test_edit_guard_is_a_reverse_flag() -> None:
 def test_model_omitted_when_empty() -> None:
     assert "--model" not in build_argv(spec(model=""), trace_path=Path("t.jsonl"))
     argv = build_argv(spec(model="deepseek-chat"), trace_path=Path("t.jsonl"))
-    assert argv[argv.index("--model") + 1] == "deepseek-chat"
+    assert "--model=deepseek-chat" in argv
+
+
+def test_model_starting_with_dash_is_accepted_by_the_cli() -> None:
+    from dm_agent.cli.args import parse_args
+
+    request = spec(model="--custom-model")
+    request.validate(PROVIDERS)
+    assert parse_args(build_argv(request, trace_path=Path("t.jsonl"))[3:]).model == "--custom-model"
 
 
 ALL_OPTIONS: dict[str, object] = {
@@ -318,6 +342,22 @@ def test_exit_code_is_reported(tmp_path: Path) -> None:
     while time.time() < deadline and process.poll() is None:
         time.sleep(0.05)
     assert process.poll() == 3
+
+
+def test_large_output_does_not_block_process_exit(tmp_path: Path) -> None:
+    process = RunProcess(
+        [sys.executable, "-c", "import sys; sys.stdout.write('x' * 1_000_000 + 'tail-marker')"],
+        cwd=tmp_path,
+        trace_path=tmp_path / "t.jsonl",
+    )
+    process.start()
+    try:
+        assert process.wait(timeout=10) == 0
+        output = process.read_output(limit=100)
+        assert len(output) == 100
+        assert output.endswith("tail-marker")
+    finally:
+        process.stop(grace_seconds=1.0)
 
 
 def test_child_runs_in_the_configured_workspace(tmp_path: Path) -> None:

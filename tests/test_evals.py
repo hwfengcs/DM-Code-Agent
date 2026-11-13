@@ -159,3 +159,29 @@ def test_gate_rejects_unreadable_report(tmp_path):
     bad.write_text("not json", encoding="utf-8")
     assert gate_main([str(bad)]) == 2
     assert gate_main([str(tmp_path / "missing.json")]) == 2
+
+
+@pytest.mark.parametrize("rate", [float("nan"), float("inf"), -0.1, 1.1, True])
+def test_gate_rejects_invalid_success_rates(rate):
+    report = {
+        "summary": {"overall_success_rate": rate, "variants": {"full": {"success_rate": rate}}}
+    }
+
+    violations = evaluate_gate(report, min_success_rate=1.0, min_variant_rate=1.0)
+
+    assert any("overall_success_rate" in violation for violation in violations)
+    assert any("variant 'full'" in violation for violation in violations)
+
+
+@pytest.mark.parametrize("variants", [None, {}, [], {"full": []}])
+def test_gate_rejects_missing_or_malformed_variant_summary(variants):
+    report = {"summary": {"overall_success_rate": 1.0, "variants": variants}}
+
+    assert evaluate_gate(report, min_success_rate=1.0, min_variant_rate=1.0)
+
+
+@pytest.mark.parametrize("threshold", [float("nan"), float("inf"), -0.1, 1.1])
+def test_gate_rejects_invalid_thresholds(threshold):
+    report = {"summary": {"overall_success_rate": 0.0, "variants": {"full": {"success_rate": 0.0}}}}
+
+    assert evaluate_gate(report, min_success_rate=threshold, min_variant_rate=threshold)

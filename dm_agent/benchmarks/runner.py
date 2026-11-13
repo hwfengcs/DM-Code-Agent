@@ -14,7 +14,7 @@ from collections.abc import Iterable, Sequence
 from contextlib import contextmanager, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import ReactAgent
@@ -261,16 +261,18 @@ def run_command(command: Sequence[str], cwd: Path, *, timeout: int = 30) -> Comm
             duration_seconds=time.perf_counter() - started_at,
         )
     except subprocess.TimeoutExpired as exc:
-        # 上面以 text=True 启动子进程，超时异常携带的 stdout/stderr 运行时必为 str；
-        # typeshed 对 TimeoutExpired 统一标注为 bytes | None，故此处用 cast 声明实际类型
-        # （cast 是运行时空操作，不改变任何行为）。
-        timed_out_stdout = cast("str | None", exc.stdout)
-        timed_out_stderr = cast("str | None", exc.stderr)
+        # POSIX 的超时输出可能仍为 bytes，即使 subprocess.run 使用了 text=True。
+        timed_out_stdout = exc.stdout or ""
+        timed_out_stderr = exc.stderr or ""
+        if isinstance(timed_out_stdout, bytes):
+            timed_out_stdout = timed_out_stdout.decode("utf-8", errors="replace")
+        if isinstance(timed_out_stderr, bytes):
+            timed_out_stderr = timed_out_stderr.decode("utf-8", errors="replace")
         return CommandResult(
             command=resolved,
             returncode=124,
-            stdout=_tail(timed_out_stdout or ""),
-            stderr=_tail((timed_out_stderr or "") + f"\nCommand timed out after {timeout}s"),
+            stdout=_tail(timed_out_stdout),
+            stderr=_tail(timed_out_stderr + f"\nCommand timed out after {timeout}s"),
             duration_seconds=time.perf_counter() - started_at,
         )
 

@@ -10,6 +10,7 @@ import ipaddress
 import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 __all__ = [
     "DEFAULT_HOST",
@@ -40,7 +41,7 @@ def is_loopback_host(host: str) -> bool:
     解析失败的主机名一律**按非 loopback 处理**（fail closed）。
     """
     candidate = host.strip().strip("[]")
-    if candidate.lower() in {"localhost", ""}:
+    if candidate.lower() == "localhost":
         return True
     try:
         return ipaddress.ip_address(candidate).is_loopback
@@ -91,7 +92,7 @@ class ServerSettings:
         if ":" in host and not host.startswith("["):
             host = f"[{host}]"
         base = f"http://{host}:{self.port}/"
-        return f"{base}?token={self.token}" if self.token else base
+        return f"{base}?token={quote(self.token, safe='')}" if self.token else base
 
 
 def resolve_session_path(settings: ServerSettings, name: str) -> Path:

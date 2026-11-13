@@ -28,7 +28,7 @@ agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overal
 ## v.s. 同类项目（当前公开口径）
 
 > 这张表在 `README.md` / `README_EN.md` 首页也有一份，两处同源——改动请同步，
-> 尤其是 SWE-bench Lite 那一行的 ⚠️ 与「非官方口径」说明，**不许在首页悄悄去掉**。
+> 尤其是 SWE-bench Lite 的移除状态与 Verified 子集的评测边界，必须保持一致。
 
 | 维度 | DM-Code-Agent | Aider | OpenHands | SWE-agent | smolagents |
 | --- | --- | --- | --- | --- | --- |
@@ -86,10 +86,10 @@ Self-Consistency / 工具熔断 / 记忆卫生 / LLM 摘要压缩。理由见
 
 短期在做的非算法方向：
 
-- **压缩粘性实验**：现在折叠不是粘性的（某步折叠后，下一步若不满足触发条件仍发全量历史）。
-  有了 `compaction` 条目后，这件事可以离线评估收益再决定改不改。
-- **会话写入多 sink**：`message` / `compaction` 条目目前只跟 `--trace` 走，
-  单独用 `--checkpoint` 时会话日志只有 checkpoint 条目。
+- **压缩粘性收益评估**：正收益折叠已跨请求、跨 run 复用，并以 `phase=sticky_reuse`
+  记录；后续可在现有机制上做离线收益评估。
+- **会话多 sink 验证**：`SessionWriter` 已向 trace 和 JSONL checkpoint 分别写入
+  `message` / `compaction`，后续维护重点是两份日志的独立 id 映射与失败隔离。
 - **扩展分发**：`dm-agent install <git-url>` 或 pip 包形式安装第三方扩展。
 - **Maintenance benchmark 扩展**：文档一致性、CI 配置修复、跨文件重构、多轮修复任务。
 

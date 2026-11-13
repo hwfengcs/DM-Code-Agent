@@ -251,7 +251,15 @@ function subscribeToStream(path: string, onEvent: (event: StreamEvent) => void):
     source.close()
   })
 
-  source.addEventListener('error', () => {
+  source.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const payload = parse<{ message?: string }>(event.data as string)
+      if (payload?.message) {
+        onEvent({ kind: 'error', message: payload.message })
+        source.close()
+        return
+      }
+    }
     // EventSource 会自动重连，所以这里不当作终态——只在 UI 上提示一下。
     if (source.readyState === EventSource.CLOSED) {
       onEvent({ kind: 'error', message: '实时连接已断开。' })

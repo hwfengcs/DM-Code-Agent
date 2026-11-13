@@ -5,7 +5,7 @@
 **本地优先 · 全程可审计 · 内核只有一个 ReAct 循环**
 
 [![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-554%20passed%2C%201%20skipped-brightgreen.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-offline%20regression-brightgreen.svg)](https://github.com/hwfengcs/DM-Code-Agent/tree/main/tests)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/hwfengcs/DM-Code-Agent/blob/main/LICENSE)
 [![Stars](https://img.shields.io/github/stars/hwfengcs/DM-Code-Agent?style=flat&color=yellow)](https://github.com/hwfengcs/DM-Code-Agent/stargazers)
@@ -113,8 +113,9 @@ dm-agent-web                 # 完整工作台：对话式交任务 + SSE 实时
 - **发起运行 spawn 一个 CLI 子进程**（`python -m dm_agent.cli`），而不是在服务进程里
   另装一套 `ReactAgent`。所以 Web 永远和命令行做同一件事。
 
-只读展厅用 hash 路由 + `base: './'`，把构建产物和会话 JSONL 一起丢到任何静态托管上就能跑，
-**不需要后端，也不需要 key**。详见 [Web 控制台](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/web.md)。
+只读展厅不需要模型 API key；前端通过 `/api/*` 读取会话和诊断，需要运行
+`dm-agent-web --read-only` 后端。hash 路由支持静态页面路径，但尚未实现直接读取静态 JSONL。
+详见 [Web 控制台](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/web.md)。
 
 ### 🔌 加工具 / 守卫 / 模型供应商，一行内核代码都不用改
 
@@ -154,7 +155,7 @@ v2.1 做了一次减法：把 6 个**毕业标准依赖已冻结评测**的默�
 
 | | |
 | --- | --- |
-| 单元测试 | **554 passed，1 skipped**（默认不需要 API key） |
+| 单元测试 | 离线行为回归；当前验证结果见 CI（默认不需要 API key） |
 | 确定性 eval | 14 个任务 × 4 个变体，scripted client 驱动，**零网络调用** |
 | 前端 | vitest 覆盖展示层纯函数；CI 重新构建并**逐字节比对**入库产物 |
 | CI 矩阵 | Ubuntu + Windows × Python 3.10 / 3.11 / 3.12，**6 个组合** |
@@ -289,7 +290,7 @@ flowchart TD
 | 文档 | 什么时候读 |
 | --- | --- |
 | [快速开始](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/getting-started.md) | 安装、配置、第一个任务、本地验证 |
-| [CLI 参考](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/cli.md) | 七个入口、全部开关及默认值 |
+| [CLI 参考](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/cli.md) | 八个入口、全部开关及默认值 |
 | [Web 控制台](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/web.md) | 会话审计、实时运行、安全模型、静态托管 |
 | [架构](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/architecture.md) | 分层、执行链、钩子位置、会话数据模型 |
 | [扩展开发](https://github.com/hwfengcs/DM-Code-Agent/blob/main/docs/extensions.md) | 不改内核加工具 / 守卫 / 供应商，含安全模型 |

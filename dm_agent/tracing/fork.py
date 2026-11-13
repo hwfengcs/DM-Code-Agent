@@ -75,9 +75,12 @@ def fork_session(
     checkpoint = latest_checkpoint_entry(kept)
     checkpoint_payload = (checkpoint or {}).get("payload") or {}
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("w", encoding="utf-8") as handle:
-        for entry in kept:
-            handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    try:
+        with target.open("x", encoding="utf-8") as handle:
+            for entry in kept:
+                handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    except FileExistsError as exc:
+        raise ValueError(f"Refusing to overwrite an existing file: {target}") from exc
     writer = TraceWriter(target, fork_parent_id=entry_id)
     try:
         writer.record(

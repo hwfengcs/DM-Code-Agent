@@ -12,6 +12,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from dm_agent.server.streaming import (
     parse_last_event_id,
     sse_message,
@@ -156,6 +158,13 @@ def test_malformed_line_does_not_kill_the_stream(tmp_path: Path) -> None:
     assert events[1]["data"]["line"] == 1
 
 
+def test_invalid_utf8_line_does_not_kill_the_stream(tmp_path: Path) -> None:
+    path = tmp_path / "run.jsonl"
+    path.write_bytes(entry_line(0).encode() + b'{"bad":"\xff"}\n' + entry_line(2).encode())
+    events = asyncio.run(collect(path))
+    assert [event["event"] for event in events] == ["entry", "malformed", "entry", "done"]
+
+
 def test_blank_lines_are_skipped_but_still_count_as_lines(tmp_path: Path) -> None:
     """行号必须与文件真实行号对齐，否则续传会错位。"""
     path = tmp_path / "run.jsonl"
@@ -262,3 +271,17 @@ def test_incomplete_trailing_line_at_exit_is_reported(tmp_path: Path) -> None:
 
     events = asyncio.run(collect(path))
     assert [event["event"] for event in events] == ["entry", "malformed", "done"]
+
+
+def test_final_entries_written_between_last_reads_are_delivered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dm_agent.server import streaming
+
+    path = tmp_path / "live.jsonl"
+    path.touch()
+    reads = iter([b"", entry_line(0, event="run_end").encode(), b"", b""])
+    monkeypatch.setattr(streaming, "_read_from", lambda _path, offset: (next(reads, b""), offset))
+    events = asyncio.run(collect(path))
+    assert [event["event"] for event in events] == ["entry", "done"]
+    assert events[0]["data"]["event"] == "run_end"
