@@ -1,0 +1,3 @@
+# Vite preserves HTML source line endings; keep packaged output reproducible across OSes.
+/web/index.html text eol=lf
+/dm_agent/server/static/index.html text eol=lf
