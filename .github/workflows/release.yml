@@ -175,7 +175,7 @@ jobs:
           assert "Exit 1" in verified and "Exit 0" in verified
           assert "Replacement excerpt" in verified
           assert "Verification gap:" in unverified
-          print("  ok  离线 demo 真实失败后修复；两份独立 HTML 正确保留验证差异")
+          print("  ok  offline demo repaired the failure; both HTML reports preserve verification evidence")
           PY
 
       - name: Frontend ships inside the wheel
@@ -186,7 +186,7 @@ jobs:
           from dm_agent.server.app import default_static_dir
           d = default_static_dir()
           assert d is not None and (d / "index.html").is_file(), "wheel 里没有前端产物"
-          print("  ok  前端产物随包分发:", d)
+          print("  ok  frontend assets ship inside the wheel:", d)
           PY
 
       - name: Config never lands inside site-packages
@@ -198,7 +198,7 @@ jobs:
           site = pathlib.Path(dm_agent.__file__).parent.parent
           for p in (resolve_config_write_path(), user_config_path()):
               assert site not in p.resolve().parents, f"配置落进了包目录: {p}"
-          print("  ok  配置路径在包外")
+          print("  ok  configuration paths stay outside site-packages")
           PY
 
       - name: Web console actually serves the UI
@@ -215,7 +215,7 @@ jobs:
           assert r.status_code == 200 and 'id="root"' in r.text, r.status_code
           m = c.get("/api/meta", headers={"Authorization": "Bearer t"})
           assert m.status_code == 200, m.status_code
-          print("  ok  GET / 200，/api/meta 200")
+          print("  ok  GET / 200, /api/meta 200")
           PY
 
   publish-github:
