@@ -6,14 +6,15 @@
 2. **只读展厅** — 不需要 API key 的会话查看器，通过只读服务审计本地会话。
 
 这两件事**共用一套渲染器**，因为 live run 与历史 trace 是同一份 append-only JSONL
-条目流。没有第二套数据模型，也不可能出现「实时看到的」与「事后审计到的」不一致。
+条目流。复用同一条目流和渲染器，减少实时展示与事后审计之间的漂移。
 对话界面同样只是这份条目流的另一种排版：`run_start` 是你说的那句话，中间的
 `step` / `tool_call` 是 agent 干的活，`run_end` 是它的回答。所以历史会话也能以对话
 形式打开（运行详情里的「对话」分区，和实时界面用的是同一个 `ChatTurn` 组件）。
 
 ```bash
 uv sync --frozen --extra dev          # dev extra 自引用 web extra，一条装齐
-# 或：pip install 'dm-code-agent[web]'
+# 或安装发布的 wheel：
+pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.0/dm_code_agent-2.1.0-py3-none-any.whl"
 
 dm-agent-web --read-only              # 只读展厅：只能审计，不能发起运行
 dm-agent-web                          # 完整工作台
@@ -41,7 +42,7 @@ DM-Code-Agent Web Console
 | `--port` | `8765` | 监听端口 |
 | `--sessions-dir` | `sessions` | 会话 JSONL 所在目录，控制台只读写这个目录内的文件 |
 | `--workspace` | `.` | agent 的工作目录。非只读模式下它会在这里**真实读写文件** |
-| `--read-only` | 关 | 只提供审计能力，禁用发起运行与分叉。公开分享用这个 |
+| `--read-only` | 关 | 只提供审计能力，禁用发起运行与分叉。用于本地审计或可信访问；公开分享优先使用 HTML 摘要 |
 | `--token` | 自动生成 | 固定访问 token；省略时生成一个一次性的 |
 | `--no-token` | 关 | 关闭鉴权。只允许用于 loopback，且不推荐 |
 | `--static-dir` | 随包产物 | 前端产物目录，一般不用指定 |
@@ -215,6 +216,10 @@ npm --prefix web run build      # 产物落到 dm_agent/server/static/
 会话列表、摘要、诊断和 diff 仍通过同源 `/api` 请求读取，必须提供只读后端或相应反向代理。
 当前没有静态 JSONL 数据源适配，单独上传 JSONL 和前端产物到 GitHub Pages 无法运行查看器。
 
+仓库的[公开展厅](demo-site.md)使用另一条发布路径：把固定公开 fixture 导出成独立 HTML，
+不托管用户 JSONL 或工作台 API。公开分享真实会话前请审阅导出的报告；只读模式不会脱敏
+底层 entries API 返回的日志内容。
+
 ## 前端开发
 
 ```bash
@@ -224,7 +229,7 @@ npm --prefix web run test       # vitest，覆盖展示层纯函数
 npm --prefix web run build      # tsc --noEmit && vite build
 ```
 
-产物 `dm_agent/server/static/` **入库**，因为 `pip install dm-code-agent[web]` 之后
+产物 `dm_agent/server/static/` **入库**，因为安装带 `web` extra 的发布 wheel 之后
 必须直接就有界面，不能要求终端用户装 Node 再构建。改了 `web/` 下的源码请重新
 `npm run build` 并把产物一起提交。
 

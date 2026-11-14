@@ -1,6 +1,6 @@
 spec_version: "0.1.0"
 name: dm-code-agent
-version: 2.0.0
+version: 2.1.0
 description: >
   A local-first, auditable Python code-maintenance agent built
   on a ReAct + Task Planner + Adaptive Replanning loop. Executes file, search,

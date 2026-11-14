@@ -26,7 +26,7 @@ from .skills import BaseSkill, ConfigSkill, SkillManager, SkillMetadata
 from .tools import Tool, default_tools
 from .tracing import TraceWriter
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 __all__ = [
     "PROVIDER_DEFAULTS",

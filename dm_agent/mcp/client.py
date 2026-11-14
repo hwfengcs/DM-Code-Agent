@@ -300,7 +300,7 @@ class MCPClient:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "dm-code-agent", "version": "2.0.0"},
+                "clientInfo": {"name": "dm-code-agent", "version": "2.1.0"},
             },
         )
 

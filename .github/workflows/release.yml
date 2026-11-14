@@ -1,16 +1,9 @@
 name: Release
 
-# 发布到 PyPI。两条路径，职责分开：
-#
-#   手动触发（workflow_dispatch） → TestPyPI  —— 随便试，装错了重来就行
-#   打 tag v*                     → 正式 PyPI —— 不可逆，版本号用掉不能重传
-#
-# 认证走 **Trusted Publishing（OIDC）**：GitHub 直接向 PyPI 证明"这个 workflow
-# 确实来自这个仓库"，仓库里不存任何长期 token。所以 Secrets 里是空的，
-# 也就没有"token 泄露"或"忘记轮换"这回事。
-#
-# 前提：在 PyPI 上把本仓库 + 本文件名（release.yml）登记为 trusted publisher。
-# 首次发布一个还不存在的包要用 "pending publisher"，见 docs/releasing.md。
+# v* tag → 验证 → GitHub Release（wheel、sdist、SHA256SUMS）。
+# PyPI 仅在账号绑定完成且 repository variable PYPI_PUBLISH_ENABLED=true 时发布。
+# 手动 target=testpypi 仍显式发布到 TestPyPI；target=none 只验证和构建。
+# 两个包索引均需先配置 Trusted Publishing（OIDC），见 docs/releasing.md。
 
 on:
   push:
@@ -21,7 +14,10 @@ on:
         description: "发布目标"
         type: choice
         options: [testpypi, none]
-        default: testpypi
+        default: none
+
+permissions:
+  contents: read
 
 jobs:
   # 发一个坏包比不发严重得多——版本号不能重传。所以构建前先把 CI 的核心检查重跑一遍，
@@ -100,6 +96,10 @@ jobs:
             exit 1
           fi
           echo "版本一致：$PKG"
+          test -f "docs/release-${GITHUB_REF_NAME}.md" || {
+            echo "::error::缺少 docs/release-${GITHUB_REF_NAME}.md 发布说明。"
+            exit 1
+          }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -136,10 +136,47 @@ jobs:
         shell: bash
         run: |
           for cmd in dm-agent dm-agent-eval dm-agent-bench dm-agent-trace \
-                     dm-agent-economics dm-agent-manifest-diff dm-agent-score-diff dm-agent-web; do
+                     dm-agent-economics dm-agent-manifest-diff dm-agent-score-diff dm-agent-web \
+                     dm-agent-demo; do
             "$cmd" --help > /dev/null || { echo "::error::$cmd 不可用"; exit 1; }
             echo "  ok  $cmd"
           done
+
+      - name: Run offline demo and export real evidence outside the repository
+        shell: bash
+        run: |
+          dm-agent-demo --output demo-run
+          dm-agent-trace export demo-run/sessions/verified.jsonl --output verified.html --include-content
+          dm-agent-trace export demo-run/sessions/unverified.jsonl --output unverified.html
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from dm_agent.tracing import load_session_entries
+
+          output = Path("demo-run")
+          manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+          assert manifest["model_requests"] == 0
+          cases = {case["id"]: case for case in manifest["cases"]}
+          assert cases["verified"]["test_returncodes"] == [1, 0]
+          assert cases["verified"]["verification_gap"] is False
+          assert cases["unverified"]["test_returncodes"] == []
+          assert cases["unverified"]["verification_gap"] is True
+          entries = load_session_entries(output / cases["verified"]["trace"])
+          checks = [
+              entry["payload"]["observation"]
+              for entry in entries
+              if entry["event"] == "tool_call" and entry["payload"]["action"] == "run_tests"
+          ]
+          assert len(checks) == 2
+          assert "FAILED (failures=1)" in checks[0]
+          assert "Ran 4 tests" in checks[1] and "\nOK" in checks[1]
+          verified = Path("verified.html").read_text(encoding="utf-8")
+          unverified = Path("unverified.html").read_text(encoding="utf-8")
+          assert "Exit 1" in verified and "Exit 0" in verified
+          assert "Replacement excerpt" in verified
+          assert "Verification gap:" in unverified
+          print("  ok  离线 demo 真实失败后修复；两份独立 HTML 正确保留验证差异")
+          PY
 
       - name: Frontend ships inside the wheel
         shell: bash
@@ -181,6 +218,31 @@ jobs:
           print("  ok  GET / 200，/api/meta 200")
           PY
 
+  publish-github:
+    name: Publish GitHub Release
+    needs: [build, smoke]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Generate package checksums
+        working-directory: dist
+        run: sha256sum -- *.whl *.tar.gz > SHA256SUMS
+      - name: Publish verified packages and release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "DM-Code-Agent $GITHUB_REF_NAME" \
+            --notes-file "docs/release-${GITHUB_REF_NAME}.md"
+
   publish-testpypi:
     name: Publish to TestPyPI
     needs: [build, smoke]
@@ -203,7 +265,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: [build, smoke]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.PYPI_PUBLISH_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment:
       name: pypi

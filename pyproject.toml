@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dm-code-agent"
-version = "2.0.0"
-description = "A local-first, auditable Python Code Agent with ReAct, trace/replay, MCP tools, planning, benchmarks, memory compression, and skills."
+version = "2.1.0"
+description = "An inspectable coding agent: trace changes, diagnose failures, and share the evidence."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -73,6 +73,7 @@ web = [
 
 [project.urls]
 Homepage = "https://github.com/hwfengcs/DM-Code-Agent"
+Documentation = "https://hwfengcs.github.io/DM-Code-Agent/"
 Repository = "https://github.com/hwfengcs/DM-Code-Agent"
 Issues = "https://github.com/hwfengcs/DM-Code-Agent/issues"
 
@@ -85,6 +86,7 @@ dm-agent-economics = "dm_agent.benchmarks.economics:main"
 dm-agent-manifest-diff = "dm_agent.benchmarks.manifest_diff:main"
 dm-agent-score-diff = "dm_agent.benchmarks.score_diff:main"
 dm-agent-web = "dm_agent.server.cli:main"
+dm-agent-demo = "dm_agent.demo:main"
 
 [tool.setuptools.packages.find]
 include = ["dm_agent*"]

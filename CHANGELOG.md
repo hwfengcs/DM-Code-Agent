@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-14
+
+### Try and share the inspection workflow
+
+- Added `dm-agent-demo`: scripted decisions with real file edits and unittest checks,
+  including a second run that demonstrates a missing-verification signal. No API key required.
+- Added standalone HTML trace reports. Structural summaries are the default; content
+  excerpts require explicit opt-in, are redacted, and must be reviewed before sharing.
+- Added a public static exhibit, a 38-second recorded walkthrough, an English-first README
+  with a full Chinese version, and three bilingual articles grounded in historical evidence.
+- Published installable packages through GitHub Releases with checksums and clean-environment
+  smoke tests. PyPI publishing remains conditional on account-side Trusted Publisher setup.
+
 ### Maintenance cleanup (2026-11-14)
 
 - Removed unused CLI rendering helpers and repeated internal exports, MCP configuration

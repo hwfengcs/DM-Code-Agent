@@ -94,6 +94,7 @@ web/node_modules/
 web/dist/
 web/.vite/
 web/vite.config.ts.timestamp-*
+demo-run/
 
 # SWE-bench Verified 子系统：独立 venv、数据缓存与工作区都不入库
 .swebench-venv/

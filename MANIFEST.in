@@ -1,0 +1,6 @@
+include README_ZH.md README_EN.md
+recursive-include swebench_verified *.py
+recursive-include site *.html *.css *.js *.svg
+recursive-include scripts *.py *.mjs
+recursive-include web/src/fonts *.woff2
+include web/public/geist-OFL.txt

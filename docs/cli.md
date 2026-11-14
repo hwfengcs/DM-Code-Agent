@@ -1,22 +1,37 @@
 # CLI 参考
 
-## 八个入口
+## 九个入口
 
-`pyproject.toml` 的 `[project.scripts]` 定义了八个命令：
+`pyproject.toml` 的 `[project.scripts]` 定义了九个命令：
 
 | 命令 | 实现 | 用途 |
 | --- | --- | --- |
 | `dm-agent` | `dm_agent.cli:main` | 主 CLI：跑任务、交互模式 |
-| `dm-agent-trace` | `dm_agent.tracing.cli:main` | `view` / `analyze` / `analyze-dir` / `replay` / `diff` / `fork` |
+| `dm-agent-trace` | `dm_agent.tracing.cli:main` | `view` / `analyze` / `analyze-dir` / `export` / `replay` / `diff` / `fork` |
 | `dm-agent-bench` | `dm_agent.benchmarks.cli:main` | coding / maintenance benchmark |
 | `dm-agent-eval` | `dm_agent.evals.cli:main` | 确定性 eval（无需 API key） |
 | `dm-agent-economics` | `dm_agent.benchmarks.economics:main` | 离线 token 成本核算 |
 | `dm-agent-manifest-diff` | `dm_agent.benchmarks.manifest_diff:main` | benchmark 任务集漂移检测 |
 | `dm-agent-score-diff` | `dm_agent.benchmarks.score_diff:main` | 两份 benchmark 报告的分数差、逐题翻转与成本对照 |
 | `dm-agent-web` | `dm_agent.server.cli:main` | Web 控制台（需 `[web]` extra），见 [Web 控制台](web.md) |
+| `dm-agent-demo` | `dm_agent.demo:main` | 生成包含真实文件编辑与测试的离线演示，无需 API key |
 
 根目录 `main.py` 是 `python main.py` 的兼容转发，不会作为顶级 `main` 模块安装。
 `python -m dm_agent.cli` 也可用（`dm_agent/cli/__main__.py`）。
+
+## 离线演示与报告导出
+
+```bash
+dm-agent-demo --output demo-run
+dm-agent-web --sessions-dir demo-run/sessions --read-only
+dm-agent-trace export demo-run/sessions/verified.jsonl --output report.html --include-content
+```
+
+`dm-agent-demo` 使用脚本化客户端驱动真实工具，不加载用户配置或扩展，只写入新建或空的输出目录。
+它生成已运行测试和跳过测试两种会话，详见[快速开始](getting-started.md)。
+
+`export` 默认仅输出结构摘要。`--include-content` 加入脱敏内容与替换片段，`--force` 允许覆盖已有报告但不能覆盖源日志。
+报告是无需服务器的单文件 HTML，分享前需审阅，详见[会话与 trace](tracing.md)。
 
 ## 配置优先级
 

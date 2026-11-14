@@ -15,7 +15,7 @@ entry, so a session is a navigable tree rather than a flat log. That is what mak
 
 Sessions written before schema `2.0` have no `id`/`parent_id`. They are still readable: the
 loader synthesizes `legacy-0000`, `legacy-0001`, … on read, so `view`, `analyze`, `analyze-dir`,
-`replay`, `diff`, and `fork` all keep working on old files unchanged.
+`replay`, `diff`, `fork`, and `export` all keep working on old files unchanged.
 
 ## Two Fidelity Tiers, One Format
 
@@ -140,6 +140,47 @@ else is read as a session log. `--resume-at` only applies to session logs and re
 entry *or the closest `checkpoint` entry before it*.
 Checkpoint lookup stops at the current `run_start`: a new task without a checkpoint cannot
 accidentally resume a previous task. `--resume-at` can still select an entry in an earlier run.
+
+## Standalone HTML Reports
+
+Export a session into one HTML file that can be opened locally without a server:
+
+```bash
+dm-agent-trace export sessions/run.jsonl --output reports/run.html
+```
+
+The default is **structure only**: run status, counts, built-in action names, recorded
+verification exit codes, and an execution trail. Task text, source names, answers, code,
+paths, arbitrary metadata, and tool output are omitted, including from hidden page data.
+Custom action names are reduced to `Custom action` or `MCP tool`.
+
+To include the task, final answer, tool receipts, and recorded replacement excerpts:
+
+```bash
+dm-agent-trace export sessions/run.jsonl --output reports/run-with-content.html --include-content
+```
+
+Content export applies pattern-based redaction to known environment secrets, common token
+formats, credential assignments, URLs, email addresses, and local absolute paths. **Review
+the generated HTML locally before sharing it.** Redaction cannot recognize every private
+business detail or personal identifier. The CLI prints this policy before exporting, and
+the same notice is included in the report. Checkpoint state, raw LLM messages, and system
+prompts are never exported in either mode.
+
+Each `run_start` begins a separate report section, with a selector for sessions containing
+multiple runs. A recorded success is labeled `Success reported`; a verification action is
+evidence of a command, not a guarantee of coverage or correctness. `Replacement excerpt`
+shows the recorded `old_string` / `new_string` arguments, not a complete repository diff;
+the corresponding tool receipt indicates whether the edit was applied. An interrupted run
+is labeled incomplete rather than assumed to be still running.
+
+Runs explicitly marked `demo: true` and `source: scripted` in their `run_start` metadata
+keep a `Scripted demo` label in both export modes. This label applies only to that run.
+
+Reports have no external assets or automatic network requests. Text is escaped, a restrictive
+content security policy is embedded, and no tools are replayed. The original JSONL remains
+unchanged. Existing outputs are refused unless `--force` is supplied; even with `--force`,
+the output cannot be the source session or a symlink/hardlink alias of it.
 
 ## Tool Replay
 

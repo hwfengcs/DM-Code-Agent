@@ -1,22 +1,27 @@
 # 快速开始
 
+[English homepage](../README.md) · [中文首页](../README_ZH.md) · [在线交互演示](https://hwfengcs.github.io/DM-Code-Agent/)
+
+先用离线演示检查一次代码修改，再配置模型，在自己的仓库中运行任务。
+
 ## 安装
 
-装一个能直接用的版本（不需要克隆仓库，也不需要 Node——前端产物随 wheel 分发）：
+需要 Python 3.10+。从 v2.1.0 GitHub Release 安装，前端产物随 wheel 分发，不需要 Node.js：
 
 ```bash
-pip install "dm-code-agent[web]"     # 带 Web 控制台
-pip install dm-code-agent            # 只要命令行
+pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.0/dm_code_agent-2.1.0-py3-none-any.whl"
 ```
 
-想隔离环境或者干脆不装，用 [uv](https://docs.astral.sh/uv/)：
+只需要 CLI 时不装 Web extra：
 
 ```bash
-uv tool install "dm-code-agent[web]"                  # 装成独立工具
-uvx --from "dm-code-agent[web]" dm-agent-web          # 不装，跑一次
+pip install https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.0/dm_code_agent-2.1.0-py3-none-any.whl
 ```
 
-**开发**这个项目才需要克隆（按 `uv.lock` 可复现安装，CI 用的就是这条）：
+想隔离到独立工具环境，可以把第一条命令的 `pip install` 换为 `uv tool install`。
+Release 附件见 [v2.1.0](https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v2.1.0)。
+
+开发者从源码安装，使用 CI 相同的锁文件：
 
 ```bash
 git clone https://github.com/hwfengcs/DM-Code-Agent.git
@@ -24,91 +29,104 @@ cd DM-Code-Agent
 uv sync --frozen --extra dev
 ```
 
-传统方式：
+源码安装后，在下文命令前加 `uv run --frozen`，或激活 `.venv`。
+不用 uv 时可以创建虚拟环境后执行 `pip install -e ".[dev]"`。
+
+## 第一次体验：不需要模型或 API key
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+dm-agent-demo --output demo-run
+dm-agent-web --sessions-dir demo-run/sessions --read-only
 ```
 
-安装后有八个命令行入口，见 [CLI 参考](cli.md)。
+点击服务器打印的带 token 本地地址，打开两份演示会话：
 
-## 配置 API key
+1. `verified.jsonl`：先运行失败测试，修复 `retry.py` 的重试次数边界，再运行通过的测试。
+2. `unverified.jsonl`：完成同一修改后直接结束。检查诊断中的验证缺口。
 
-API key 从环境变量或显式的 `--api-key` 读取，不会从 `config.json` 读，也不会被写进运行配置。
-`.env` 按下面的顺序查找，**已经导出的环境变量始终压过文件**：
+演示使用脚本化客户端驱动真实 Agent、文件工具和 `python -m unittest discover -s .`，不会发起模型请求。
+它不读取用户配置或扩展，不操作你的真实项目。输出目录必须不存在或为空；重复运行请换一个目录名。
 
-| 顺序 | 位置 | 适合 |
-| --- | --- | --- |
-| 1 | 已导出的环境变量 | CI、临时覆盖 |
-| 2 | `./.env`（当前工作目录） | 按项目区分 key |
-| 3 | `~/.dm_agent/.env` | 全局装一次，在任何目录下都能用 |
+输出包含：
 
-全局安装后推荐第 3 种：
-
-```bash
-mkdir -p ~/.dm_agent && echo "DEEPSEEK_API_KEY=sk-xxx" >> ~/.dm_agent/.env
-```
-
-> **Windows 用户注意**：PowerShell 的 `>`、`Set-Content -Encoding utf8` 和记事本的
-> 「UTF-8」另存都会写 BOM。本项目按 `utf-8-sig` 读 `.env`，所以带 BOM 也能正常工作；
-> 但别的工具读同一个文件时未必——`Set-Content -Encoding ascii` 最省心。
-
-克隆仓库开发时用第 2 种：
-
-```bash
-cp .env.example .env               # Windows: copy .env.example .env
-```
-
-可填的变量：
-
-| 变量 | 供应商 |
+| 路径 | 内容 |
 | --- | --- |
-| `DEEPSEEK_API_KEY` | deepseek（默认） |
-| `OPENAI_API_KEY` | openai |
-| `CLAUDE_API_KEY` | claude |
-| `GEMINI_API_KEY` | gemini |
+| `demo-run/sessions/` | 两份可供 CLI 和 Web 读取的 JSONL 会话 |
+| `demo-run/verified/`、`demo-run/unverified/` | 两个独立的示例工作区，包含代码与测试 |
+| `demo-run/before/retry.py` | 修改前的示例代码 |
+| `demo-run/verified.patch`、`demo-run/unverified.patch` | 演示修改的 patch |
+| `demo-run/manifest.json` | 演示产物清单与说明 |
 
-自建网关或本地推理服务用 `--base-url`，或用扩展注册自定义 provider（见
-[扩展开发](extensions.md#自定义-llm-供应商)）。
+命令行也能检查全部过程：
 
-## 其余设置（config.json）
+```bash
+dm-agent-trace view demo-run/sessions/verified.jsonl
+dm-agent-trace analyze demo-run/sessions/unverified.jsonl
+dm-agent-trace diff demo-run/sessions/unverified.jsonl demo-run/sessions/verified.jsonl
+```
 
-provider、model、max_steps 等非敏感设置存在 `config.json`，查找顺序与 `.env` 同理：
+这组演示解释“宣布完成”和“留下验证证据”的区别，不用于评价模型的成功率。
 
-| 顺序 | 位置 |
+## 导出可审阅的报告
+
+```bash
+dm-agent-trace export demo-run/sessions/verified.jsonl --output report.html --include-content
+```
+
+用浏览器打开 `report.html`，无需服务器。示例包含公开的演示代码，适合体验内容导出。
+
+真实任务默认使用摘要导出：省略 `--include-content` 即不带任务正文、代码、工具参数与输出片段。
+开启该参数会额外加入脱敏内容和基于 `old_string` / `new_string` 的替换片段；它不是完整 Git diff。
+分享前审阅文件，因为脱敏不能保证识别所有敏感信息。已有报告需要 `--force` 才能覆盖，源日志始终不能被导出覆盖。
+细节见[会话与 trace](tracing.md)。
+
+## 配置模型
+
+只有运行真实模型任务才需要 API key。推荐在目标工作区创建 `.env`，填入所用供应商的变量：
+
+```dotenv
+DEEPSEEK_API_KEY=your-key
+```
+
+| 变量 | `--provider` |
 | --- | --- |
-| 1 | `./config.json`（当前工作目录） |
-| 2 | `~/.dm_agent/config.json` |
+| `DEEPSEEK_API_KEY` | `deepseek`（默认） |
+| `OPENAI_API_KEY` | `openai` |
+| `CLAUDE_API_KEY` | `claude` |
+| `GEMINI_API_KEY` | `gemini` |
 
-交互式设置向导（`dm-agent` 不带任务参数进入）**写回它读到的那个文件**；两个都不存在时
-落用户级。CLI 参数永远优先于文件，完整优先级见 [CLI 参考](cli.md)。
+`.env` 按当前目录 `./.env`、用户目录 `~/.dm_agent/.env` 的顺序加载，已经导出的环境变量优先。
+全局安装后也可以把 key 放在用户目录，不必为每个项目复制。不要将含 key 的文件提交到 Git。
+仓库开发者可以复制 `.env.example` 为 `.env`。带 UTF-8 BOM 的 `.env` 也受支持。
 
-## 跑第一个任务
+非敏感设置如 provider、model、max_steps 放在 `config.json`，优先级为：
 
-```bash
-dm-agent "分析当前项目结构，列出最适合优先测试的模块" --show-steps
+```text
+CLI 参数 > ./config.json > ~/.dm_agent/config.json > 默认值
 ```
 
-`--show-steps` 会实时打印每一步的 thought / action / observation。
+配置文件先到先得，项目级存在就使用它。交互设置向导写回已读取的文件；都不存在时写入用户目录。
+自建网关或本地推理服务使用 `--base-url`，自定义供应商见[扩展开发](extensions.md)。
 
-留一份可审计的记录：
+## 在自己的仓库中运行
+
+切换到目标项目的工作目录，先试一个可审查的小任务：
 
 ```bash
-dm-agent "修复 retry.py 的重试边界，并运行测试" \
-  --trace sessions/retry-fix.jsonl \
-  --report reports/retry-fix.md
-
-dm-agent-trace view sessions/retry-fix.jsonl
-dm-agent-trace analyze sessions/retry-fix.jsonl
+dm-agent "分析当前项目结构，列出最适合优先测试的模块" --provider deepseek --trace sessions/review.jsonl --show-steps
+dm-agent-trace analyze sessions/review.jsonl
 ```
 
-trace 默认不含完整 prompt 与模型原始输出，细节见 [会话与 trace](tracing.md)。
+`--show-steps` 实时显示过程，`--trace` 留下默认脱敏的会话记录。
+Agent 使用你的本地文件和命令权限，并非沙箱；在 Git 工作区中执行、检查变更与测试结果。
+完整 LLM I/O 需要显式开启 `--trace-llm-io`；`--trace` 与 `--checkpoint` 不能指向同一文件。
 
-## 本地验证
+喜欢浏览器交互时执行 `dm-agent-web`，可在对话里提交任务并检查每一步。
+只审查历史记录则用 `dm-agent-web --sessions-dir sessions --read-only`。详见 [Web 控制台](web.md)。
 
-不需要 API key 就能跑完整套（与 CI 完全一致）：
+## 开发者本地验证
+
+从源码安装 dev 依赖后，不需要 API key 即可运行以下检查。使用 uv 时在每条命令前加 `uv run --frozen`：
 
 ```bash
 python -m compileall dm_agent main.py tests
@@ -120,10 +138,5 @@ python -m black --check .
 python -m mypy dm_agent
 ```
 
-改了 `pyproject.toml` 的依赖后要重新 `uv lock` 并提交 `uv.lock`，否则 CI 的
-`uv lock --check` 会失败。
-
-## 已知坑
-
-- 根目录 `main.py` 只是 `python main.py` 的兼容转发，不会作为顶级 `main` 模块安装。
-  包内入口用 `dm-agent` 或 `python -m dm_agent.cli`。
+依赖变更后需运行 `uv lock` 并提交 `uv.lock`。前端开发检查见 [Web 控制台](web.md)。
+根目录 `main.py` 仅保留 `python main.py` 的兼容入口，安装后请使用 `dm-agent` 或 `python -m dm_agent.cli`。

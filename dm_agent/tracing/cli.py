@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .analysis import analyze_events, analyze_trace_directory
+from .export_html import save_session_report
 from .fork import _fork, fork_session
 from .render import _analyze, _analyze_dir, _diff, _view, render_trace_directory_markdown
 from .replay import _replay, replay_tools
@@ -35,6 +36,20 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     view_parser.add_argument("trace", type=Path, help="Path to a JSONL trace file.")
     view_parser.add_argument("--json", action="store_true", help="Print a JSON summary.")
     view_parser.add_argument("--raw", action="store_true", help="Print raw trace events.")
+
+    export_parser = subparsers.add_parser(
+        "export", help="Write a standalone HTML run report; content is omitted by default."
+    )
+    export_parser.add_argument("session", type=Path, help="Path to a JSONL session/trace file.")
+    export_parser.add_argument("--output", required=True, type=Path, help="Destination HTML file.")
+    export_parser.add_argument(
+        "--include-content",
+        action="store_true",
+        help="Include redacted task, answer and tool excerpts. Review locally before sharing.",
+    )
+    export_parser.add_argument(
+        "--force", action="store_true", help="Replace an existing output; never the source session."
+    )
 
     replay_parser = subparsers.add_parser("replay", help="Replay a trace timeline.")
     replay_parser.add_argument("trace", type=Path, help="Path to a JSONL trace file.")
@@ -107,6 +122,25 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
 def main(argv: Any = None) -> int:
     args = parse_args(argv)
 
+    if args.command == "export":
+        if args.include_content:
+            print(
+                "Including task, answer and tool excerpts with pattern-based redaction. "
+                "Review the HTML locally before sharing; private details may remain."
+            )
+        else:
+            print(
+                "Exporting structure only; task, answer, code, paths and tool output are omitted."
+            )
+        try:
+            output = save_session_report(
+                args.session, args.output, include_content=args.include_content, force=args.force
+            )
+        except (OSError, ValueError) as exc:
+            print(f"Cannot export session: {exc}", file=sys.stderr)
+            return 2
+        print(f"HTML report written: {output}")
+        return 0
     if args.command == "view":
         events = _load_trace_for_cli(args.trace)
         if events is None:
