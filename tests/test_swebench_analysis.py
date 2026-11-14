@@ -479,6 +479,60 @@ def test_invalid_trace_never_backfills_agent_diagnostics(tmp_path: Path) -> None
     assert analysis["summary"]["all"]["trace"]["direct_write_calls"]["measured_count"] == 0
 
 
+@pytest.mark.parametrize("payload", [None, [], "bad"])
+def test_nonobject_trace_payload_is_invalid_without_crashing(tmp_path: Path, payload) -> None:
+    predictions = _write_predictions(
+        tmp_path / "predictions.jsonl", [_prediction(IDS[0], diagnostics=False)]
+    )
+    report = _write_json(
+        tmp_path / "report.json",
+        _report([IDS[0]], resolved=[], unresolved=[IDS[0]], empty=[], error=[]),
+    )
+    trace_dir = tmp_path / "traces"
+    trace_dir.mkdir()
+    trace = _write_trace(trace_dir / f"{IDS[0]}.jsonl", IDS[0])
+    events = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    events[-1]["payload"] = payload
+    trace.write_text("".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
+
+    analysis = analyze_paths(predictions, report, trace_dirs=[trace_dir])
+
+    assert analysis["instances"][0]["trace"]["status"] == "invalid"
+    assert analysis["instances"][0]["agent"]["steps"] is None
+    assert any(warning["code"] == "trace_bad_event" for warning in analysis["warnings"])
+
+
+@pytest.mark.parametrize("source", ["predictions", "report", "trace", "detail"])
+def test_bad_utf8_inputs_are_reported_without_decode_traceback(tmp_path: Path, source) -> None:
+    predictions = _write_predictions(tmp_path / "predictions.jsonl", [_prediction(IDS[0])])
+    report = _write_json(
+        tmp_path / "report.json",
+        _report([IDS[0]], resolved=[], unresolved=[IDS[0]], empty=[], error=[]),
+    )
+    trace_dir = tmp_path / "traces"
+    trace_dir.mkdir()
+    detail_dir = tmp_path / "details" / IDS[0]
+    detail_dir.mkdir(parents=True)
+    paths = {
+        "predictions": predictions,
+        "report": report,
+        "trace": trace_dir / f"{IDS[0]}.jsonl",
+        "detail": detail_dir / "report.json",
+    }
+    paths[source].write_bytes(b"\xff")
+
+    if source in {"predictions", "report"}:
+        with pytest.raises(AnalysisInputError, match="读取"):
+            analyze_paths(predictions, report)
+    else:
+        analysis = analyze_paths(
+            predictions, report, trace_dirs=[trace_dir], harness_log_dir=detail_dir.parent
+        )
+        expected = "trace_read_error" if source == "trace" else "harness_detail_bad_json"
+        assert any(warning["code"] == expected for warning in analysis["warnings"])
+    assert paths[source].read_bytes() == b"\xff"
+
+
 def test_trace_runtime_mapping_fallback_and_bad_trace_isolated(tmp_path: Path) -> None:
     predictions = _write_predictions(
         tmp_path / "predictions.jsonl", [_prediction(IDS[0]), _prediction(IDS[1])]

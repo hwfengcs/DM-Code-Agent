@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import * as apiModule from './api'
-import { clearConversation, sendTurn, startConversation, useConversation } from './conversationStore'
+import { clearConversation, restoreConversation, sendTurn, startConversation, useConversation } from './conversationStore'
 import type { ConversationRecord } from './types'
 
 vi.mock('react', () => ({
@@ -69,4 +69,36 @@ it('ignores an old conversation refresh after a new conversation starts', async 
   resolveRefresh(record)
   await Promise.resolve()
   expect(useConversation().record?.run_id).toBe('chat-2')
+})
+
+it('does not restore an old conversation over a newly started one', async () => {
+  sessionStorage.setItem('dm-agent-console-conversation', record.run_id)
+  let resolveRestore: (value: ConversationRecord) => void = () => undefined
+  vi.spyOn(apiModule.api, 'conversation').mockReturnValue(new Promise((resolve) => {
+    resolveRestore = resolve
+  }))
+  const restoring = restoreConversation()
+  vi.mocked(apiModule.api.createConversation).mockResolvedValue({ ...record, run_id: 'chat-2' })
+  await startConversation({ provider: 'deepseek', model: '', options: {} })
+  resolveRestore(record)
+  await restoring
+
+  expect(useConversation().record?.run_id).toBe('chat-2')
+  expect(useConversation().restoring).toBe(false)
+  expect(sessionStorage.getItem('dm-agent-console-conversation')).toBe('chat-2')
+})
+
+it('does not erase a new conversation identifier when an old restore fails', async () => {
+  sessionStorage.setItem('dm-agent-console-conversation', record.run_id)
+  let rejectRestore: (cause: Error) => void = () => undefined
+  vi.spyOn(apiModule.api, 'conversation').mockReturnValue(new Promise((_resolve, reject) => {
+    rejectRestore = reject
+  }))
+  const restoring = restoreConversation()
+  vi.mocked(apiModule.api.createConversation).mockResolvedValue({ ...record, run_id: 'chat-2' })
+  await startConversation({ provider: 'deepseek', model: '', options: {} })
+  rejectRestore(new Error('old request failed'))
+  await restoring
+
+  expect(sessionStorage.getItem('dm-agent-console-conversation')).toBe('chat-2')
 })

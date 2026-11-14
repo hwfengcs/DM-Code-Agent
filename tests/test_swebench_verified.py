@@ -316,6 +316,111 @@ def test_predict_one_marks_diagnostics_unmeasured_after_agent_exception(monkeypa
     assert "dm_edit_cycle_blocks" not in record
 
 
+def test_materialize_workspace_refuses_existing_checkout(tmp_path, monkeypatch):
+    workspace = tmp_path / "previous-checkout"
+    workspace.mkdir()
+    original = workspace / "work.py"
+    original.write_text("unsaved changes", encoding="utf-8")
+    monkeypatch.setattr(predict, "ensure_image", lambda _: pytest.fail("must refuse before Docker"))
+
+    with pytest.raises(FileExistsError):
+        predict.materialize_workspace("owner__repo-1", workspace)
+
+    assert original.read_text(encoding="utf-8") == "unsaved changes"
+
+
+@pytest.mark.parametrize("keep_workspace", [True, False])
+def test_predictions_preserve_previous_workspaces(monkeypatch, tmp_path, keep_workspace):
+    workspace_root = _prepare_predict(monkeypatch, tmp_path, {"metadata": {}, "steps": []})
+    previous = workspace_root / _instance()["instance_id"]
+    previous.mkdir(parents=True)
+    original = previous / "work.py"
+    original.write_text("previous attempt", encoding="utf-8")
+
+    for _ in range(2):
+        predict.predict_one(
+            _instance(),
+            workspace_root=workspace_root,
+            provider="deepseek",
+            model=None,
+            max_steps=5,
+            temperature=0.0,
+            timeout=30,
+            trace_dir=None,
+            keep_workspace=keep_workspace,
+        )
+
+    assert original.read_text(encoding="utf-8") == "previous attempt"
+    attempts = [path for path in workspace_root.iterdir() if path != previous]
+    assert len(attempts) == (2 if keep_workspace else 0)
+
+
+def test_workspace_cleanup_failure_does_not_discard_prediction(monkeypatch, tmp_path, capsys):
+    workspace_root = _prepare_predict(monkeypatch, tmp_path, {"metadata": {}, "steps": []})
+
+    def fail_cleanup(path):
+        raise PermissionError("busy file")
+
+    monkeypatch.setattr(predict, "_force_rmtree", fail_cleanup)
+
+    record = predict.predict_one(
+        _instance(),
+        workspace_root=workspace_root,
+        provider="deepseek",
+        model=None,
+        max_steps=5,
+        temperature=0.0,
+        timeout=30,
+        trace_dir=None,
+        keep_workspace=False,
+    )
+
+    assert record["model_patch"] == "diff --git a/a b/a\n"
+    assert "busy file" in capsys.readouterr().err
+    assert len(list(workspace_root.iterdir())) == 1
+
+
+@pytest.mark.parametrize("failure_stage", [None, "client", "agent"])
+def test_prediction_trace_is_closed_on_success_and_failure(monkeypatch, tmp_path, failure_stage):
+    result = (
+        RuntimeError("agent failed") if failure_stage == "agent" else {"metadata": {}, "steps": []}
+    )
+    workspace_root = _prepare_predict(monkeypatch, tmp_path, result)
+    writers = []
+
+    class RecordingWriter(TraceWriter):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            writers.append(self)
+
+    monkeypatch.setattr(predict, "TraceWriter", RecordingWriter)
+    if failure_stage == "client":
+
+        def fail_client(*args):
+            raise ValueError("client failed")
+
+        monkeypatch.setattr(predict, "build_client", fail_client)
+
+    kwargs = dict(
+        workspace_root=workspace_root,
+        provider="deepseek",
+        model=None,
+        max_steps=5,
+        temperature=0.0,
+        timeout=30,
+        trace_dir=tmp_path / "traces",
+        keep_workspace=True,
+    )
+    if failure_stage == "client":
+        with pytest.raises(ValueError, match="client failed"):
+            predict.predict_one(_instance(), **kwargs)
+    else:
+        predict.predict_one(_instance(), **kwargs)
+
+    assert len(writers) == 1
+    assert writers[0]._handle is None
+
+
 def _event_bus_with_progress_guard(trace_writer=None):
     bus = EventBus()
     guard = SWEProgressLoopGuard()

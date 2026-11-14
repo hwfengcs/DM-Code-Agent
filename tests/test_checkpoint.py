@@ -14,7 +14,7 @@ from dm_agent.core.checkpoint import (
     load_checkpoint,
     save_checkpoint,
 )
-from dm_agent.core.persistence import metadata_from_checkpoint
+from dm_agent.core.persistence import load_resume_state, metadata_from_checkpoint
 from dm_agent.core.run_state import RunContext
 from dm_agent.memory import ContextCompressor
 from dm_agent.memory.context_budget import estimate_messages_tokens
@@ -193,6 +193,25 @@ def test_agent_resumes_from_checkpoint_and_finishes(tmp_path):
     # Restored history contains the original task prompt from the first run.
     history_texts = [m.get("content", "") for m in second_agent.conversation_history]
     assert any("echo then finish" in text for text in history_texts)
+
+
+@pytest.mark.parametrize("suffix", [".json", ".jsonl"])
+def test_resume_with_smaller_budget_preserves_consumed_steps(tmp_path, suffix):
+    path = tmp_path / f"run{suffix}"
+    client = FakeRespondClient([_action("echo", {"text": "one"}), _action("echo", {"text": "two"})])
+    agent = ReactAgent(client, _tools(), enable_planning=False, enable_compression=False)
+    agent.run("preserve progress", max_steps=2, checkpoint_path=path)
+    checkpoint = load_resume_state(path)
+
+    result = agent.run(checkpoint.task, max_steps=1, checkpoint_path=path, resume_state=checkpoint)
+
+    assert result["metadata"]["status"] == "max_steps_exceeded"
+    assert len(client.requests) == 2
+    saved = load_resume_state(path)
+    assert saved.step_count == 2
+    assert saved.steps == checkpoint.steps
+    assert saved.conversation_history == checkpoint.conversation_history
+    agent.trace_writer.close()
 
 
 def test_resume_reuses_exact_history_without_synthesizing_previous_steps():

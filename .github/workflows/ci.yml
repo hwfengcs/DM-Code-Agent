@@ -111,9 +111,10 @@ jobs:
       # 上一步的构建输出就落在 dm_agent/server/static/，这里检查它是否与入库版本一致。
       - name: Verify committed build artifacts are up to date
         run: |
-          if ! git diff --quiet -- dm_agent/server/static; then
+          if [ -n "$(git status --porcelain --untracked-files=all -- dm_agent/server/static)" ]; then
             echo "::error::dm_agent/server/static 与 web/ 源码不一致。请在 web/ 下跑 npm run build 并提交产物。"
             git diff --stat -- dm_agent/server/static
+            git status --short --untracked-files=all -- dm_agent/server/static
             exit 1
           fi
           echo "前端产物与源码一致。"

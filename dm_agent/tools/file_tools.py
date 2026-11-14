@@ -344,6 +344,8 @@ def edit_file(arguments: dict[str, Any]) -> str:
         if start_idx > len(lines):
             return f"行号 {line_start} 超出文件范围（共 {len(lines)} 行）。"
 
+        if content and start_idx == len(lines) and lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
         lines[start_idx:start_idx] = content.splitlines(keepends=True)
         updated = "".join(lines)
         _atomic_write_text(path, updated)

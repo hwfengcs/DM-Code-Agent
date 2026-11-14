@@ -285,3 +285,20 @@ def test_final_entries_written_between_last_reads_are_delivered(
     events = asyncio.run(collect(path))
     assert [event["event"] for event in events] == ["entry", "done"]
     assert events[0]["data"]["event"] == "run_end"
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ["null", "[]", '"text"', "42", "true", '{"payload": null}', '{"payload": []}'],
+)
+def test_non_object_json_is_malformed_and_does_not_stop_stream(
+    tmp_path: Path, invalid: str
+) -> None:
+    path = tmp_path / "live.jsonl"
+    path.write_text(invalid + "\n" + entry_line(1), encoding="utf-8")
+
+    events = asyncio.run(collect(path))
+
+    assert [event["event"] for event in events] == ["malformed", "entry", "done"]
+    assert events[0]["id"] == 0
+    assert events[1]["data"]["id"] == "sess-0001"

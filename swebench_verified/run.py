@@ -56,6 +56,35 @@ def _load_resume_records(output: Path, selected_ids: set[str]) -> list[dict[str,
     return records
 
 
+def _preserve_predictions(output: Path) -> Path:
+    with tempfile.NamedTemporaryFile(
+        prefix=f".{output.name}.", suffix=".bak", dir=output.parent, delete=False
+    ) as backup:
+        backup.write(output.read_bytes())
+    return Path(backup.name)
+
+
+def _write_predictions(output: Path, records: list[dict[str, object]]) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+            dir=output.parent,
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            for record in records:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        temporary.replace(output)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run DM-Code-Agent over SWE-bench Verified.")
     parser.add_argument("--limit", type=int, default=10, help="How many stratified instances.")
@@ -93,6 +122,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.limit < 0:
         parser.error("--limit must be non-negative")
+    if args.output.exists() and not args.resume:
+        print("predictions 已存在；请使用 --resume 续跑，或指定新的 --output。", file=sys.stderr)
+        return 2
 
     candidates = fetch_instances(cache_path=args.cache)
     instances = select_instances(candidates, args.limit)
@@ -145,11 +177,12 @@ def main(argv: list[str] | None = None) -> int:
         print("请确认 Docker Desktop 正在运行（docker info 能返回版本号）后重试。", file=sys.stderr)
         return 2
 
-    write_selection_manifest(manifest_path, manifest)
+    if not (args.resume and args.output.exists()):
+        write_selection_manifest(manifest_path, manifest)
     print(f"selection manifest -> {manifest_path}")
 
     done: set[str] = set()
-    kept: list[str] = []
+    export_records: list[dict[str, object]] = []
     if args.resume and args.output.exists():
         retryable = 0
         for record in resume_records:
@@ -160,15 +193,22 @@ def main(argv: list[str] | None = None) -> int:
                 retryable += 1
                 continue
             done.add(str(record["instance_id"]))
-            kept.append(json.dumps(record, ensure_ascii=False))
+            export_records.append(record)
         print(f"resume: {len(done)} already predicted, {retryable} will be retried")
-        # 把可重试的记录从文件里清掉，避免同一 instance_id 出现两条。
-        if retryable:
-            args.output.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
+        if len(done) < len(instances):
+            try:
+                backup = _preserve_predictions(args.output)
+                print(f"original predictions preserved -> {backup}")
+                # 官方导出仍要求每题唯一；被替换的原始尝试完整保留在上面的独占备份中。
+                if retryable:
+                    _write_predictions(args.output, export_records)
+            except OSError as exc:
+                print(f"无法续跑：保留或更新 predictions 失败：{exc}", file=sys.stderr)
+                return 2
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     written = 0
-    with args.output.open("a" if args.resume else "w", encoding="utf-8") as handle:
+    with args.output.open("a" if args.resume else "x", encoding="utf-8") as handle:
         for index, instance in enumerate(instances, start=1):
             instance_id = instance["instance_id"]
             if instance_id in done:
@@ -199,12 +239,28 @@ def main(argv: list[str] | None = None) -> int:
                 }
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
             handle.flush()
+            export_records.append(record)
             written += 1
             print(
                 f"    status={record['dm_status']} patch={record.get('dm_patch_chars', 0)}B "
                 f"steps={record.get('dm_steps', 0)} {record.get('dm_duration_seconds', 0)}s",
                 flush=True,
             )
+
+    if args.resume:
+        order = {instance["instance_id"]: index for index, instance in enumerate(instances)}
+        ordered_records = sorted(
+            export_records, key=lambda record: order[str(record["instance_id"])]
+        )
+        if written or ordered_records != export_records:
+            try:
+                if not written:
+                    backup = _preserve_predictions(args.output)
+                    print(f"original predictions preserved -> {backup}")
+                _write_predictions(args.output, ordered_records)
+            except OSError as exc:
+                print(f"predictions 已保留，但恢复 manifest 顺序失败：{exc}", file=sys.stderr)
+                return 2
 
     print(f"\nwrote {written} predictions -> {args.output}")
     return 0

@@ -107,6 +107,37 @@ def test_compact_step_callback_is_low_noise(capsys):
     assert "09" not in output
 
 
+@pytest.mark.parametrize(
+    ("action", "observation", "expected"),
+    [
+        ("read_file", "文件 missing.py 不存在。", "err"),
+        ("run_tests", "returncode: 2", "err"),
+        ("read_file", "1: failed = True", "ok"),
+        ("run_tests", "expected failure\nreturncode: 0", "ok"),
+    ],
+)
+def test_cli_step_status_uses_tool_result_semantics(monkeypatch, action, observation, expected):
+    from io import StringIO
+
+    from rich.console import Console
+
+    from dm_agent.cli import ui
+
+    output = StringIO()
+    monkeypatch.setattr(ui, "RICH_CONSOLE", Console(file=output, color_system=None, width=140))
+    monkeypatch.setattr(ui.UI, "rich_enabled", staticmethod(lambda: True))
+    monkeypatch.setattr(ui.UI, "clear", staticmethod(lambda: None))
+    step = SimpleNamespace(action=action, action_input={}, thought="", observation=observation)
+
+    create_step_callback(False)(10, step)
+    assert expected.upper() in output.getvalue()
+
+    output.seek(0)
+    output.truncate()
+    ui.display_step_page({"steps": [vars(step)]}, page=0, page_size=12)
+    assert expected.upper() in output.getvalue()
+
+
 def test_cli_advanced_features_default_off(monkeypatch):
     monkeypatch.setattr("dm_agent.cli.args.load_config_from_file", lambda: {})
 

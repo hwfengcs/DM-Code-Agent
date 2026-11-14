@@ -44,6 +44,7 @@ const EMPTY: ConversationState = {
 
 let state: ConversationState = EMPTY
 let unsubscribe: (() => void) | null = null
+let generation = 0
 const listeners = new Set<() => void>()
 
 function emit(): void {
@@ -124,7 +125,8 @@ export async function startConversation(body: {
   model: string
   options: RunOptions
 }): Promise<boolean> {
-  set({ pending: true, error: null, notice: null })
+  generation += 1
+  set({ pending: true, error: null, notice: null, restoring: false })
   try {
     if (state.record?.run_id && state.record.status !== 'cancelled') {
       await api.endConversation(state.record.run_id).catch(() => undefined)
@@ -171,6 +173,7 @@ export async function endConversation(): Promise<void> {
 
 /** 从界面上清掉当前对话（不动服务端；已结束的对话才有意义）。 */
 export function clearConversation(): void {
+  generation += 1
   unsubscribe?.()
   unsubscribe = null
   sessionStorage.removeItem(STORAGE_KEY)
@@ -186,10 +189,12 @@ export function clearConversation(): void {
  */
 export async function restoreConversation(): Promise<void> {
   const conversationId = sessionStorage.getItem(STORAGE_KEY)
-  if (!conversationId || state.record) return
+  if (!conversationId || state.record || state.restoring) return
+  const restoringGeneration = generation
   set({ restoring: true })
   try {
     const record = await api.conversation(conversationId)
+    if (generation !== restoringGeneration) return
     if (record.status === 'idle' || record.status === 'running') {
       set({ record, entries: [], restoring: false })
       attach(conversationId)
@@ -197,6 +202,7 @@ export async function restoreConversation(): Promise<void> {
     }
     sessionStorage.removeItem(STORAGE_KEY)
   } catch {
+    if (generation !== restoringGeneration) return
     // 404（控制台重启过）或网络问题：安静地放弃，用户重新开一个就是。
     sessionStorage.removeItem(STORAGE_KEY)
   }

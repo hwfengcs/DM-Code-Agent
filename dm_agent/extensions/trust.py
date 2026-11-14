@@ -37,8 +37,10 @@ class ProjectTrustStore:
         projects = self._load_projects()
         projects[canonical_project_key(project_root)] = trusted
         payload = {"version": 1, "projects": projects}
+        parent_existed = self.path.parent.exists()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        _restrict_permissions(self.path.parent, directory=True)
+        if not parent_existed:
+            _restrict_permissions(self.path.parent, directory=True)
 
         temporary_path: Path | None = None
         try:

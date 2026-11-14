@@ -84,6 +84,18 @@ def test_non_object_json_response_is_rejected():
     assert result["final_answer"] == "recovered"
 
 
+def test_json_repair_preserves_tool_argument_strings():
+    text = 'keep ,} and ,] and escaped quote ",] plus “quotes” and it’s intact'
+    payload = _action("echo", {"text": text, "flag": True})
+    agent = _agent([payload[:-1] + ",}", _action("finish", "done")])
+
+    result = agent.run("preserve repaired tool arguments", max_steps=2)
+
+    assert result["steps"][0]["action_input"]["text"] == text
+    assert result["steps"][0]["observation"] == f"echo:{text}"
+    assert result["metadata"]["parse_repair_count"] == 1
+
+
 # --- 完成判定与摘要 -------------------------------------------------------------
 
 
@@ -286,6 +298,9 @@ def test_get_conversation_history_returns_a_copy():
 
     history = agent.get_conversation_history()
     assert history
+    original_content = history[0]["content"]
+    history[0]["content"] = "外部修改不应影响 agent"
     history.append({"role": "user", "content": "外部追加不应影响 agent"})
 
     assert len(agent.get_conversation_history()) == len(history) - 1
+    assert agent.get_conversation_history()[0]["content"] == original_content

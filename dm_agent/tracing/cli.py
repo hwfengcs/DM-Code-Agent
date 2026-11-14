@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -162,8 +161,11 @@ def _load_trace_for_cli(path: Path) -> list[dict[str, Any]] | None:
     except FileNotFoundError:
         print(f"Trace not found: {path}", file=sys.stderr)
         return None
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         print(f"Invalid trace JSONL: {exc}", file=sys.stderr)
+        return None
+    except OSError as exc:
+        print(f"Cannot read trace: {exc}", file=sys.stderr)
         return None
 
 

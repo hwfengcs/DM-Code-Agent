@@ -168,14 +168,17 @@ class MCPClient:
         在独立线程中持续读取MCP服务器的标准输出，并将读取到的行放入队列中，
         供主线程处理响应消息使用。该方法在单独的守护线程中运行。
         """
-        if not self.process or not self.process.stdout:
+        process = self.process
+        if not process or not process.stdout:
             return
 
-        while self._running and self.process.poll() is None:
+        # 进程退出后管道中可能仍有响应；以 EOF 为准，且 EOF 后不能继续空转。
+        while self._running:
             try:
-                line = self.process.stdout.readline()
-                if line:
-                    self._stdout_queue.put(line.strip())
+                line = process.stdout.readline()
+                if not line:
+                    break
+                self._stdout_queue.put(line.strip())
             except Exception as e:
                 if self._running:
                     print(f"⚠️ 读取 MCP 输出错误: {e}")

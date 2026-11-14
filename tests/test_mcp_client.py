@@ -10,6 +10,36 @@ from dm_agent.core.observation import is_failure_observation
 from dm_agent.mcp.client import MCPClient
 
 
+def test_stdout_drains_buffered_responses_after_process_exit():
+    client = MCPClient("stub", "unused", [])
+    response = json.dumps({"id": 1, "result": {"tools": []}})
+    client.process = SimpleNamespace(stdout=io.StringIO(response + "\n"), poll=lambda: 0)
+    client._running = True
+
+    client._read_stdout()
+
+    assert client._stdout_queue.get_nowait() == response
+    assert client._stdout_queue.empty()
+
+
+def test_stdout_stops_at_eof_even_if_process_is_alive():
+    client = MCPClient("stub", "unused", [])
+    reads = []
+
+    def readline():
+        reads.append(True)
+        if len(reads) > 1:
+            client._running = False
+        return ""
+
+    client.process = SimpleNamespace(stdout=SimpleNamespace(readline=readline), poll=lambda: None)
+    client._running = True
+
+    client._read_stdout()
+
+    assert len(reads) == 1
+
+
 def test_notification_does_not_prevent_request_timeout(monkeypatch):
     client = MCPClient("stub", "unused", [], request_timeout=0.1)
     client.process = SimpleNamespace(stdin=io.StringIO())

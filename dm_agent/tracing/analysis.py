@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -140,7 +139,7 @@ def analyze_trace_directory(directory: Path, *, pattern: str = "*.jsonl") -> dic
     for path in paths:
         try:
             analysis = analyze_events(load_trace_events(path))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:
             errors.append({"path": str(path), "error": str(exc)})
             continue
         analyses.append({"path": str(path), "analysis": analysis})

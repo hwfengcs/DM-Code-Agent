@@ -244,19 +244,26 @@ def test_resume_rejects_incompatible_selection_before_docker(mode, tmp_path, mon
     assert "无法续跑" in capsys.readouterr().err
 
 
-def test_resume_keeps_completed_records_and_retries_harness_error(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failed_index", [0, 1])
+def test_resume_keeps_completed_records_and_retries_harness_error(
+    tmp_path, monkeypatch, failed_index
+):
     output = tmp_path / "preds.jsonl"
     candidates = _candidates()
     selected = select_instances(candidates, 2)
     manifest = build_selection_manifest(candidates, selected, 2)
     (tmp_path / "preds.selection.json").write_text(json.dumps(manifest), encoding="utf-8")
-    output.write_text(
-        json.dumps({"instance_id": selected[0]["instance_id"], "dm_status": "success"})
+    original = "".join(
+        json.dumps(
+            {
+                "instance_id": row["instance_id"],
+                "dm_status": "harness_error" if index == failed_index else "success",
+            }
+        )
         + "\n"
-        + json.dumps({"instance_id": selected[1]["instance_id"], "dm_status": "harness_error"})
-        + "\n",
-        encoding="utf-8",
-    )
+        for index, row in enumerate(selected)
+    ).encode("utf-8")
+    output.write_bytes(original)
     predicted: list[str] = []
 
     def predict_one(instance: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
@@ -274,10 +281,101 @@ def test_resume_keeps_completed_records_and_retries_harness_error(tmp_path, monk
     monkeypatch.setattr(run, "predict_one", predict_one)
 
     assert run.main(["--limit", "2", "--output", str(output), "--resume"]) == 0
-    assert predicted == [selected[1]["instance_id"]]
+    assert predicted == [selected[failed_index]["instance_id"]]
     records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
     assert [record["instance_id"] for record in records] == [
         selected[0]["instance_id"],
         selected[1]["instance_id"],
     ]
     assert all(record["dm_status"] == "success" for record in records)
+    backups = list(tmp_path.glob(".preds.jsonl.*.bak"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == original
+
+
+def test_prediction_output_is_not_overwritten_without_resume(tmp_path, monkeypatch):
+    output = tmp_path / "preds.jsonl"
+    original = b'{"instance_id":"old"}\n'
+    output.write_bytes(original)
+    monkeypatch.setattr(
+        run, "fetch_instances", lambda **kwargs: pytest.fail("guard must run first")
+    )
+
+    assert run.main(["--output", str(output)]) == 2
+    assert output.read_bytes() == original
+
+
+def test_failed_resume_rewrite_preserves_original_predictions(tmp_path, monkeypatch):
+    candidates = _candidates()
+    selected = select_instances(candidates, 1)
+    manifest = build_selection_manifest(candidates, selected, 1)
+    output = tmp_path / "preds.jsonl"
+    (tmp_path / "preds.selection.json").write_text(json.dumps(manifest), encoding="utf-8")
+    original = (
+        json.dumps(
+            {"instance_id": selected[0]["instance_id"], "dm_status": "harness_error"}
+        ).encode("utf-8")
+        + b"\n"
+    )
+    output.write_bytes(original)
+    monkeypatch.setattr(run, "fetch_instances", lambda **kwargs: candidates)
+    monkeypatch.setattr(run, "docker_preflight", lambda: "")
+    monkeypatch.setattr(run, "predict_one", lambda *args, **kwargs: pytest.fail("rewrite failed"))
+
+    def fail_replace(self, target):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(type(output), "replace", fail_replace)
+
+    assert run.main(["--limit", "1", "--output", str(output), "--resume"]) == 2
+    assert output.read_bytes() == original
+    assert [path.read_bytes() for path in tmp_path.glob(".preds.jsonl.*.bak")] == [original]
+    assert not list(tmp_path.glob(".preds.jsonl.*.tmp"))
+
+
+def test_completed_resume_does_not_rewrite_predictions(tmp_path, monkeypatch):
+    candidates = _candidates()
+    selected = select_instances(candidates, 1)
+    manifest = build_selection_manifest(candidates, selected, 1)
+    output = tmp_path / "preds.jsonl"
+    (tmp_path / "preds.selection.json").write_text(json.dumps(manifest), encoding="utf-8")
+    original = (
+        json.dumps(
+            {"instance_id": selected[0]["instance_id"], "dm_status": "success"},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\r\n"
+    )
+    output.write_bytes(original)
+    monkeypatch.setattr(run, "fetch_instances", lambda **kwargs: candidates)
+    monkeypatch.setattr(run, "docker_preflight", lambda: "")
+    monkeypatch.setattr(
+        run, "predict_one", lambda *args, **kwargs: pytest.fail("already completed")
+    )
+
+    assert run.main(["--limit", "1", "--output", str(output), "--resume"]) == 0
+    assert output.read_bytes() == original
+    assert not list(tmp_path.glob("*.bak"))
+
+
+def test_completed_legacy_resume_restores_manifest_order_with_backup(tmp_path, monkeypatch):
+    candidates = _candidates()
+    selected = select_instances(candidates, 2)
+    manifest = build_selection_manifest(candidates, selected, 2)
+    output = tmp_path / "preds.jsonl"
+    (tmp_path / "preds.selection.json").write_text(json.dumps(manifest), encoding="utf-8")
+    original = "".join(
+        json.dumps({"instance_id": row["instance_id"], "dm_status": "success"}) + "\n"
+        for row in reversed(selected)
+    ).encode("utf-8")
+    output.write_bytes(original)
+    monkeypatch.setattr(run, "fetch_instances", lambda **kwargs: candidates)
+    monkeypatch.setattr(run, "docker_preflight", lambda: "")
+    monkeypatch.setattr(
+        run, "predict_one", lambda *args, **kwargs: pytest.fail("already completed")
+    )
+
+    assert run.main(["--limit", "2", "--output", str(output), "--resume"]) == 0
+    records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert [record["instance_id"] for record in records] == manifest["instance_ids"]
+    assert [path.read_bytes() for path in tmp_path.glob(".preds.jsonl.*.bak")] == [original]

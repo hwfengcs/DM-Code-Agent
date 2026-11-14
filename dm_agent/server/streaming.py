@@ -116,7 +116,11 @@ async def stream_session_lines(
                     continue
                 try:
                     entry = json.loads(text)
-                except (json.JSONDecodeError, UnicodeDecodeError):
+                    if not isinstance(entry, dict):
+                        raise ValueError("会话条目必须是 JSON 对象。")
+                    if "payload" in entry and not isinstance(entry["payload"], dict):
+                        raise ValueError("会话条目的 payload 必须是 JSON 对象。")
+                except ValueError:
                     # 单条坏行不该终止整个流；标出来让前端能显示。
                     yield sse_message(
                         event="malformed",

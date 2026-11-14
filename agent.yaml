@@ -5,7 +5,7 @@ description: >
   A local-first, auditable Python code-maintenance agent built
   on a ReAct + Task Planner + Adaptive Replanning loop. Executes file, search,
   test, lint, AST, and MCP tools against a local workspace; records every plan,
-  tool call, and observation as a structured JSONL trace for offline replay and
+  tool call, and observation as a structured JSONL trace when tracing is enabled, for offline replay and
   diff. Adaptive Replanning is default-off and independently testable.
   Supports DeepSeek, OpenAI, Claude, and
   Gemini via a pluggable LLM factory, plus custom base_url. Designed to be a

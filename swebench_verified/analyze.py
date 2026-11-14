@@ -541,7 +541,7 @@ def _load_json_object(path: Path, label: str) -> dict[str, Any]:
         raise AnalysisInputError(
             f"{label} JSON 无效 {path}（第 {exc.lineno} 行，第 {exc.colno} 列）"
         ) from exc
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise AnalysisInputError(f"读取 {label} 失败 {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise AnalysisInputError(f"{label} 顶层必须是 JSON object: {path}")
@@ -553,7 +553,7 @@ def _load_predictions(path: Path) -> list[dict[str, Any]]:
     seen: set[str] = set()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise AnalysisInputError(f"读取 predictions 失败 {path}: {exc}") from exc
     for line_number, line in enumerate(lines, start=1):
         if not line.strip():
@@ -754,7 +754,7 @@ def _scan_traces(
             events: list[dict[str, Any]] = []
             try:
                 lines = path.read_text(encoding="utf-8").splitlines()
-            except OSError:
+            except (OSError, UnicodeError):
                 warnings.append(_warning("trace_read_error", "trace 无法读取，已跳过。", path=path))
                 continue
             for line_number, line in enumerate(lines, start=1):
@@ -772,12 +772,12 @@ def _scan_traces(
                         )
                     )
                     continue
-                if not isinstance(value, dict):
+                if not isinstance(value, dict) or not isinstance(value.get("payload", {}), dict):
                     events.append({"event": _INVALID_TRACE_EVENT, "line_number": line_number})
                     warnings.append(
                         _warning(
                             "trace_bad_event",
-                            f"trace 第 {line_number} 行不是 object，所选 run 将标为 invalid。",
+                            f"trace 第 {line_number} 行或其 payload 不是 object，所选 run 将标为 invalid。",
                             path=path,
                         )
                     )
@@ -1086,7 +1086,7 @@ def _scan_harness_details(
     ):
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeError, json.JSONDecodeError):
             _store_invalid_detail(
                 path,
                 expected_ids,

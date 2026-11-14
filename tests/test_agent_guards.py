@@ -10,7 +10,7 @@ import pytest
 from dm_agent.core.agent import ReactAgent
 from dm_agent.core.events import EventBus
 from dm_agent.tools.base import Tool
-from dm_agent.tools.file_tools import create_file, edit_file, read_file
+from dm_agent.tools.file_tools import create_file, edit_file, read_file, search_in_file
 from dm_agent.tracing import TraceWriter, load_trace_events
 
 
@@ -136,6 +136,35 @@ def test_edit_guard_blocks_unread_file_then_allows_after_read(tmp_path, monkeypa
     assert Path("app.py").read_text(encoding="utf-8") == "edited line\n"
     # Guard text must not read as a failure (no replan / failure bookkeeping).
     assert not ReactAgent._is_failure_observation(blocked)
+
+
+@pytest.mark.parametrize(
+    ("action", "arguments"),
+    [
+        ("read_file", {"path": "app.py", "line_start": 99}),
+        ("search_in_file", {"path": "app.py", "pattern": "["}),
+    ],
+)
+def test_edit_guard_does_not_accept_failed_read_receipts(tmp_path, monkeypatch, action, arguments):
+    monkeypatch.chdir(tmp_path)
+    target = Path("app.py")
+    original = "value = 1\n"
+    target.write_text(original, encoding="utf-8")
+    client = FakeRespondClient(
+        [
+            _action(action, arguments),
+            _action("edit_file", {"path": "app.py", "old_string": "1", "new_string": "2"}),
+            _action("finish", "stopped after failed inspection"),
+        ]
+    )
+    tools = [*_file_tools(), Tool("search_in_file", "Search a file", search_in_file)]
+    agent = ReactAgent(client, tools, enable_planning=False, enable_compression=False)
+
+    result = agent.run("inspect before editing", max_steps=3)
+
+    assert target.read_text(encoding="utf-8") == original
+    assert result["metadata"]["edit_guard_block_count"] == 1
+    assert result["steps"][1]["observation"].startswith("Edit blocked")
 
 
 def test_edit_guard_requires_reread_after_write(tmp_path, monkeypatch):

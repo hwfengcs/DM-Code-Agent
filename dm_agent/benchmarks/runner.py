@@ -205,6 +205,7 @@ def run_hidden_tests_per_node(
         ["{python}", "-m", "pytest", "--collect-only", "-q", *test_paths],
         workspace,
         timeout=timeout,
+        output_limit=None,
     )
     if collect.returncode != 0:
         return None
@@ -240,7 +241,13 @@ def run_hidden_tests_per_node(
     }
 
 
-def run_command(command: Sequence[str], cwd: Path, *, timeout: int = 30) -> CommandResult:
+def run_command(
+    command: Sequence[str],
+    cwd: Path,
+    *,
+    timeout: int = 30,
+    output_limit: int | None = 4000,
+) -> CommandResult:
     started_at = time.perf_counter()
     resolved = _resolve_command(command)
     try:
@@ -256,8 +263,8 @@ def run_command(command: Sequence[str], cwd: Path, *, timeout: int = 30) -> Comm
         return CommandResult(
             command=resolved,
             returncode=completed.returncode,
-            stdout=_tail(completed.stdout),
-            stderr=_tail(completed.stderr),
+            stdout=_tail(completed.stdout, limit=output_limit),
+            stderr=_tail(completed.stderr, limit=output_limit),
             duration_seconds=time.perf_counter() - started_at,
         )
     except subprocess.TimeoutExpired as exc:
@@ -271,8 +278,10 @@ def run_command(command: Sequence[str], cwd: Path, *, timeout: int = 30) -> Comm
         return CommandResult(
             command=resolved,
             returncode=124,
-            stdout=_tail(timed_out_stdout),
-            stderr=_tail(timed_out_stderr + f"\nCommand timed out after {timeout}s"),
+            stdout=_tail(timed_out_stdout, limit=output_limit),
+            stderr=_tail(
+                timed_out_stderr + f"\nCommand timed out after {timeout}s", limit=output_limit
+            ),
             duration_seconds=time.perf_counter() - started_at,
         )
 
@@ -868,8 +877,8 @@ def _resolve_command(command: Sequence[str]) -> list[str]:
     return [sys.executable if part == "{python}" else part for part in command]
 
 
-def _tail(text: str, *, limit: int = 4000) -> str:
-    if len(text) <= limit:
+def _tail(text: str, *, limit: int | None = 4000) -> str:
+    if limit is None or len(text) <= limit:
         return text
     return text[-limit:]
 

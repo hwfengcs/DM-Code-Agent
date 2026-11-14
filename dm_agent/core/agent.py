@@ -735,7 +735,7 @@ class ReactAgent:
             self._save_checkpoint_snapshot(
                 checkpoint_path,
                 task=task,
-                step_count=limit,
+                step_count=max(resume_from, limit),
                 steps=steps,
                 metadata=metadata,
                 plan=plan,
@@ -873,4 +873,4 @@ class ReactAgent:
         Returns:
             conversation_history (List[Dict[str, str]]): 对话历史记录的副本
         """
-        return self.conversation_history.copy()
+        return [dict(message) for message in self.conversation_history]

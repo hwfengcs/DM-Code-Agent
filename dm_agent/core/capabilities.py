@@ -11,7 +11,7 @@
   同样经过 ``before_llm_request`` 钩子；
 - ``trace_writer``：可选的审计写入器，能力自己负责判空。
 
-具体实现放在 ``dm_agent/extensions/capabilities/`` 下，与第三方扩展同层。
+具体实现由外部扩展提供，内核只保留协议与装配入口。
 """
 
 from __future__ import annotations

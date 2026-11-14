@@ -68,7 +68,15 @@ python -m swebench_verified.run --limit 20 --max-steps 60 \
 `git diff` 出 patch。断了用相同参数加 `--resume` 接着跑。续跑前会比较现有 manifest 与
 当前 dataset/config/split、selection version、candidate fingerprint、limit 和 selection
 signature；任何一项变化、manifest 缺失/损坏、prediction ID 越界或重复都会在 Docker/API
-之前拒绝续跑。`harness_error` 仍会从旧输出移除并重试，已经真正跑过 Agent 的记录继续跳过。
+之前拒绝续跑。已有 predictions 必须显式使用 `--resume`，否则拒绝覆盖。续跑需要写入时，
+先将原文件逐字节保留为同目录唯一的 `.<输出文件名>.<随机后缀>.bak`，然后重新尝试
+`harness_error`；已经真正跑过 Agent 的记录继续跳过。导出仍是每题唯一记录，续跑完成后
+按 manifest 顺序原子写回，因此首题失败、后题成功的续跑结果也能直接交给离线分析。
+没有待运行题目且顺序正确时不重写；旧版本产生的完整乱序输出也会先备份，再恢复 manifest 顺序。
+
+每次预测使用 `<workspace-root>/<instance-id>-<唯一后缀>` 工作区，拒绝覆盖已存在的目录。
+`--keep-workspace` 保留每次尝试的 checkout；默认仅在成功提取 patch 后清理本次新工作区，
+不会删除以前保留的 checkout。trace 文件仍为 append-only，预测正常结束或异常时均关闭句柄。
 
 如需显式指定 manifest 路径，使用 `--selection-manifest PATH`。
 
@@ -147,7 +155,8 @@ python -m swebench_verified.analyze `
 缺该字段时才使用文件名，并给出 warning。同一 instance 出现在多个 trace 目录会直接拒绝，
 避免静默混合两次运行。显式传入但不存在的 trace/detail 目录同样 fail fast；目录存在但少
 实例时继续分析，缺失项标为 `missing` 并给 warning。一条坏 trace 或逐题 detail 只隔离该
-文件，不拖垮整批。若同一个 append-only trace 文件含多轮复跑，分析器只读取最后一个完整
+文件，不拖垮整批；非对象 payload 和无效 UTF-8 也进入错误/隔离路径，原文件保持不变。
+若同一个 append-only trace 文件含多轮复跑，分析器只读取最后一个完整
 `run_start` → `run_end` 区间；尾部半写入的 run 会被忽略并给 warning，避免跨轮累计 steps、
 重复调用或验证动作。
 

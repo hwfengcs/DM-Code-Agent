@@ -7,6 +7,7 @@ from typing import Any
 from dm_agent.memory.context_budget import FileLedger
 
 from .events import AfterToolResultEvent, BeforeToolCallEvent
+from .observation import is_failure_observation
 
 READ_ACTIONS = frozenset({"read_file", "search_in_file"})
 WRITE_ACTIONS = frozenset({"edit_file", "create_file"})
@@ -83,7 +84,8 @@ class ReadBeforeEditGuard:
                     )
             return
         if event.tool_name in READ_ACTIONS:
-            self._ledger.note_read(path, event.step_number)
+            if not is_failure_observation(event.observation, action=event.tool_name):
+                self._ledger.note_read(path, event.step_number)
         elif event.tool_name in WRITE_ACTIONS:
             self._ledger.note_write(path, event.step_number)
 

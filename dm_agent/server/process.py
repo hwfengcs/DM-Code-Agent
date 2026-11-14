@@ -102,6 +102,8 @@ class RunSpec:
                     raise SpecError(f"{key} 必须是整数。")
                 if not low <= value <= high:
                     raise SpecError(f"{key} 超出允许范围 [{low}, {high}]。")
+                if key == "max_observation_chars" and 0 < value < 200:
+                    raise SpecError("max_observation_chars 必须为 0（禁用）或至少 200。")
             # 其余键静默忽略——前端可能比后端新，多传字段不该让整个请求失败。
 
 

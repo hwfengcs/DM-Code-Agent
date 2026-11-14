@@ -6,8 +6,8 @@
 DM-Code-Agent 的内核是极小的：只有 ReAct 主循环。加工具、加守卫、加供应商、
 在执行链上插手——全部通过扩展完成，**不需要改 `dm_agent/` 里的任何一行**。
 
-一个扩展就是一个导出 `setup(api)` 的 Python 模块。它只能通过 `ExtensionAPI` 注册东西，
-**拿不到 `ReactAgent` 实例**，所以扩展无法绕过内核护栏。
+一个扩展就是一个导出 `setup(api)` 的 Python 模块。扩展 API 通过 `ExtensionAPI` 提供注册接口，
+**不提供 `ReactAgent` 实例**；扩展本身仍是以当前用户权限执行的 Python 代码，见下方安全模型。
 
 ```python
 from dm_agent.extensions import ExtensionAPI
@@ -115,7 +115,7 @@ runner 抛异常不会炸掉 run：内核捕获成 `Tool execution failed: <异�
 
 ### `register_skill(skill: BaseSkill) -> None`
 
-注册或覆盖同名技能。技能要实现 `get_metadata()` / `get_system_prompt_section()` /
+注册或覆盖同名技能。技能要实现 `get_metadata()` / `get_prompt_addition()` /
 `get_tools()`，见 [Skill 系统](skills.md)。`get_metadata().name` 为空会抛 `ValueError`。
 
 ### `register_provider(name: str, factory: Callable) -> None`

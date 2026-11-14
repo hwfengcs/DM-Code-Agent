@@ -62,13 +62,13 @@ export function Chat({ meta, onSessionsChanged }: { meta: MetaResponse; onSessio
 
   const submit = useCallback(async () => {
     const task = draft.trim()
-    if (!task || busy || state.pending) return
+    if (!task || busy || state.pending || state.restoring) return
     if (!live) {
       const ok = await startConversation({ provider, model, options })
       if (!ok) return
     }
     if (await sendTurn(task)) setDraft('')
-  }, [draft, busy, state.pending, live, provider, model, options])
+  }, [draft, busy, state.pending, state.restoring, live, provider, model, options])
 
   if (meta.server.read_only) {
     return (
@@ -138,7 +138,7 @@ export function Chat({ meta, onSessionsChanged }: { meta: MetaResponse; onSessio
           draft={draft}
           onDraft={setDraft}
           onSubmit={() => void submit()}
-          disabled={busy || state.pending}
+          disabled={busy || state.pending || state.restoring}
           busy={busy}
           live={live}
           workspace={workspaceName(meta)}

@@ -56,7 +56,8 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 
 - `agent`
 - `planner`
-- `compression`
+
+上下文压缩在本地完成，不调用 LLM，也不触发此事件。
 
 消息处理发生在一次逻辑 `respond()` 调用前，不会因 provider 内部重试重复触发。主循环的
 `llm_call` trace 会记录实际发送的改写后消息统计；完整消息仍只在 `capture_llm_io` 开启时记录。

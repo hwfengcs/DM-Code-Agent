@@ -97,6 +97,36 @@ def test_empty_line_replacement_echo_reports_empty_file(tmp_path):
     assert "文件为空" in observation
 
 
+@pytest.mark.parametrize("original", ["value = 1", "# header\r\nvalue = 1"])
+def test_insert_after_unterminated_last_line_starts_a_new_line(tmp_path, original):
+    target = tmp_path / "sample.py"
+    target.write_bytes(original.encode("utf-8"))
+    line_start = len(original.splitlines()) + 1
+
+    observation = edit_file(
+        {
+            "path": str(target),
+            "operation": "insert",
+            "line_start": line_start,
+            "content": "other = 2",
+        }
+    )
+
+    newline = "\r\n" if "\r\n" in original else "\n"
+    assert target.read_bytes() == (original + newline + "other = 2" + newline).encode("utf-8")
+    assert f">{line_start:>5} | other = 2" in observation
+    assert "未通过" not in observation
+
+
+def test_empty_insert_preserves_unterminated_last_line(tmp_path):
+    target = tmp_path / "sample.py"
+    target.write_bytes(b"value = 1")
+
+    edit_file({"path": str(target), "operation": "insert", "line_start": 2, "content": ""})
+
+    assert target.read_bytes() == b"value = 1"
+
+
 def test_ast_lists_async_class_methods(tmp_path):
     target = tmp_path / "async_service.py"
     target.write_text(

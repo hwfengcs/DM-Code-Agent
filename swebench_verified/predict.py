@@ -21,7 +21,8 @@ import sys
 import tarfile
 import tempfile
 import time
-from contextlib import contextmanager, redirect_stdout
+import uuid
+from contextlib import contextmanager, nullcontext, redirect_stdout
 from io import StringIO
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -261,8 +262,9 @@ def _copy_workspace_from_container(container: str, destination: Path) -> None:
 
 def materialize_workspace(instance_id: str, destination: Path) -> Path:
     """把镜像里的 /testbed 取出来当工作区（含 .git，后面要靠它出 diff）。"""
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(f"工作区已存在，拒绝覆盖：{destination}")
     image = ensure_image(instance_id)
-    _force_rmtree(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     container = f"dmagent-prep-{instance_id.replace('__', '-')}"
@@ -275,8 +277,7 @@ def materialize_workspace(instance_id: str, destination: Path) -> Path:
     finally:
         _run(["docker", "rm", "-f", container])
 
-    # docker cp 在目标已存在时会把源**作为子目录**放进去。上面已强制清过目录，
-    # 这里再确认一次：嵌套出 <dest>/testbed 就说明清理没生效，必须早失败。
+    # 解包结果自己必须是仓库根；嵌套出 <dest>/testbed 时必须早失败。
     if (destination / "testbed").is_dir() and not (destination / ".git").is_dir():
         raise RuntimeError(f"工作区嵌套异常 {instance_id}：{destination / 'testbed'}")
     _assert_git_root(destination, instance_id)
@@ -381,58 +382,62 @@ def predict_one(
 ) -> dict[str, Any]:
     """跑完一道题，返回一条预测记录（含足够的诊断字段）。"""
     instance_id = instance["instance_id"]
-    workspace = workspace_root / instance_id
+    workspace_root = workspace_root.resolve()
+    workspace = workspace_root / f"{instance_id}-{uuid.uuid4().hex}"
+    if workspace.parent != workspace_root:
+        raise ValueError(f"instance_id 不能包含工作区路径：{instance_id}")
     started = time.perf_counter()
 
     materialize_workspace(instance_id, workspace)
-
-    trace_writer = None
-    if trace_dir is not None:
-        trace_dir.mkdir(parents=True, exist_ok=True)
-        trace_writer = TraceWriter(trace_dir / f"{instance_id}.jsonl")
-        trace_writer.record(
-            "runtime",
-            {
-                "mode": "swebench_verified",
-                "instance_id": instance_id,
-                "repo": instance["repo"],
-                "base_commit": instance["base_commit"],
-                "provider": provider,
-                "model": model or PROVIDER_DEFAULTS.get(provider, {}).get("model"),
-            },
-        )
-
-    client = build_client(provider, model, timeout)
-    agent = ReactAgent(
-        client,
-        default_tools(include_mcp=False),
-        max_steps=max_steps,
-        temperature=temperature,
-        trace_writer=trace_writer,
-        capabilities=[SWEProgressLoopGuard()],
-    )
-    prompt = PROMPT_TEMPLATE.format(
-        repo=instance["repo"],
-        base_commit=instance["base_commit"],
-        problem_statement=instance["problem_statement"],
-    )
 
     status = "ok"
     failure = ""
     metadata: dict[str, Any] = {}
     step_count = 0
     diagnostics_measured = False
-    with chdir(workspace):
-        try:
-            with redirect_stdout(StringIO()):
-                result = agent.run(prompt)
-            diagnostics_measured = True
-            metadata = dict(result.get("metadata", {}))
-            status = str(metadata.get("status", "unknown"))
-            step_count = len(result.get("steps", []))
-        except Exception as exc:  # 单题崩溃不该让整批预测终止
-            status = "agent_exception"
-            failure = f"{type(exc).__name__}: {exc}"
+    trace_context = (
+        TraceWriter(trace_dir / f"{instance_id}.jsonl") if trace_dir is not None else nullcontext()
+    )
+    with trace_context as trace_writer:
+        if trace_writer is not None:
+            trace_writer.record(
+                "runtime",
+                {
+                    "mode": "swebench_verified",
+                    "instance_id": instance_id,
+                    "repo": instance["repo"],
+                    "base_commit": instance["base_commit"],
+                    "provider": provider,
+                    "model": model or PROVIDER_DEFAULTS.get(provider, {}).get("model"),
+                },
+            )
+
+        client = build_client(provider, model, timeout)
+        agent = ReactAgent(
+            client,
+            default_tools(include_mcp=False),
+            max_steps=max_steps,
+            temperature=temperature,
+            trace_writer=trace_writer,
+            capabilities=[SWEProgressLoopGuard()],
+        )
+        prompt = PROMPT_TEMPLATE.format(
+            repo=instance["repo"],
+            base_commit=instance["base_commit"],
+            problem_statement=instance["problem_statement"],
+        )
+
+        with chdir(workspace):
+            try:
+                with redirect_stdout(StringIO()):
+                    result = agent.run(prompt)
+                diagnostics_measured = True
+                metadata = dict(result.get("metadata", {}))
+                status = str(metadata.get("status", "unknown"))
+                step_count = len(result.get("steps", []))
+            except Exception as exc:  # 单题崩溃不该让整批预测终止
+                status = "agent_exception"
+                failure = f"{type(exc).__name__}: {exc}"
 
     patch = extract_patch(workspace)
     record: dict[str, Any] = {
@@ -471,5 +476,10 @@ def predict_one(
         )
 
     if not keep_workspace:
-        shutil.rmtree(workspace, ignore_errors=True)
+        if not workspace.resolve().is_relative_to(workspace_root):
+            raise RuntimeError(f"工作区已移到指定根目录之外，拒绝清理：{workspace}")
+        try:
+            _force_rmtree(workspace)
+        except OSError as exc:
+            print(f"工作区清理失败，保留预测与工作区 {workspace}：{exc}", file=sys.stderr)
     return record

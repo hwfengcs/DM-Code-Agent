@@ -143,6 +143,26 @@ def test_persistent_project_trust_and_denial(monkeypatch, tmp_path):
     assert not any(tool.name == "priority_tool" for tool in denied.registry.get_tools())
 
 
+@pytest.mark.parametrize("existing_parent", [False, True])
+def test_trust_store_restricts_only_new_parent_directories(tmp_path, monkeypatch, existing_parent):
+    parent = tmp_path / "shared"
+    if existing_parent:
+        parent.mkdir()
+    path = parent / "trust.json"
+    restricted = []
+    monkeypatch.setattr(
+        "dm_agent.extensions.trust._restrict_permissions",
+        lambda target, **kwargs: restricted.append(target),
+    )
+    store = ProjectTrustStore(path)
+
+    store.set(tmp_path / "project", trusted=True)
+
+    assert store.get(tmp_path / "project") is True
+    assert (parent in restricted) is not existing_parent
+    assert path in restricted
+
+
 def test_no_extensions_skips_external_discovery(monkeypatch, tmp_path):
     marker = tmp_path / "executed.txt"
     user_extension = tmp_path / "home" / ".dm_agent" / "extensions" / "user.py"

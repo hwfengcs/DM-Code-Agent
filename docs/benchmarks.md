@@ -222,7 +222,8 @@ The report includes:
   nondeterminism included — not a controlled-seed measurement)
 - advisory per-test partial credit with `--per-test-credit`: hidden tests are additionally run
   node-by-node and reported as `hidden_test_nodes` metadata plus a variant-level
-  `avg_hidden_test_node_pass_fraction`; the strict binary score is unchanged
+  `avg_hidden_test_node_pass_fraction`; collection uses the complete node list even when it
+  exceeds the 4,000-character report-output limit; the strict binary score is unchanged
 
 Pass-rate confidence intervals use Wilson 95% intervals. They are computed from the runs already in
 the report and do not increase the default repeat count.

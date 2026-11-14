@@ -53,6 +53,10 @@ def normalize_entries(raw_entries: Iterable[dict[str, Any]]) -> list[dict[str, A
     entries: list[dict[str, Any]] = []
     previous_id = ""
     for index, raw in enumerate(raw_entries):
+        if not isinstance(raw, dict):
+            raise ValueError(f"Session entry {index + 1} must be a JSON object.")
+        if "payload" in raw and not isinstance(raw["payload"], dict):
+            raise ValueError(f"Session entry {index + 1} payload must be a JSON object.")
         entry = dict(raw)
         entry_id = str(entry.get("id") or "")
         if not entry_id:

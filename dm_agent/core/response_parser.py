@@ -99,8 +99,18 @@ def json_candidates(candidate: str) -> list[str]:
 def repair_json_text(text: str) -> str:
     """修掉中文引号与尾随逗号这两类最常见的手写 JSON 问题。"""
     text = text.strip()
-    text = text.replace("“", '"').replace("”", '"').replace("’", "'")
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    quote_replacements = {"“": '"', "”": '"', "’": "'"}
+    text = re.sub(
+        r'"(?:\\.|[^"\\])*"|[“”’]',
+        lambda match: quote_replacements.get(match.group(0), match.group(0)),
+        text,
+    )
+    # 跳过完整字符串（含转义引号），只修复字符串外的尾随逗号。
+    text = re.sub(
+        r'"(?:\\.|[^"\\])*"|,(\s*[}\]])',
+        lambda match: match.group(1) if match.group(1) is not None else match.group(0),
+        text,
+    )
     return text
 
 

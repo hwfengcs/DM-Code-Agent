@@ -90,6 +90,22 @@ def test_rejects_wrong_types() -> None:
         spec(options={"max_steps": True}).validate(PROVIDERS)
 
 
+@pytest.mark.parametrize("value", [1, 100, 199])
+def test_rejects_observation_limits_that_the_cli_cannot_run(value: int) -> None:
+    with pytest.raises(SpecError, match="200"):
+        spec(options={"max_observation_chars": value}).validate(PROVIDERS)
+
+
+@pytest.mark.parametrize("value", [0, 200, 8000])
+def test_observation_limit_boundaries_are_accepted_by_the_cli(value: int) -> None:
+    from dm_agent.cli.args import parse_args, validate_feature_args
+
+    request = spec(options={"max_observation_chars": value})
+    request.validate(PROVIDERS)
+    parsed = parse_args(build_argv(request, trace_path=Path("t.jsonl"))[3:])
+    assert validate_feature_args(parsed) == ""
+
+
 @pytest.mark.parametrize(
     "key",
     [

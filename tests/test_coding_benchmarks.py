@@ -876,6 +876,33 @@ def test_run_hidden_tests_per_node_returns_none_on_collection_error(tmp_path):
     assert run_hidden_tests_per_node(task, workspace, timeout=60) is None
 
 
+def test_per_test_credit_keeps_complete_collection_output(tmp_path, monkeypatch):
+    node_ids = [f"hidden_test_long.py::test_case_{index}_{'x' * 90}" for index in range(60)]
+    collected = "\n".join(node_ids) + "\n\n60 tests collected\n"
+    executed = []
+
+    def run(command, **kwargs):
+        if "--collect-only" in command:
+            return subprocess.CompletedProcess(command, 0, collected, "")
+        executed.append(command[3])
+        return subprocess.CompletedProcess(command, 0, "1 passed", "")
+
+    monkeypatch.setattr(runner_module.subprocess, "run", run)
+    task = BenchmarkTask(
+        task_id="long_collection",
+        name="Long collection",
+        prompt="demo",
+        setup_files={},
+        hidden_files={"hidden_test_long.py": ""},
+    )
+
+    result = run_hidden_tests_per_node(task, tmp_path)
+
+    assert result is not None
+    assert result["total"] == len(node_ids)
+    assert executed == node_ids
+
+
 def test_manifest_only_cli_writes_bare_manifest(tmp_path, capsys):
     manifest_path = tmp_path / "manifest.json"
     exit_code = bench_main(["--suite", "coding", "--manifest-only", str(manifest_path)])

@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 import dm_agent.tracing as tracing
 from dm_agent.tracing import cli as trace_cli
 
@@ -727,3 +729,34 @@ def test_trace_cli_load_errors_are_exact(tmp_path: Path, capsys) -> None:
         "Invalid trace JSONL: Expecting property name enclosed in double quotes: "
         "line 1 column 2 (char 1)\n"
     )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"null\n", b"[]\n", b'"text"\n', b'{"event":"step","payload":[]}\n', b"\xff\n"],
+)
+def test_trace_cli_reports_invalid_encoding_and_entry_structure(tmp_path, capsys, content):
+    invalid = tmp_path / "invalid.jsonl"
+    invalid.write_bytes(content)
+
+    assert trace_cli.main(["analyze", str(invalid)]) == 2
+    captured = capsys.readouterr()
+    assert "Invalid trace JSONL:" in captured.err
+    assert invalid.read_bytes() == content
+
+
+def test_trace_directory_continues_after_invalid_entries(tmp_path, capsys):
+    _write_jsonl(tmp_path / "good.jsonl", _gap_events())
+    (tmp_path / "bad.jsonl").write_text("null\n", encoding="utf-8")
+    (tmp_path / "encoding.jsonl").write_bytes(b"\xff\n")
+
+    assert trace_cli.main(["analyze-dir", str(tmp_path), "--json"]) == 1
+
+    result = json.loads(capsys.readouterr().out)
+    assert len(result["analyses"]) == 1
+    assert len(result["errors"]) == 2
+
+
+def test_trace_cli_reports_unreadable_path(tmp_path, capsys):
+    assert trace_cli.main(["view", str(tmp_path)]) == 2
+    assert "Cannot read trace:" in capsys.readouterr().err

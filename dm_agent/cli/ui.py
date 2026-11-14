@@ -14,6 +14,7 @@ import textwrap
 from pathlib import Path
 from typing import Any, ClassVar
 
+from dm_agent.core.observation import is_failure_observation
 from dm_agent.skills import SkillManager
 from dm_agent.tools import Tool
 
@@ -593,7 +594,7 @@ def display_step_page(result: dict[str, Any], *, page: int, page_size: int) -> N
         for offset, step in enumerate(page_steps, start=start + 1):
             observation = str(step.get("observation", ""))
             action = str(step.get("action", ""))
-            failed = action == "error" or "failed" in observation.lower()
+            failed = action == "error" or is_failure_observation(observation, action=action)
             status = Text("ERR", style=UI.RICH_STYLES["error"]) if failed else Text("OK", "green")
             table.add_row(
                 str(offset),
@@ -671,7 +672,10 @@ def create_step_callback(show_steps: bool):
                 color=Fore.MAGENTA,
             )
         else:
-            status = "error" if step.action == "error" else "ok"
+            failed = step.action == "error" or is_failure_observation(
+                step.observation, action=step.action
+            )
+            status = "error" if failed else "ok"
             should_print = (
                 step_num == 1
                 or step_num % 10 == 0
