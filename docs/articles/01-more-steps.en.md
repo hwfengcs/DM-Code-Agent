@@ -75,4 +75,4 @@ For the next engineering change, the actionable evidence was narrower: an exhaus
 - [Corrected editing mechanism, devlog 38](../research-log/38-edit-file-precision.md)
 - [Follow-up repeated-run discussion, devlog 39](../research-log/39-observation-failure-classification.md)
 
-[DM-Code-Agent](../../README.md) records the steps needed for this kind of investigation. [Try the no-key demo](../getting-started.md) to compare a run with test evidence against one that finishes without it.
+[DM-Code-Agent](../../README.md) records the steps needed for this kind of investigation. [Try the no-key demo](../getting-started.en.md) to compare a run with test evidence against one that finishes without it.

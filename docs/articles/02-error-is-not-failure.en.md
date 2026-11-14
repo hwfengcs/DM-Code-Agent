@@ -68,4 +68,4 @@ The practical rule is simple: carry status separately from payload when possible
 - [Current classifier](../../dm_agent/core/observation.py) and [behavior tests](../../tests/test_observation_failure.py)
 - [Report for the reviewed run](../../bench_reports/editfix-20260804.json)
 
-[DM-Code-Agent](../../README.md) keeps tool observations available for this kind of offline investigation. [Try the demo](../getting-started.md) to inspect failures, recovery, and verification evidence without an API key.
+[DM-Code-Agent](../../README.md) keeps tool observations available for this kind of offline investigation. [Try the demo](../getting-started.en.md) to inspect failures, recovery, and verification evidence without an API key.

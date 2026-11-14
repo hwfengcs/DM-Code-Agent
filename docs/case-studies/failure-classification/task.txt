@@ -1,0 +1,11 @@
+Repair the real failure-classification bug in this repository.
+Successful file reads containing `from errors import NotFound`, editing echoes containing
+ValueError, and successful processes printing ERROR are currently mistaken for tool failures.
+The classifier also misses nonzero exit codes other than 1 and some file-tool refusals.
+Use the producing tool's action to distinguish carried source/output from tool status.
+Preserve conservative legacy classification when the action is missing or belongs to an
+unknown extension. Preserve real kernel errors and post-edit syntax failures. Wire the action
+through the existing ReactAgent classification call sites, including trace and replanning.
+Read dm_agent/core/observation.py and the relevant agent.py callers. Change only those two
+source files. The regression checks are in tests/test_maintenance_case.py; do not edit tests.
+Run those checks before and after your change. Keep the change focused and report the result.

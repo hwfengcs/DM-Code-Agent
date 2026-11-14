@@ -1,0 +1,810 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-aVlvGG3fNdnSbDh0rB08svv/Wl5DLUeZWrzHrsCMPbo='; base-uri 'none'; form-action 'none'"><title>DM-Code-Agent · Run report</title><style>
+:root{color-scheme:light;--ink:#1d1d1f;--muted:#6e6e73;--line:#e8e8ed;
+--blue:#0060c0;--green:#248a3d;--orange:#a24a00;--red:#bd241b}
+*{box-sizing:border-box}body{margin:0;background:#fbfbfd;color:var(--ink);
+font:15px/1.6 'Geist','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-underline-offset:3px}a:focus-visible,summary:focus-visible,
+select:focus-visible{outline:3px solid #0071e3;outline-offset:5px}
+header,main,footer{max-width:1120px;margin:auto;padding:32px 40px}
+header{padding-top:48px;padding-bottom:28px}.brand{font-weight:650;letter-spacing:-.02em;
+display:flex;align-items:center;gap:10px}.brand-mark{display:inline-grid;place-items:center;
+width:32px;height:32px;border:1px solid #d2d2d7;border-radius:9px;font:600 12px monospace}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+color:var(--muted);margin:34px 0 12px}h1{font-size:clamp(34px,5vw,54px);line-height:1.07;
+letter-spacing:-.055em;font-weight:600;margin:0 0 18px}h2{font-size:24px;line-height:1.3;
+letter-spacing:-.035em;margin:0}h3{font-size:16px;margin:0 0 12px;font-weight:600}
+p{margin:8px 0 0}.lede{max-width:650px;font-size:17px;color:var(--muted)}
+.policy{margin-top:24px;padding:15px 18px;border:1px solid var(--line);border-radius:12px;
+background:white;max-width:920px;font-size:13px;color:var(--muted)}.policy strong{color:var(--ink)}
+.demo{display:inline-block;color:var(--orange);font-size:12px;font-weight:600;
+background:#fff5e6;border:1px solid #f4dcb7;padding:4px 10px;border-radius:6px;margin-bottom:16px}
+main{padding-top:8px}.selector{display:flex;align-items:center;justify-content:space-between;
+gap:20px;padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:30px}
+label{font-size:13px;font-weight:600}select{font:inherit;font-size:13px;padding:9px 36px 9px 12px;
+border:1px solid #d2d2d7;background:white;border-radius:8px;max-width:70%}
+.run[hidden]{display:none}.run-heading{display:flex;align-items:center;justify-content:space-between;
+gap:24px}.subtle{color:var(--muted);font-size:13px}.badge{display:inline-flex;align-items:center;
+gap:6px;font-size:12px;font-weight:600;border-radius:6px;padding:4px 9px;white-space:nowrap;
+background:#f0f0f3;color:var(--muted)}.badge.success{background:#eaf6ed;color:var(--green)}
+.badge.failure{background:#fff0ee;color:var(--red)}.badge.warning{background:#fff5e6;color:var(--orange)}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:24px 0 30px}
+.metric{background:white;padding:19px 22px}.metric span{display:block;color:var(--muted);
+font-size:12px}.metric strong{font-size:28px;font-weight:550;letter-spacing:-.04em}
+.section{margin-top:30px}.section-head{display:flex;align-items:baseline;justify-content:space-between;
+gap:16px;margin:0 0 13px}.content{border:1px solid var(--line);background:white;
+border-radius:12px;padding:20px 22px}.notice{border-left:3px solid #dba864;padding-left:15px;
+color:var(--orange);font-size:13px;margin:22px 0}.timeline{list-style:none;margin:0;padding:0;
+border:1px solid var(--line);background:white;border-radius:12px;overflow:hidden}
+.step{padding:17px 21px}.step+.step{border-top:1px solid var(--line)}.step-head{display:flex;
+gap:13px;align-items:center}.number{width:27px;height:27px;border:1px solid var(--line);
+border-radius:50%;display:inline-grid;place-items:center;font-size:11px;color:var(--muted);flex-shrink:0}
+.action{font-family:'Geist Mono','SFMono-Regular',Consolas,monospace;font-size:13px;font-weight:500;
+overflow-wrap:anywhere}.step-head .badge{margin-left:auto}details{margin-top:12px;padding-left:40px}
+summary{cursor:pointer;color:var(--blue);font-size:12px;width:fit-content}pre{font:12px/1.7
+'Geist Mono','SFMono-Regular',Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;
+margin:12px 0 0;background:#f7f7f9;border-radius:8px;padding:16px;max-height:420px;overflow:auto}
+.diff{padding:13px 16px}.diff-line{display:block;min-height:1.7em}.diff-add{background:#e8f5ec;
+color:#1d6833}.diff-remove{background:#fff0ee;color:#9a3028}.diff-header{color:var(--muted)}
+.evidence{display:flex;gap:12px;align-items:center;justify-content:space-between;
+padding:11px 0}.evidence+.evidence{border-top:1px solid var(--line)}
+footer{border-top:1px solid var(--line);padding-top:23px;margin-top:42px;font-size:12px;
+color:var(--muted);display:flex;gap:20px;justify-content:space-between}
+@media(max-width:640px){header,main,footer{padding-left:20px;padding-right:20px}
+header{padding-top:28px}.metrics{grid-template-columns:repeat(2,1fr)}.metric{padding:15px 17px}
+.run-heading{align-items:flex-start;flex-wrap:wrap}.step{padding:15px}details{padding-left:0}.selector{gap:12px}
+.step-head{flex-wrap:wrap;gap:9px}.step-head .badge{font-size:11px}.content{padding:16px}
+footer{flex-direction:column}.section-head{display:block}}
+@media print{body{background:white}header,main,footer{max-width:none;padding:18px}
+.selector{display:none}.run[hidden]{display:block}.run{break-before:page}pre{max-height:none}
+details{display:block}summary{color:var(--ink)}}
+</style></head><body><header><div class="brand"><span class="brand-mark">DM</span> DM-Code-Agent</div><p class="eyebrow">Standalone run report</p><h1>Run evidence, ready to inspect.</h1><p class="lede">Follow the changes. Inspect the checks. Keep the evidence.</p><div class="policy"><strong>Sharing policy</strong><br>Content included · pattern-based redaction applied. Task text, final answers, tool receipts and replacement excerpts are included. Review this file locally before sharing; redaction cannot detect every private detail.<br>Checkpoint state, raw LLM messages and system prompts are never exported. This file makes no network requests.</div><p class="subtle">Source: Historical repair · live model · reviewed extract</p></header><main><div class="selector"><label for="run-picker">Inspect a run</label><select id="run-picker"><option value="0">Run 01 of 01</option></select></div><section class="run" id="run-1" aria-label="Run 1"><div class="run-heading"><div><h2>Run 01</h2><p class="subtle">Recorded task attempt</p></div><span class="badge warning">Max steps exceeded</span></div><div class="metrics"><div class="metric"><span>Recorded steps</span><strong>14</strong></div><div class="metric"><span>Verification actions</span><strong>3</strong></div><div class="metric"><span>Replans</span><strong>2</strong></div><div class="metric"><span>Recorded duration</span><strong>85.53s</strong></div></div><div class="content"><h3>Task</h3><pre>Repair the real failure-classification bug in this repository.
+Successful file reads containing `from errors import NotFound`, editing echoes containing
+ValueError, and successful processes printing ERROR are currently mistaken for tool failures.
+The classifier also misses nonzero exit codes other than 1 and some file-tool refusals.
+Use the producing tool&#x27;s action to distinguish carried source/output from tool status.
+Preserve conservative legacy classification when the action is missing or belongs to an
+unknown extension. Preserve real kernel errors and post-edit syntax failures. Wire the action
+through the existing ReactAgent classification call sites, including trace and replanning.
+Read dm_agent/core/observation.py and the relevant agent.py callers. Change only those two
+source files. The regression checks are in tests/test_maintenance_case.py; do not edit tests.
+Run those checks before and after your change. Keep the change focused and report the result.
+</pre></div><div class="section content"><h3>Final answer</h3><pre>Reached step limit without completion.</pre></div><section class="section"><div class="section-head"><h3>Verification evidence</h3><span class="subtle">Recorded commands, not a coverage guarantee</span></div><div class="content"><div class="evidence"><span class="action">run_tests</span><span class="badge failure">Exit 1</span></div><div class="evidence"><span class="action">run_tests</span><span class="badge success">Exit 0</span></div><div class="evidence"><span class="action">run_tests</span><span class="badge failure">Exit 1</span></div></div></section><section class="section"><div class="section-head"><h3>Execution trail</h3><span class="subtle">Original log remains unchanged</span></div><ol class="timeline"><li class="step"><div class="step-head"><span class="number">01</span><span class="action">run_tests</span><span class="badge failure">Failed</span></div><details><summary>Tool receipt</summary><pre>============================= test session starts =============================
+platform win32 -- Python 3.13.9, pytest-9.1.1, pluggy-1.6.0
+rootdir: [local path]
+configfile: pyproject.toml
+plugins: anyio-4.14.2, cov-7.1.0
+collected 12 items
+
+tests\test_maintenance_case.py FFF..FF.F.F.                              [100%]
+
+================================== FAILURES ===================================
+__ test_observation_status[read_file-1 | from errors import NotFound-False] ___
+
+action = &#x27;read_file&#x27;, observation = &#x27;1 | from errors import NotFound&#x27;
+failed = False
+
+    @pytest.mark.parametrize(
+        &quot;action,observation,failed&quot;,
+        [
+            (&quot;read_file&quot;, &quot;1 | from errors import NotFound&quot;, False),
+            (&quot;edit_file&quot;, &quot;已替换 1 处。\n2 | raise ValueError(&#x27;invalid&#x27;)&quot;, False),
+            (&quot;list_directory&quot;, &quot;errors.py\nmain.py&quot;, False),
+            (&quot;run_python&quot;, &quot;stdout:\nERROR: expected fixture\nreturncode: 0&quot;, False),
+            (&quot;run_tests&quot;, &quot;stdout:\nall tests passed\nreturncode: 0&quot;, False),
+            (&quot;run_python&quot;, &quot;stderr:\nprocess stopped\nreturncode: 2&quot;, True),
+            (&quot;run_shell&quot;, &quot;stderr:\nprocess stopped\nreturncode: 255&quot;, True),
+            (&quot;read_file&quot;, &quot;文件 missing.py 不存在。&quot;, True),
+            (&quot;read_file&quot;, &quot;路径 tests 不是文件。&quot;, True),
+            (&quot;edit_file&quot;, &quot;Tool execution failed: permission denied&quot;, True),
+            (&quot;edit_file&quot;, &quot;[语法检查] 未通过：invalid syntax&quot;, True),
+            (&quot;third_party_tool&quot;, &quot;Error: extension failed&quot;, True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {&quot;action&quot;: action} if &quot;action&quot; in inspect.signature(is_failure_observation).parameters else {}
+&gt;       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert True is False
+E        +  where True = is_failure_observation(&#x27;1 | from errors import NotFound&#x27;, **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+_ test_observation_status[edit_file-\u5df2\u66ff\u6362 1 \u5904\u3002\n2 | raise ValueError(&#x27;invalid&#x27;)-False] _
+
+action = &#x27;edit_file&#x27;, observation = &quot;已替换 1 处。\n2 | raise ValueError(&#x27;invalid&#x27;)&quot;
+failed = False
+
+    @pytest.mark.parametrize(
+        &quot;action,observation,failed&quot;,
+        [
+            (&quot;read_file&quot;, &quot;1 | from errors import NotFound&quot;, False),
+            (&quot;edit_file&quot;, &quot;已替换 1 处。\n2 | raise ValueError(&#x27;invalid&#x27;)&quot;, False),
+            (&quot;list_directory&quot;, &quot;errors.py\nmain.py&quot;, False),
+            (&quot;run_python&quot;, &quot;stdout:\nERROR: expected fixture\nreturncode: 0&quot;, False),
+            (&quot;run_tests&quot;, &quot;stdout:\nall tests passed\nreturncode: 0&quot;, False),
+            (&quot;run_python&quot;, &quot;stderr:\nprocess stopped\nreturncode: 2&quot;, True),
+            (&quot;run_shell&quot;, &quot;stderr:\nprocess stopped\nreturncode: 255&quot;, True),
+            (&quot;read_file&quot;, &quot;文件 missing.py 不存在。&quot;, True),
+            (&quot;read_file&quot;, &quot;路径 tests 不是文件。&quot;, True),
+            (&quot;edit_file&quot;, &quot;Tool execution failed: permission denied&quot;, True),
+            (&quot;edit_file&quot;, &quot;[语法检查] 未通过：invalid syntax&quot;, True),
+            (&quot;third_party_tool&quot;, &quot;Error: extension failed&quot;, True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {&quot;action&quot;: action} if &quot;action&quot; in inspect.signature(is_failure_observation).parameters else {}
+&gt;       assert is_failure_observation(observation, **kwargs) is failed
+E       assert True is False
+E        +  where True = is_failure_observation(&quot;已替换 1 处。\n2 | raise ValueError(&#x27;invalid&#x27;)&quot;, **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+______ test_observation_status[list_directory-errors.py\nmain.py-False] _______
+
+action = &#x27;list_directory&#x27;, observation = &#x27;errors.py\nmain.py&#x27;, failed = False
+
+    @pytest.mark.parametrize(
+        &quot;action,observation,failed&quot;,
+        [
+            (&quot;read_file&quot;, &quot;1 | from errors import NotFound&quot;, False),
+            (&quot;edit_file&quot;, &quot;已替换 1 处。\n2 | raise ValueError(&#x27;invalid&#x27;)&quot;, False),
+            (&quot;list_directory&quot;, &quot;errors.py\nmain.py&quot;, False),
+            (&quot;run_python&quot;, &quot;stdout:\nERROR: expected fixture\nreturncode: 0&quot;, False),
+            (&quot;run_tests&quot;, &quot;stdout:\nall tests passed\nreturncode: 0&quot;, False),
+            (&quot;run_python&quot;, &quot;stderr:\nprocess stopped\nreturncode: 2&quot;, True),
+            (&quot;run_shell&quot;, &quot;stderr:\nprocess stopped\nreturncode: 255&quot;, True),
+            (&quot;read_file&quot;, &quot;文件 missing.py 不存在。&quot;, True),
+            (&quot;read_file&quot;, &quot;路径 tests 不是文件。&quot;, True),
+            (&quot;edit_file&quot;, &quot;Tool execution failed: permission denied&quot;, True),
+            (&quot;edit_file&quot;, &quot;[语法检查] 未通过：invalid syntax&quot;, True),
+            (&quot;third_party_tool&quot;, &quot;Error: extension failed&quot;, True),
+        ],
+    )
+    def test_observation_status(ac
+[truncated: showing first 4800 and last 3200 of 12691 chars (227 lines total); narrow the command or use read_file with line_start/line_end on specific files to view the omitted range]
+&quot;third_party_tool&quot;, &quot;Error: extension failed&quot;, True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {&quot;action&quot;: action} if &quot;action&quot; in inspect.signature(is_failure_observation).parameters else {}
+&gt;       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert False is True
+E        +  where False = is_failure_observation(&#x27;路径 tests 不是文件。&#x27;, **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+_ test_observation_status[edit_file-[\u8bed\u6cd5\u68c0\u67e5] \u672a\u901a\u8fc7\uff1ainvalid syntax-True] _
+
+action = &#x27;edit_file&#x27;, observation = &#x27;[语法检查] 未通过：invalid syntax&#x27;, failed = True
+
+    @pytest.mark.parametrize(
+        &quot;action,observation,failed&quot;,
+        [
+            (&quot;read_file&quot;, &quot;1 | from errors import NotFound&quot;, False),
+            (&quot;edit_file&quot;, &quot;已替换 1 处。\n2 | raise ValueError(&#x27;invalid&#x27;)&quot;, False),
+            (&quot;list_directory&quot;, &quot;errors.py\nmain.py&quot;, False),
+            (&quot;run_python&quot;, &quot;stdout:\nERROR: expected fixture\nreturncode: 0&quot;, False),
+            (&quot;run_tests&quot;, &quot;stdout:\nall tests passed\nreturncode: 0&quot;, False),
+            (&quot;run_python&quot;, &quot;stderr:\nprocess stopped\nreturncode: 2&quot;, True),
+            (&quot;run_shell&quot;, &quot;stderr:\nprocess stopped\nreturncode: 255&quot;, True),
+            (&quot;read_file&quot;, &quot;文件 missing.py 不存在。&quot;, True),
+            (&quot;read_file&quot;, &quot;路径 tests 不是文件。&quot;, True),
+            (&quot;edit_file&quot;, &quot;Tool execution failed: permission denied&quot;, True),
+            (&quot;edit_file&quot;, &quot;[语法检查] 未通过：invalid syntax&quot;, True),
+            (&quot;third_party_tool&quot;, &quot;Error: extension failed&quot;, True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {&quot;action&quot;: action} if &quot;action&quot; in inspect.signature(is_failure_observation).parameters else {}
+&gt;       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert False is True
+E        +  where False = is_failure_observation(&#x27;[语法检查] 未通过：invalid syntax&#x27;, **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_maintenance_case.py::test_observation_status[read_file-1 | from errors import NotFound-False]
+FAILED tests/test_maintenance_case.py::test_observation_status[edit_file-\u5df2\u66ff\u6362 1 \u5904\u3002\n2 | raise ValueError(&#x27;invalid&#x27;)-False]
+FAILED tests/test_maintenance_case.py::test_observation_status[list_directory-errors.py\nmain.py-False]
+FAILED tests/test_maintenance_case.py::test_observation_status[run_python-stderr:\nprocess stopped\nreturncode: 2-True]
+FAILED tests/test_maintenance_case.py::test_observation_status[run_shell-stderr:\nprocess stopped\nreturncode: 255-True]
+FAILED tests/test_maintenance_case.py::test_observation_status[read_file-\u8def\u5f84 tests \u4e0d\u662f\u6587\u4ef6\u3002-True]
+FAILED tests/test_maintenance_case.py::test_observation_status[edit_file-[\u8bed\u6cd5\u68c0\u67e5] \u672a\u901a\u8fc7\uff1ainvalid syntax-True]
+========================= 7 failed, 5 passed in 2.67s =========================
+returncode: 1</pre></details></li><li class="step"><div class="step-head"><span class="number">02</span><span class="action">read_file</span><span class="badge ">Completed</span></div><details><summary>Tool receipt</summary><pre>&quot;&quot;&quot;观察结果的判定与边界处理。
+
+``is_failure_observation`` 从 ``ReactAgent._is_failure_observation`` 提出来，让不住在
+内核里的能力（例如工具熔断）也能复用同一份失败判定，而不必反向 import ReactAgent。
+``ReactAgent._is_failure_observation`` 保留为指向本函数的薄委托，公开行为不变。
+
+``ObservationBounder`` 是内核护栏：它先于 ``after_tool_result`` 钩子链执行，
+保证模型、对话历史与 trace 看到的是同一份（可能已截断的）文本。
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+from typing import Any
+
+from dm_agent.memory.context_budget import truncate_observation
+
+from .run_state import RunContext
+
+# 判定一条观察是否代表失败。措辞约束见 memory/context_budget 模块文档：
+# 内核生成的护栏文案（截断标记、守卫拒绝、熔断拦截）都刻意避开这些词。
+FAILURE_MARKERS = (
+    &quot;Tool execution failed&quot;,
+    &quot;Unknown tool&quot;,
+    &quot;Tool arguments&quot;,
+    &quot;parse failed&quot;,
+    &quot;Critic rejected&quot;,
+    &quot;Critic review failed&quot;,
+    &quot;returncode: 1&quot;,
+    &quot;error&quot;,
+    &quot;Error&quot;,
+    &quot;Traceback&quot;,
+    &quot;失败&quot;,
+    &quot;错误&quot;,
+    &quot;不存在&quot;,
+)
+
+
+def is_failure_observation(observation: str) -&gt; bool:
+    &quot;&quot;&quot;观察文本里是否出现失败标记。&quot;&quot;&quot;
+    return any(marker in observation for marker in FAILURE_MARKERS)
+
+
+class ObservationBounder:
+    &quot;&quot;&quot;按字符上限截断观察，并把截断事实记进 metadata 与 trace。&quot;&quot;&quot;
+
+    def __init__(self, *, max_chars: int, trace_writer: Any | None = None) -&gt; None:
+        self.max_chars = max_chars
+        self.trace_writer = trace_writer
+
+    def bound(
+        self,
+        observation: Any,
+        *,
+        action: str,
+        action_input: Any,
+        context: RunContext,
+    ) -&gt; str:
+        &quot;&quot;&quot;截断超长观察并记录审计信息；模型、历史与 trace 看到同一份文本。&quot;&quot;&quot;
+        result = truncate_observation(
+            str(observation),
+            max_chars=self.max_chars,
+            action=action,
+            action_input=action_input,
+        )
+        if result.truncated:
+            metadata = context.metadata
+            metadata[&quot;truncation_count&quot;] += 1
+            metadata[&quot;truncated_chars_saved&quot;] += result.original_chars - result.kept_chars
+            if self.trace_writer:
+                self.trace_writer.record(
+                    &quot;observation_truncated&quot;,
+                    {
+                        &quot;step_number&quot;: context.step_number,
+                        &quot;action&quot;: action,
+                        &quot;original_chars&quot;: result.original_chars,
+                        &quot;kept_chars&quot;: result.kept_chars,
+                        &quot;original_lines&quot;: result.original_lines,
+                    },
+                )
+        return result.text
+</pre></details></li><li class="step"><div class="step-head"><span class="number">03</span><span class="action">search_in_file</span><span class="badge ">Completed</span></div><details><summary>Tool receipt</summary><pre>在 dm_agent\core\agent.py 中找到 6 处匹配：
+
+    24:     HookFailure,
+    25:     LLMRequestClient,
+    26:     RunEndEvent,
+    27:     RunStartEvent,
+    28: )
+    29: from .guards import ReadBeforeEditGuard
+&gt;&gt;&gt; 30: from .observation import ObservationBounder, is_failure_observation
+    31: from .persistence import (
+    32:     RunPersistence,
+    33:     agent_config_snapshot,
+    34:     json_safe_metadata,
+    35:     metadata_from_checkpoint,
+    36:     plan_from_checkpoint,
+
+    654:             if self.trace_writer:
+    655:                 self.trace_writer.record_tool_call(
+    656:                     step_number=step_num,
+    657:                     action=action,
+    658:                     action_input=action_input,
+    659:                     observation=observation,
+&gt;&gt;&gt; 660:                     failed=self._is_failure_observation(observation),
+    661:                 )
+    662: 
+    663:             # 更新计划进度（如果有计划；被守卫拦下的编辑不算完成）。
+    664:             # 只有下一个待办步骤的动作匹配时才标记，消除同名动作的二义性。
+    665:             if plan and self.planner and not guard_blocked:
+    666:                 next_step = self.planner.get_next_step()
+
+    671:             tool_info = f&quot;执行工具 {action}，输入：{json.dumps(action_input, ensure_ascii=False)}\n观察：{observation}&quot;
+    672:             self._append_history(&quot;user&quot;, tool_info, kind=&quot;tool_result&quot;)
+    673: 
+    674:             # 调用回调函数实时输出步骤
+    675:             self._publish_step(step, step_num)
+    676: 
+&gt;&gt;&gt; 677:             if self._is_failure_observation(observation) and plan and self.planner:
+    678:                 plan = self._replan_after_failure(
+    679:                     task,
+    680:                     plan,
+    681:                     metadata,
+    682:                     FailureContext(
+    683:                         observation=observation,
+
+    688:                 )
+    689: 
+    690:             # 检查是否调用了 task_complete 工具
+    691:             if (
+    692:                 action == &quot;task_complete&quot;
+    693:                 and accepted
+&gt;&gt;&gt; 694:                 and not self._is_failure_observation(observation)
+    695:             ):
+    696:                 metadata[&quot;status&quot;] = &quot;success&quot;
+    697:                 metadata[&quot;failure_reason&quot;] = &quot;&quot;
+    698:                 metadata[&quot;duration_seconds&quot;] = time.perf_counter() - started_at
+    699:                 return finish_result(observation)
+    700: 
+
+    794:             agent_config=self._config_snapshot(max_steps=limit),
+    795:             cwd=str(Path.cwd()),
+    796:         )
+    797:         self._persistence.save(path, checkpoint)
+    798: 
+    799:     @staticmethod
+&gt;&gt;&gt; 800:     def _is_failure_observation(observation: str) -&gt; bool:
+    801:         &quot;&quot;&quot;委托到 ``core.observation``，让内核外的能力复用同一份失败判定。&quot;&quot;&quot;
+    802:         return is_failure_observation(observation)
+    803: 
+    804:     def _replan_after_failure(
+    805:         self,
+    806:         task: str,
+
+    796:         )
+    797:         self._persistence.save(path, checkpoint)
+    798: 
+    799:     @staticmethod
+    800:     def _is_failure_observation(observation: str) -&gt; bool:
+    801:         &quot;&quot;&quot;委托到 ``core.observation``，让内核外的能力复用同一份失败判定。&quot;&quot;&quot;
+&gt;&gt;&gt; 802:         return is_failure_observation(observation)
+    803: 
+    804:     def _replan_after_failure(
+    805:         self,
+    806:         task: str,
+    807:         plan: list[PlanStep],
+    808:         metadata: dict[str, Any],</pre></details></li><li class="step"><div class="step-head"><span class="number">04</span><span class="action">read_file</span><span class="badge ">Completed</span></div><details><summary>Tool receipt</summary><pre>                    self.step_callback(step_num, step)
+                if self.trace_writer:
+                    self.trace_writer.record_tool_call(
+                        step_number=step_num,
+                        action=action,
+                        action_input=action_input,
+                        observation=observation,
+                        failed=True,
+                    )
+                    self.trace_writer.record_step(step_number=step_num, step=step)
+                if plan and self.planner:
+                    plan = self._replan_after_failure(
+                        task,
+                        plan,
+                        metadata,
+                        FailureContext(
+                            observation=observation,
+                            action=action,
+                            step_number=step_num,
+                            error_kind=&quot;unknown_tool&quot;,
+                        ),
+                    )
+                continue
+
+            invocation = self._tool_invoker.invoke(
+                tool,
+                action=action,
+                action_input=action_input,
+                context=self._run_context,
+            )
+            action_input = invocation.arguments
+            observation = invocation.observation
+            error_kind = invocation.error_kind
+            guard_blocked = invocation.blocked  # 被守卫拦下的编辑不算计划完成
+            accepted = False
+            if action == &quot;task_complete&quot; and invocation.tool_succeeded:
+                accepted, observation = self._completion_gate.review(
+                    task=task,
+                    action=action,
+                    completion_text=str(observation),
+                    steps=steps,
+                    context=self._run_context,
+                )
+                if not accepted:
+                    error_kind = &quot;critic_rejected&quot;
+
+            step = Step(
+                thought=thought,
+                action=action,
+                action_input=action_input,
+                observation=observation,
+                raw=raw,
+            )
+            steps.append(step)
+            if self.trace_writer:
+                self.trace_writer.record_tool_call(
+                    step_number=step_num,
+                    action=action,
+                    action_input=action_input,
+                    observation=observation,
+                    failed=self._is_failure_observation(observation),
+                )
+
+            # 更新计划进度（如果有计划；被守卫拦下的编辑不算完成）。
+            # 只有下一个待办步骤的动作匹配时才标记，消除同名动作的二义性。
+            if plan and self.planner and not guard_blocked:
+                next_step = self.planner.get_next_step()
+                if next_step and next_step.action == action:
+                    self.planner.mark_completed(next_step.step_number, observation)
+
+            # 将工具执行结果添加到历史记录
+            tool_info = f&quot;执行工具 {action}，输入：{json.dumps(action_input, ensure_ascii=False)}\n观察：{observation}&quot;
+            self._append_history(&quot;user&quot;, tool_info, kind=&quot;tool_result&quot;)
+
+            # 调用回调函数实时输出步骤
+            self._publish_step(step, step_num)
+
+            if self._is_failure_observation(observation) and plan and self.planner:
+                plan = self._replan_after_failure(
+                    task,
+                    plan,
+                    metadata,
+                    FailureContext(
+                        observation=observation,
+                        action=action,
+                        step_number=step_num,
+                        error_kind=error_kind or None,
+                    ),
+                )
+
+            # 检查是否调用了 task_complete 工具
+            if (
+                action == &quot;task_complete&quot;
+                and accepted
+                and not self._is_failure_observation(observation)
+            ):
+                metadata[&quot;status&quot;] = &quot;success&quot;
+                metadata[&quot;failure_reason&quot;] = &quot;&quot;
+                metadata[&quot;duration_seconds&quot;] = time.perf_counter() - started_at
+                return finish_result(observation)
+</pre></details></li><li class="step"><div class="step-head"><span class="number">05</span><span class="action">read_file</span><span class="badge ">Completed</span></div><details><summary>Tool receipt</summary><pre>&quot;&quot;&quot;同一组行为断言用于历史缺陷版本与修复版本，不调用模型。&quot;&quot;&quot;
+
+import inspect
+
+import pytest
+
+from dm_agent.core.observation import is_failure_observation
+
+
+@pytest.mark.parametrize(
+    &quot;action,observation,failed&quot;,
+    [
+        (&quot;read_file&quot;, &quot;1 | from errors import NotFound&quot;, False),
+        (&quot;edit_file&quot;, &quot;已替换 1 处。\n2 | raise ValueError(&#x27;invalid&#x27;)&quot;, False),
+        (&quot;list_directory&quot;, &quot;errors.py\nmain.py&quot;, False),
+        (&quot;run_python&quot;, &quot;stdout:\nERROR: expected fixture\nreturncode: 0&quot;, False),
+        (&quot;run_tests&quot;, &quot;stdout:\nall tests passed\nreturncode: 0&quot;, False),
+        (&quot;run_python&quot;, &quot;stderr:\nprocess stopped\nreturncode: 2&quot;, True),
+        (&quot;run_shell&quot;, &quot;stderr:\nprocess stopped\nreturncode: 255&quot;, True),
+        (&quot;read_file&quot;, &quot;文件 missing.py 不存在。&quot;, True),
+        (&quot;read_file&quot;, &quot;路径 tests 不是文件。&quot;, True),
+        (&quot;edit_file&quot;, &quot;Tool execution failed: permission denied&quot;, True),
+        (&quot;edit_file&quot;, &quot;[语法检查] 未通过：invalid syntax&quot;, True),
+        (&quot;third_party_tool&quot;, &quot;Error: extension failed&quot;, True),
+    ],
+)
+def test_observation_status(action, observation, failed):
+    # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+    kwargs = {&quot;action&quot;: action} if &quot;action&quot; in inspect.signature(is_failure_observation).parameters else {}
+    assert is_failure_observation(observation, **kwargs) is failed
+</pre></details></li><li class="step"><div class="step-head"><span class="number">06</span><span class="action">edit_file</span><span class="badge ">Completed</span></div><details open><summary>Replacement excerpt</summary><p class="subtle">Recorded replacement arguments, not a full repository diff. Check the tool receipt to see whether the edit was applied.</p><pre class="diff"><span class="diff-line diff-header">--- before excerpt</span><span class="diff-line diff-header">+++ after excerpt</span><span class="diff-line diff-header">@@ -1,5 +1,6 @@</span><span class="diff-line diff-context"> from __future__ import annotations</span><span class="diff-line diff-context"> </span><span class="diff-line diff-add">+import re</span><span class="diff-line diff-context"> from typing import Any</span><span class="diff-line diff-context"> </span><span class="diff-line diff-context"> from dm_agent.memory.context_budget import truncate_observation</span><span class="diff-line diff-header">@@ -24,7 +25,80 @@</span><span class="diff-line diff-context">     &quot;不存在&quot;,</span><span class="diff-line diff-context"> )</span><span class="diff-line diff-context"> </span><span class="diff-line diff-add">+# 文件/目录类工具：观察文本是工具携带的源码或目录列表，内容里出现 &quot;error&quot;、</span><span class="diff-line diff-add">+# &quot;Error&quot;、&quot;不存在&quot; 等词并不代表工具失败。只有工具自身的拒绝/失败文案才算失败。</span><span class="diff-line diff-add">+FILE_TOOL_ACTIONS = frozenset(</span><span class="diff-line diff-add">+    {</span><span class="diff-line diff-add">+        &quot;read_file&quot;,</span><span class="diff-line diff-add">+        &quot;edit_file&quot;,</span><span class="diff-line diff-add">+        &quot;write_file&quot;,</span><span class="diff-line diff-add">+        &quot;create_file&quot;,</span><span class="diff-line diff-add">+        &quot;list_directory&quot;,</span><span class="diff-line diff-add">+        &quot;search_in_file&quot;,</span><span class="diff-line diff-add">+        &quot;search_files&quot;,</span><span class="diff-line diff-add">+        &quot;delete_file&quot;,</span><span class="diff-line diff-add">+        &quot;move_file&quot;,</span><span class="diff-line diff-add">+        &quot;copy_file&quot;,</span><span class="diff-line diff-add">+    }</span><span class="diff-line diff-add">+)</span><span class="diff-line diff-context"> </span><span class="diff-line diff-remove">-def is_failure_observation(observation: str) -&gt; bool:</span><span class="diff-line diff-remove">-    &quot;&quot;&quot;观察文本里是否出现失败标记。&quot;&quot;&quot;</span><span class="diff-line diff-add">+# 进程类工具：观察文本里带 &quot;returncode: N&quot;，N 非 0 即失败；N 为 0 时即使</span><span class="diff-line diff-add">+# stdout/stderr 里出现 ERROR 也不算失败。</span><span class="diff-line diff-add">+PROCESS_TOOL_ACTIONS = frozenset(</span><span class="diff-line diff-add">+    {</span><span class="diff-line diff-add">+        &quot;run_python&quot;,</span><span class="diff-line diff-add">+        &quot;run_shell&quot;,</span><span class="diff-line diff-add">+        &quot;run_tests&quot;,</span><span class="diff-line diff-add">+        &quot;run_command&quot;,</span><span class="diff-line diff-add">+        &quot;execute&quot;,</span><span class="diff-line diff-add">+    }</span><span class="diff-line diff-add">+)</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+# 文件工具自身的失败/拒绝文案（不含源码内容里可能出现的普通词）。</span><span class="diff-line diff-add">+FILE_TOOL_FAILURE_MARKERS = (</span><span class="diff-line diff-add">+    &quot;Tool execution failed&quot;,</span><span class="diff-line diff-add">+    &quot;Unknown tool&quot;,</span><span class="diff-line diff-add">+    &quot;Tool arguments&quot;,</span><span class="diff-line diff-add">+    &quot;parse failed&quot;,</span><span class="diff-line diff-add">+    &quot;Critic rejected&quot;,</span><span class="diff-line diff-add">+    &quot;Critic review failed&quot;,</span><span class="diff-line diff-add">+    &quot;[语法检查] 未通过&quot;,</span><span class="diff-line diff-add">+    &quot;Traceback&quot;,</span><span class="diff-line diff-add">+)</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+# 文件/路径类拒绝文案，例如 &quot;文件 missing.py 不存在。&quot;、&quot;路径 tests 不是文件。&quot;。</span><span class="diff-line diff-add">+_FILE_TOOL_REFUSAL_PATTERN = re.compile(</span><span class="diff-line diff-add">+    r&quot;(?:文件|路径|目录|file|path|directory)\b[^\n]{0,200}?&quot;</span><span class="diff-line diff-add">+    r&quot;(?:不存在|不是文件|不是目录|不是文件夹|not found|not a file|not a directory|permission denied|权限)&quot;,</span><span class="diff-line diff-add">+    re.IGNORECASE,</span><span class="diff-line diff-add">+)</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+_RETURNCODE_PATTERN = re.compile(r&quot;returncode:\s*(-?\d+)&quot;)</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+def _is_file_tool_failure(observation: str) -&gt; bool:</span><span class="diff-line diff-add">+    &quot;&quot;&quot;文件/目录类工具：只认工具自身的失败/拒绝文案，忽略携带的源码内容。&quot;&quot;&quot;</span><span class="diff-line diff-add">+    if any(marker in observation for marker in FILE_TOOL_FAILURE_MARKERS):</span><span class="diff-line diff-add">+        return True</span><span class="diff-line diff-add">+    return bool(_FILE_TOOL_REFUSAL_PATTERN.search(observation))</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+def _is_process_tool_failure(observation: str) -&gt; bool:</span><span class="diff-line diff-add">+    &quot;&quot;&quot;进程类工具：以 returncode 为准；缺失时回退到保守的标记判定。&quot;&quot;&quot;</span><span class="diff-line diff-add">+    match = _RETURNCODE_PATTERN.search(observation)</span><span class="diff-line diff-add">+    if match is not None:</span><span class="diff-line diff-add">+        return int(match.group(1)) != 0</span><span class="diff-line diff-context">     return any(marker in observation for marker in FAILURE_MARKERS)</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+def is_failure_observation(observation: str, action: str | None = None) -&gt; bool:</span><span class="diff-line diff-add">+    &quot;&quot;&quot;判断一条观察是否代表工具失败。</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+    ``action`` 是产生该观察的工具动作。带上它时按工具类型区分「工具携带的源码/输出」</span><span class="diff-line diff-add">+    与「工具自身的状态」；缺失或属于未知扩展时保持保守的旧标记判定。</span><span class="diff-line diff-add">+    &quot;&quot;&quot;</span><span class="diff-line diff-add">+    if action in FILE_TOOL_ACTIONS:</span><span class="diff-line diff-add">+        return _is_file_tool_failure(observation)</span><span class="diff-line diff-add">+    if action in PROCESS_TOOL_ACTIONS:</span><span class="diff-line diff-add">+        return _is_process_tool_failure(observation)</span><span class="diff-line diff-add">+    return any(marker in observation for marker in FAILURE_MARKERS)</span></pre></details><details><summary>Tool receipt</summary><pre>已按内容替换 dm_agent\core\observation.py 的 1 处（653 -&gt; 2685 字符）。
+[编辑后] 第 8-47 行（共 154 行）：
+     8 | 保证模型、对话历史与 trace 看到的是同一份（可能已截断的）文本。
+     9 | &quot;&quot;&quot;
+    10 | 
+&gt;   11 | from __future__ import annotations
+&gt;   12 | 
+&gt;   13 | import re
+&gt;   14 | from typing import Any
+&gt;   15 | 
+&gt;   16 | from dm_agent.memory.context_budget import truncate_observation
+&gt;   17 | 
+&gt;   18 | from .run_state import RunContext
+&gt;   19 | 
+&gt;   20 | # 判定一条观察是否代表失败。措辞约束见 memory/context_budget 模块文档：
+&gt;   21 | # 内核生成的护栏文案（截断标记、守卫拒绝、熔断拦截）都刻意避开这些词。
+&gt;   22 | FAILURE_MARKERS = (
+&gt;   23 |     &quot;Tool execution failed&quot;,
+&gt;   24 |     &quot;Unknown tool&quot;,
+&gt;   25 |     &quot;Tool arguments&quot;,
+&gt;   26 |     &quot;parse failed&quot;,
+&gt;   27 |     &quot;Critic rejected&quot;,
+&gt;   28 |     &quot;Critic review failed&quot;,
+&gt;   29 |     &quot;returncode: 1&quot;,
+&gt;   30 |     &quot;error&quot;,
+&gt;   31 |     &quot;Error&quot;,
+&gt;   32 |     &quot;Traceback&quot;,
+&gt;   33 |     &quot;失败&quot;,
+&gt;   34 |     &quot;错误&quot;,
+&gt;   35 |     &quot;不存在&quot;,
+&gt;   36 | )
+&gt;   37 | 
+&gt;   38 | # 文件/目录类工具：观察文本是工具携带的源码或目录列表，内容里出现 &quot;error&quot;、
+&gt;   39 | # &quot;Error&quot;、&quot;不存在&quot; 等词并不代表工具失败。只有工具自身的拒绝/失败文案才算失败。
+&gt;   40 | FILE_TOOL_ACTIONS = frozenset(
+&gt;   41 |     {
+&gt;   42 |         &quot;read_file&quot;,
+&gt;   43 |         &quot;edit_file&quot;,
+&gt;   44 |         &quot;write_file&quot;,
+&gt;   45 |         &quot;create_file&quot;,
+&gt;   46 |         &quot;list_directory&quot;,
+&gt;   47 |         &quot;search_in_file&quot;,
+... 回显截断，仅显示前 40 行</pre></details></li><li class="step"><div class="step-head"><span class="number">07</span><span class="action">edit_file</span><span class="badge ">Completed</span></div><details open><summary>Replacement excerpt</summary><p class="subtle">Recorded replacement arguments, not a full repository diff. Check the tool receipt to see whether the edit was applied.</p><pre class="diff"><span class="diff-line diff-header">--- before excerpt</span><span class="diff-line diff-header">+++ after excerpt</span><span class="diff-line diff-header">@@ -1,4 +1,7 @@</span><span class="diff-line diff-context">     @staticmethod</span><span class="diff-line diff-remove">-    def _is_failure_observation(observation: str) -&gt; bool:</span><span class="diff-line diff-remove">-        &quot;&quot;&quot;委托到 ``core.observation``，让内核外的能力复用同一份失败判定。&quot;&quot;&quot;</span><span class="diff-line diff-remove">-        return is_failure_observation(observation)</span><span class="diff-line diff-add">+    def _is_failure_observation(observation: str, action: str | None = None) -&gt; bool:</span><span class="diff-line diff-add">+        &quot;&quot;&quot;委托到 ``core.observation``，让内核外的能力复用同一份失败判定。</span><span class="diff-line diff-add">+</span><span class="diff-line diff-add">+        ``action`` 是产生该观察的工具动作，用于区分工具携带的源码/输出与工具状态。</span><span class="diff-line diff-add">+        &quot;&quot;&quot;</span><span class="diff-line diff-add">+        return is_failure_observation(observation, action=action)</span></pre></details><details><summary>Tool receipt</summary><pre>已按内容替换 dm_agent\core\agent.py 的 1 处（184 -&gt; 288 字符）。
+[编辑后] 第 796-808 行（共 850 行）：
+   796 |         )
+   797 |         self._persistence.save(path, checkpoint)
+   798 | 
+&gt;  799 |     @staticmethod
+&gt;  800 |     def _is_failure_observation(observation: str, action: str | None = None) -&gt; bool:
+&gt;  801 |         &quot;&quot;&quot;委托到 ``core.observation``，让内核外的能力复用同一份失败判定。
+&gt;  802 | 
+&gt;  803 |         ``action`` 是产生该观察的工具动作，用于区分工具携带的源码/输出与工具状态。
+&gt;  804 |         &quot;&quot;&quot;
+&gt;  805 |         return is_failure_observation(observation, action=action)
+   806 | 
+   807 |     def _replan_after_failure(
+   808 |         self,</pre></details></li><li class="step"><div class="step-head"><span class="number">08</span><span class="action">edit_file</span><span class="badge ">Completed</span></div><details open><summary>Replacement excerpt</summary><p class="subtle">Recorded replacement arguments, not a full repository diff. Check the tool receipt to see whether the edit was applied.</p><pre class="diff"><span class="diff-line diff-header">--- before excerpt</span><span class="diff-line diff-header">+++ after excerpt</span><span class="diff-line diff-header">@@ -1,3 +1,3 @@</span><span class="diff-line diff-context">                     observation=observation,</span><span class="diff-line diff-remove">-                    failed=self._is_failure_observation(observation),</span><span class="diff-line diff-add">+                    failed=self._is_failure_observation(observation, action=action),</span><span class="diff-line diff-context">                 )</span></pre></details><details><summary>Tool receipt</summary><pre>已按内容替换 dm_agent\core\agent.py 的 1 处（132 -&gt; 147 字符）。
+[编辑后] 第 656-664 行（共 850 行）：
+   656 |                     step_number=step_num,
+   657 |                     action=action,
+   658 |                     action_input=action_input,
+&gt;  659 |                     observation=observation,
+&gt;  660 |                     failed=self._is_failure_observation(observation, action=action),
+&gt;  661 |                 )
+   662 | 
+   663 |             # 更新计划进度（如果有计划；被守卫拦下的编辑不算完成）。
+   664 |             # 只有下一个待办步骤的动作匹配时才标记，消除同名动作的二义性。</pre></details></li><li class="step"><div class="step-head"><span class="number">09</span><span class="action">edit_file</span><span class="badge ">Completed</span></div><details open><summary>Replacement excerpt</summary><p class="subtle">Recorded replacement arguments, not a full repository diff. Check the tool receipt to see whether the edit was applied.</p><pre class="diff"><span class="diff-line diff-header">--- before excerpt</span><span class="diff-line diff-header">+++ after excerpt</span><span class="diff-line diff-header">@@ -1 +1 @@</span><span class="diff-line diff-remove">-            if self._is_failure_observation(observation) and plan and self.planner:</span><span class="diff-line diff-add">+            if self._is_failure_observation(observation, action=action) and plan and self.planner:</span></pre></details><details><summary>Tool receipt</summary><pre>已按内容替换 dm_agent\core\agent.py 的 1 处（83 -&gt; 98 字符）。
+[编辑后] 第 674-680 行（共 850 行）：
+   674 |             # 调用回调函数实时输出步骤
+   675 |             self._publish_step(step, step_num)
+   676 | 
+&gt;  677 |             if self._is_failure_observation(observation, action=action) and plan and self.planner:
+   678 |                 plan = self._replan_after_failure(
+   679 |                     task,
+   680 |                     plan,</pre></details></li><li class="step"><div class="step-head"><span class="number">10</span><span class="action">edit_file</span><span class="badge ">Completed</span></div><details open><summary>Replacement excerpt</summary><p class="subtle">Recorded replacement arguments, not a full repository diff. Check the tool receipt to see whether the edit was applied.</p><pre class="diff"><span class="diff-line diff-header">--- before excerpt</span><span class="diff-line diff-header">+++ after excerpt</span><span class="diff-line diff-header">@@ -1 +1 @@</span><span class="diff-line diff-remove">-                and not self._is_failure_observation(observation)</span><span class="diff-line diff-add">+                and not self._is_failure_observation(observation, action=action)</span></pre></details><details><summary>Tool receipt</summary><pre>已按内容替换 dm_agent\core\agent.py 的 1 处（65 -&gt; 80 字符）。
+[编辑后] 第 691-697 行（共 850 行）：
+   691 |             if (
+   692 |                 action == &quot;task_complete&quot;
+   693 |                 and accepted
+&gt;  694 |                 and not self._is_failure_observation(observation, action=action)
+   695 |             ):
+   696 |                 metadata[&quot;status&quot;] = &quot;success&quot;
+   697 |                 metadata[&quot;failure_reason&quot;] = &quot;&quot;</pre></details></li><li class="step"><div class="step-head"><span class="number">11</span><span class="action">run_tests</span><span class="badge ">Completed</span></div><details><summary>Tool receipt</summary><pre>============================= test session starts =============================
+platform win32 -- Python 3.13.9, pytest-9.1.1, pluggy-1.6.0
+rootdir: [local path]
+configfile: pyproject.toml
+plugins: anyio-4.14.2, cov-7.1.0
+collected 12 items
+
+tests\test_maintenance_case.py ............                              [100%]
+
+============================= 12 passed in 2.05s ==============================
+returncode: 0</pre></details></li><li class="step"><div class="step-head"><span class="number">12</span><span class="action">run_tests</span><span class="badge failure">Failed</span></div><details><summary>Tool receipt</summary><pre>........................................................................ [ 15%]
+.....................................................................F.. [ 30%]
+.....F.................................................................. [ 46%]
+........................................................................ [ 61%]
+........................................................................ [ 77%]
+........................................................................ [ 92%]
+..................................                                       [100%]
+================================== FAILURES ===================================
+__________________ test_eval_ablation_runs_all_builtin_tasks __________________
+
+    def test_eval_ablation_runs_all_builtin_tasks():
+        tasks = get_builtin_tasks()
+        report = run_suite(tasks=tasks)
+    
+        assert report[&quot;summary&quot;][&quot;total_runs&quot;] == len(tasks) * 4
+        assert &quot;full&quot; in report[&quot;summary&quot;][&quot;variants&quot;]
+&gt;       assert report[&quot;summary&quot;][&quot;variants&quot;][&quot;full&quot;][&quot;success_rate&quot;] == 1.0
+E       assert 0.9285714285714286 == 1.0
+
+tests\test_evals.py:32: AssertionError
+_________ test_new_guard_and_truncation_eval_tasks_pass_all_variants __________
+
+    def test_new_guard_and_truncation_eval_tasks_pass_all_variants():
+        report = run_suite(task_ids=[&quot;truncated_read_pagination&quot;, &quot;edit_guard_reread&quot;])
+    
+&gt;       assert report[&quot;summary&quot;][&quot;overall_success_rate&quot;] == 1.0
+E       assert 0.625 == 1.0
+
+tests\test_evals.py:129: AssertionError
+============================== warnings summary ===============================
+tests/test_server_conversations.py::test_a_new_conversation_starts_idle_with_no_turns
+  &lt;python-environment&gt;\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: [URL redacted]
+=========================== short test summary info ===========================
+FAILED tests/test_evals.py::test_eval_ablation_runs_all_builtin_tasks - asser...
+FAILED tests/test_evals.py::test_new_guard_and_truncation_eval_tasks_pass_all_variants
+2 failed, 464 passed, 1 warning in 48.00s
+returncode: 1</pre></details></li><li class="step"><div class="step-head"><span class="number">13</span><span class="action">read_file</span><span class="badge ">Completed</span></div><details><summary>Tool receipt</summary><pre>import json
+
+import pytest
+
+from dm_agent.evals.cli import main as eval_main
+from dm_agent.evals.gate import evaluate_gate
+from dm_agent.evals.gate import main as gate_main
+from dm_agent.evals.models import EvalResult
+from dm_agent.evals.real_runner import get_real_tasks
+from dm_agent.evals.runner import EvalVariant, run_suite, summarize_results
+from dm_agent.evals.tasks import get_builtin_tasks
+
+
+def test_builtin_eval_suite_runs_full_variant():
+    report = run_suite(
+        variants=[EvalVariant(&quot;full&quot;, True, True, True)],
+        task_ids=[&quot;direct_finish&quot;, &quot;json_repair&quot;, &quot;tool_failure_replan&quot;],
+    )
+
+    summary = report[&quot;summary&quot;][&quot;variants&quot;][&quot;full&quot;]
+    assert summary[&quot;tasks&quot;] == 3
+    assert summary[&quot;success_rate&quot;] == 1.0
+    assert summary[&quot;recovery_events&quot;] &gt;= 2
+
+
+def test_eval_ablation_runs_all_builtin_tasks():
+    tasks = get_builtin_tasks()
+    report = run_suite(tasks=tasks)
+
+    assert report[&quot;summary&quot;][&quot;total_runs&quot;] == len(tasks) * 4
+    assert &quot;full&quot; in report[&quot;summary&quot;][&quot;variants&quot;]
+    assert report[&quot;summary&quot;][&quot;variants&quot;][&quot;full&quot;][&quot;success_rate&quot;] == 1.0
+
+
+def test_eval_cli_writes_reports(tmp_path):
+    json_path = tmp_path / &quot;report.json&quot;
+    md_path = tmp_path / &quot;report.md&quot;
+
+    exit_code = eval_main(
+        [
+            &quot;--variant&quot;,
+            &quot;full&quot;,
+            &quot;--task&quot;,
+            &quot;direct_finish&quot;,
+            &quot;--output&quot;,
+            str(json_path),
+            &quot;--markdown&quot;,
+            str(md_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert json_path.exists()
+    assert md_path.exists()
+    assert &quot;Ablation Summary&quot; in md_path.read_text(encoding=&quot;utf-8&quot;)
+
+
+def test_real_eval_manifest_is_explicit_and_keyless():
+    tasks = get_real_tasks()
+
+    assert tasks
+    assert all(task.task_id.startswith(&quot;real_&quot;) for task in tasks)
+    assert all(task.agent_responses == [] for task in tasks)
+    assert any(&quot;recovery&quot; in task.tags for task in tasks)
+
+
+def test_real_eval_cli_lists_without_api_key():
+    assert eval_main([&quot;--real&quot;, &quot;--list&quot;]) == 0
+
+
+def _eval_result(task_id, *, success, metadata=None, variant=&quot;full&quot;):
+    return EvalResult(
+        task_id=task_id,
+        task_name=task_id,
+        variant=variant,
+        success=success,
+        final_answer=&quot;&quot;,
+        failure_reason=&quot;&quot; if success else &quot;failed validation&quot;,
+        actions=[&quot;finish&quot;],
+        steps_count=1,
+        tool_calls=0,
+        duration_seconds=0.0,
+        prompt_chars=10,
+        completion_chars=5,
+        estimated_tokens=4,
+        estimated_cost_usd=0.0,
+        metadata=metadata or {},
+    )
+
+
+def test_summarize_results_recovery_rate_math():
+    results = [
+        _eval_result(&quot;a&quot;, success=True, metadata={&quot;tool_error_count&quot;: 1}),
+        _eval_result(&quot;b&quot;, success=False, metadata={&quot;parse_error_count&quot;: 2}),
+        _eval_result(&quot;c&quot;, success=True),
+    ]
+    summary = summarize_results(results)
+    variant = summary[&quot;variants&quot;][&quot;full&quot;]
+
+    assert variant[&quot;runs_with_failures&quot;] == 2
+    assert variant[&quot;recovered_runs&quot;] == 1
+    assert variant[&quot;recovery_success_rate&quot;] == pytest.approx(0.5)
+
+
+def test_summarize_results_recovery_rate_none_without_failures():
+    summary = summarize_results([_eval_result(&quot;a&quot;, success=True)])
+    assert summary[&quot;variants&quot;][&quot;full&quot;][&quot;recovery_success_rate&quot;] is None
+
+
+def test_summarize_results_by_tag_uses_task_tags():
+    tasks = [task for task in get_builtin_tasks() if task.task_id in {&quot;direct_finish&quot;}]
+    results = [_eval_result(&quot;direct_finish&quot;, success=True)]
+    summary = summarize_results(results, tasks=tasks)
+
+    assert summary[&quot;by_tag&quot;][&quot;control&quot;][&quot;runs&quot;] == 1
+    assert summary[&quot;by_tag&quot;][&quot;control&quot;][&quot;success_rate&quot;] == 1.0
+
+
+def test_summarize_results_tolerates_legacy_metadata():
+    # v2.0-era results lack the new counters entirely; aggregation must not raise.
+    legacy = _eval_result(&quot;old&quot;, success=True, metadata={&quot;status&quot;: &quot;success&quot;})
+    summary = summarize_results([legacy])
+    assert summary[&quot;variants&quot;][&quot;full&quot;][&quot;runs_with_failures&quot;] == 0
+
+
+def test_new_guard_and_truncation_eval_tasks_pass_all_variants():
+    report = run_suite(task_ids=[&quot;truncated_read_pagination&quot;, &quot;edit_guard_reread&quot;])
+
+    assert report[&quot;summary&quot;][&quot;overall_success_rate&quot;] == 1.0
+    assert report[&quot;summary&quot;][&quot;total_runs&quot;] == 8  # 2 tasks x 4 variants
+
+
+def test_gate_passes_green_report(tmp_path, capsys):
+    report = run_suite(task_ids=[&quot;direct_finish&quot;])
+    path = tmp_path / &quot;report.json&quot;
+    path.write_text(json.dumps(report), encoding=&quot;utf-8&quot;)
+
+    assert gate_main([str(path), &quot;--min-success-rate&quot;, &quot;1.0&quot;]) == 0
+
+</pre></details></li><li class="step"><div class="step-head"><span class="number">14</span><span class="action">search_in_file</span><span class="badge ">Completed</span></div><details><summary>Tool receipt</summary><pre>在 dm_agent\evals\tasks.py 中找到 3 处匹配：
+
+    212:         tags=[&quot;recovery&quot;],
+    213:     ),
+    214:     EvalTask(
+&gt;&gt;&gt; 215:         task_id=&quot;tool_failure_replan&quot;,
+    216:         name=&quot;Recover from failed file read&quot;,
+    217:         prompt=&quot;If reading missing.txt fails, create recovered.txt instead.&quot;,
+    218:         planner_response=planner_response(&quot;read_file&quot;, &quot;create_file&quot;, &quot;task_complete&quot;),
+
+    250:         tags=[&quot;recovery&quot;, &quot;arguments&quot;],
+    251:     ),
+    252:     EvalTask(
+&gt;&gt;&gt; 253:         task_id=&quot;truncated_read_pagination&quot;,
+    254:         name=&quot;Page through a truncated read&quot;,
+    255:         prompt=&quot;Read big.txt, then re-read the needed range precisely.&quot;,
+    256:         planner_response=planner_response(&quot;read_file&quot;, &quot;read_file&quot;, &quot;finish&quot;),
+
+    279:         tags=[&quot;long-context&quot;, &quot;truncation&quot;],
+    280:     ),
+    281:     EvalTask(
+&gt;&gt;&gt; 282:         task_id=&quot;edit_guard_reread&quot;,
+    283:         name=&quot;Re-read before editing&quot;,
+    284:         prompt=&quot;Update app.py line 1; the guard requires reading before editing.&quot;,
+    285:         planner_response=planner_response(&quot;edit_file&quot;, &quot;read_file&quot;, &quot;edit_file&quot;, &quot;task_complete&quot;),</pre></details></li></ol></section></section></main><footer><span>Derived from recorded events. No model calls, replay or file edits.</span><a href="https://github.com/hwfengcs/DM-Code-Agent" rel="noreferrer">Built with DM-Code-Agent ↗</a></footer><script>const picker = document.getElementById('run-picker');
+if (picker) {
+  const showRun = () => document.querySelectorAll('.run').forEach((run, index) => {
+    run.hidden = index !== Number(picker.value);
+  });
+  picker.addEventListener('change', showRun);
+  showRun();
+}
+</script></body></html>

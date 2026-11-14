@@ -22,6 +22,11 @@ python -m http.server 8876 --bind 127.0.0.1 --directory build/site
 `demo-manifest.json`。不复制 JSONL、checkpoint、用户会话或环境变量。
 `.github/workflows/pages.yml` 在 main 更新后构建并发布到 GitHub Pages。
 
+另有一个显式允许发布的[真实维护案例](case-studies/failure-classification/README_ZH.md)：
+构建器只复制已经审阅、替换本机路径的 `report.html` 到
+`cases/failure-classification.html`，不复制原始 trace、用量文件或工作区。
+该案例包含真实模型的未完成结果，与两份脚本化 demo 分开说明。
+
 ## 截图与 38 秒操作录屏
 
 `docs/media/demo-preview.png` 和 `social-preview.png` 来自真实生成的页面。

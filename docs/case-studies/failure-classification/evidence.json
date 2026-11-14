@@ -1,0 +1,107 @@
+{
+  "recorded_on": "2026-11-14",
+  "source": "one live-model repair of a historical public defect",
+  "base_commit": "bd35d253abb18cabdaedf1caa1d5dd91cd985f59",
+  "agent_commit": "c07646ae7a369dfff72f2d644517af63cff6e6d7",
+  "configured_model": "deepseek-chat",
+  "reported_models": [
+    "deepseek-flash"
+  ],
+  "agent_status": "max_steps_exceeded",
+  "max_steps": 14,
+  "agent_configuration": {
+    "max_steps": 14,
+    "max_replans": 2,
+    "temperature": 0,
+    "enable_planning": true,
+    "enable_compression": false,
+    "tools": [
+      "read_file",
+      "edit_file",
+      "search_in_file",
+      "list_directory",
+      "run_tests"
+    ],
+    "client_timeout_seconds": 90,
+    "client_max_retries": 1,
+    "max_completion_tokens_per_request": 2400,
+    "max_client_calls": 18
+  },
+  "request_count_scope": "Completed client calls with usage responses; transport retry attempts were not individually recorded.",
+  "model_requests": 17,
+  "usage": {
+    "prompt_tokens": 164476,
+    "completion_tokens": 4670,
+    "total_tokens": 169146,
+    "prompt_cache_hit_tokens": 145024,
+    "prompt_cache_miss_tokens": 19452
+  },
+  "elapsed_seconds_including_postcheck": 88.61,
+  "billed_cost": null,
+  "billed_cost_note": "Provider usage is recorded per request; billing was not queried.",
+  "changed_files": [
+    "dm_agent/core/agent.py",
+    "dm_agent/core/observation.py"
+  ],
+  "regression_tests_unchanged": true,
+  "human_intervention": "Task and regression tests were supplied; no human edits during the model run.",
+  "live_model_tool_checks": [
+    {
+      "step": 1,
+      "suite": "supplied regression",
+      "passed": 5,
+      "failed": 7
+    },
+    {
+      "step": 11,
+      "suite": "supplied regression",
+      "passed": 12,
+      "failed": 0
+    },
+    {
+      "step": 12,
+      "suite": "historical suite plus supplied regression",
+      "passed": 464,
+      "failed": 2
+    }
+  ],
+  "independent_patch_reproduction": {
+    "base_commit": "bd35d253abb18cabdaedf1caa1d5dd91cd985f59",
+    "model_requests": 0,
+    "applied_patch": "archived live-model output; not a new agent run",
+    "patch_sha256": "3f5525a1f3cb4d76621558c5198df4484d06935e908096ba5bf88269f2f7dfdc",
+    "regression_sha256": "ceed39b6b8ea2c7ff37bcc95d5e918f094645f6c5dc3b4daba227eb5a8695e8a",
+    "before": {
+      "returncode": 1,
+      "log": "before.txt",
+      "test_path": "tests/test_maintenance_case.py"
+    },
+    "before_full_suite": {
+      "returncode": 1,
+      "log": "before-full-suite.txt",
+      "test_path": "tests"
+    },
+    "after": {
+      "returncode": 0,
+      "log": "after.txt",
+      "test_path": "tests/test_maintenance_case.py"
+    },
+    "after_full_suite": {
+      "returncode": 1,
+      "log": "after-full-suite.txt",
+      "test_path": "tests"
+    }
+  },
+  "publication": "Derived report and logs with local paths replaced. Original private trace and workspace retained. No full model I/O captured.",
+  "artifact_sha256": {
+    "after-full-suite.txt": "65ad1ade41ea70accb8b9718fb3d1eb4a8f07d9c88caba2bbccdd143c556ffcf",
+    "after.txt": "89158e42bc471e5e3167f57514fb91cd07dbf462ff5004ecba73c5d66d156cad",
+    "agent.patch": "3f5525a1f3cb4d76621558c5198df4484d06935e908096ba5bf88269f2f7dfdc",
+    "before-full-suite.txt": "383274587005e54299fe0463b91a7445b3185a581afb591c31645087f575817d",
+    "before.txt": "3ba3d44967a3533e5d20de6d8fe9697ea6a8c8c969f4a23def496c35f8e3a116",
+    "regression_test.py.txt": "ceed39b6b8ea2c7ff37bcc95d5e918f094645f6c5dc3b4daba227eb5a8695e8a",
+    "report.html": "d675abe91068e027b423b80bebca9b136a86c159b97e2eaedfaee22931cd4120",
+    "requests.json": "26f3c3e8ac67e09e7be38a391916d35c5050cecf46ef773d2c7b5c41aaa70698",
+    "task.txt": "65e590fa9d0eed2f166999bd751fc811e519b76514ea07fc97f67f0d7174c9d2"
+  }
+}

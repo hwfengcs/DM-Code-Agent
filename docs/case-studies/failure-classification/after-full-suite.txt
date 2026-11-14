@@ -1,0 +1,39 @@
+........................................................................ [ 15%]
+.....................................................................F.. [ 30%]
+.....F.................................................................. [ 46%]
+........................................................................ [ 61%]
+........................................................................ [ 77%]
+........................................................................ [ 92%]
+..................................                                       [100%]
+================================== FAILURES ===================================
+__________________ test_eval_ablation_runs_all_builtin_tasks __________________
+
+    def test_eval_ablation_runs_all_builtin_tasks():
+        tasks = get_builtin_tasks()
+        report = run_suite(tasks=tasks)
+    
+        assert report["summary"]["total_runs"] == len(tasks) * 4
+        assert "full" in report["summary"]["variants"]
+>       assert report["summary"]["variants"]["full"]["success_rate"] == 1.0
+E       assert 0.9285714285714286 == 1.0
+
+tests\test_evals.py:32: AssertionError
+_________ test_new_guard_and_truncation_eval_tasks_pass_all_variants __________
+
+    def test_new_guard_and_truncation_eval_tasks_pass_all_variants():
+        report = run_suite(task_ids=["truncated_read_pagination", "edit_guard_reread"])
+    
+>       assert report["summary"]["overall_success_rate"] == 1.0
+E       assert 0.625 == 1.0
+
+tests\test_evals.py:129: AssertionError
+============================== warnings summary ===============================
+tests/test_server_conversations.py::test_a_new_conversation_starts_idle_with_no_turns
+  <python-environment>\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_evals.py::test_eval_ablation_runs_all_builtin_tasks - asser...
+FAILED tests/test_evals.py::test_new_guard_and_truncation_eval_tasks_pass_all_variants
+2 failed, 464 passed, 1 warning in 47.05s

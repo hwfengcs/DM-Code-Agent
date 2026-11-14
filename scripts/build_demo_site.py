@@ -32,6 +32,13 @@ def build_site(output: Path, demo_output: Path) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=True)
     for name in ("index.html", "styles.css", "app.js", "mark.svg"):
         shutil.copyfile(ROOT / "site" / name, output / name)
+    cases = output / "cases"
+    cases.mkdir()
+    # 已审阅的单文件报告；不复制原始 trace、模型用量或本机工作区。
+    shutil.copyfile(
+        ROOT / "docs" / "case-studies" / "failure-classification" / "report.html",
+        cases / "failure-classification.html",
+    )
     fonts = output / "fonts"
     fonts.mkdir()
     for name in ("Geist-Variable.woff2", "GeistMono-Variable.woff2"):

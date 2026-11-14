@@ -1,0 +1,144 @@
+diff --git a/dm_agent/core/agent.py b/dm_agent/core/agent.py
+index 622122c..e7f60f1 100644
+--- a/dm_agent/core/agent.py
++++ b/dm_agent/core/agent.py
+@@ -657,7 +657,7 @@ class ReactAgent:
+                     action=action,
+                     action_input=action_input,
+                     observation=observation,
+-                    failed=self._is_failure_observation(observation),
++                    failed=self._is_failure_observation(observation, action=action),
+                 )
+ 
+             # 更新计划进度（如果有计划；被守卫拦下的编辑不算完成）。
+@@ -674,7 +674,7 @@ class ReactAgent:
+             # 调用回调函数实时输出步骤
+             self._publish_step(step, step_num)
+ 
+-            if self._is_failure_observation(observation) and plan and self.planner:
++            if self._is_failure_observation(observation, action=action) and plan and self.planner:
+                 plan = self._replan_after_failure(
+                     task,
+                     plan,
+@@ -691,7 +691,7 @@ class ReactAgent:
+             if (
+                 action == "task_complete"
+                 and accepted
+-                and not self._is_failure_observation(observation)
++                and not self._is_failure_observation(observation, action=action)
+             ):
+                 metadata["status"] = "success"
+                 metadata["failure_reason"] = ""
+@@ -797,9 +797,12 @@ class ReactAgent:
+         self._persistence.save(path, checkpoint)
+ 
+     @staticmethod
+-    def _is_failure_observation(observation: str) -> bool:
+-        """委托到 ``core.observation``，让内核外的能力复用同一份失败判定。"""
+-        return is_failure_observation(observation)
++    def _is_failure_observation(observation: str, action: str | None = None) -> bool:
++        """委托到 ``core.observation``，让内核外的能力复用同一份失败判定。
++
++        ``action`` 是产生该观察的工具动作，用于区分工具携带的源码/输出与工具状态。
++        """
++        return is_failure_observation(observation, action=action)
+ 
+     def _replan_after_failure(
+         self,
+diff --git a/dm_agent/core/observation.py b/dm_agent/core/observation.py
+index 0320f13..62c330a 100644
+--- a/dm_agent/core/observation.py
++++ b/dm_agent/core/observation.py
+@@ -10,6 +10,7 @@
+ 
+ from __future__ import annotations
+ 
++import re
+ from typing import Any
+ 
+ from dm_agent.memory.context_budget import truncate_observation
+@@ -34,9 +35,82 @@ FAILURE_MARKERS = (
+     "不存在",
+ )
+ 
++# 文件/目录类工具：观察文本是工具携带的源码或目录列表，内容里出现 "error"、
++# "Error"、"不存在" 等词并不代表工具失败。只有工具自身的拒绝/失败文案才算失败。
++FILE_TOOL_ACTIONS = frozenset(
++    {
++        "read_file",
++        "edit_file",
++        "write_file",
++        "create_file",
++        "list_directory",
++        "search_in_file",
++        "search_files",
++        "delete_file",
++        "move_file",
++        "copy_file",
++    }
++)
++
++# 进程类工具：观察文本里带 "returncode: N"，N 非 0 即失败；N 为 0 时即使
++# stdout/stderr 里出现 ERROR 也不算失败。
++PROCESS_TOOL_ACTIONS = frozenset(
++    {
++        "run_python",
++        "run_shell",
++        "run_tests",
++        "run_command",
++        "execute",
++    }
++)
++
++# 文件工具自身的失败/拒绝文案（不含源码内容里可能出现的普通词）。
++FILE_TOOL_FAILURE_MARKERS = (
++    "Tool execution failed",
++    "Unknown tool",
++    "Tool arguments",
++    "parse failed",
++    "Critic rejected",
++    "Critic review failed",
++    "[语法检查] 未通过",
++    "Traceback",
++)
++
++# 文件/路径类拒绝文案，例如 "文件 missing.py 不存在。"、"路径 tests 不是文件。"。
++_FILE_TOOL_REFUSAL_PATTERN = re.compile(
++    r"(?:文件|路径|目录|file|path|directory)\b[^\n]{0,200}?"
++    r"(?:不存在|不是文件|不是目录|不是文件夹|not found|not a file|not a directory|permission denied|权限)",
++    re.IGNORECASE,
++)
++
++_RETURNCODE_PATTERN = re.compile(r"returncode:\s*(-?\d+)")
++
++
++def _is_file_tool_failure(observation: str) -> bool:
++    """文件/目录类工具：只认工具自身的失败/拒绝文案，忽略携带的源码内容。"""
++    if any(marker in observation for marker in FILE_TOOL_FAILURE_MARKERS):
++        return True
++    return bool(_FILE_TOOL_REFUSAL_PATTERN.search(observation))
++
++
++def _is_process_tool_failure(observation: str) -> bool:
++    """进程类工具：以 returncode 为准；缺失时回退到保守的标记判定。"""
++    match = _RETURNCODE_PATTERN.search(observation)
++    if match is not None:
++        return int(match.group(1)) != 0
++    return any(marker in observation for marker in FAILURE_MARKERS)
++
++
++def is_failure_observation(observation: str, action: str | None = None) -> bool:
++    """判断一条观察是否代表工具失败。
+ 
+-def is_failure_observation(observation: str) -> bool:
+-    """观察文本里是否出现失败标记。"""
++    ``action`` 是产生该观察的工具动作。带上它时按工具类型区分「工具携带的源码/输出」
++    与「工具自身的状态」；缺失或属于未知扩展时保持保守的旧标记判定。
++    """
++    if action in FILE_TOOL_ACTIONS:
++        return _is_file_tool_failure(observation)
++    if action in PROCESS_TOOL_ACTIONS:
++        return _is_process_tool_failure(observation)
+     return any(marker in observation for marker in FAILURE_MARKERS)
+ 
+ 

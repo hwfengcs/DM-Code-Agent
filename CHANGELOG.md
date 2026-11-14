@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### First-run paths and maintenance evidence
+
+- Added a complete English getting-started guide and bilingual Xinference/Qwen recipes.
+- Added an explicit Chat Completions provider extension with isolated credentials and offline
+  SDK protocol tests. Examples are now included in source distributions.
+- Recorded one live-model repair of a real historical repository defect, including the
+  incomplete outcome, patch, supplied tests, token usage, and a zero-model offline replay.
+  The public exhibit links to its reviewed HTML report; the historical patch is not a code update.
+- Prepared bilingual distribution drafts and a read-only GitHub traffic snapshot script.
+  External posts and PyPI account binding remain separate from these local artifacts.
+
 ## [2.1.0] - 2026-11-14
 
 ### Try and share the inspection workflow

@@ -1,7 +1,11 @@
 # Distribution checklist
 
-This is the local launch checklist for DM-Code-Agent v2. It is a plan, not a record of completed
-external posting.
+The current preparation record and bilingual drafts are in [docs/distribution](../distribution/README.md).
+Use those materials for v2.1.0. The v2 plan below is retained as history, not as a record of
+completed external posting. Its Reflexion/Critic/SWE-bench Lite claims describe removed modules
+and must not be reused for the current release.
+
+## Historical v2 plan
 
 ## GitHub release
 

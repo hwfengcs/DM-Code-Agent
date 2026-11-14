@@ -8,7 +8,7 @@
 
 **English** | [简体中文](README_ZH.md)
 
-[**Open the interactive demo →**](https://hwfengcs.github.io/DM-Code-Agent/) · [Watch the walkthrough](docs/media/demo-walkthrough.gif) · [Get started](docs/getting-started.md)
+[**Open the interactive demo →**](https://hwfengcs.github.io/DM-Code-Agent/) · [Watch the walkthrough](docs/media/demo-walkthrough.gif) · [Get started](docs/getting-started.en.md)
 
 [![A coding run with its execution steps, changes, and verification evidence](docs/media/demo-preview.png)](docs/media/demo-preview.png)
 
@@ -55,7 +55,9 @@ dm-agent "Inspect this repository and identify the modules that most need tests"
 dm-agent-trace analyze sessions/review.jsonl
 ```
 
-For interactive work, `dm-agent-web` opens the full conversation and audit console. [Configuration and first task →](docs/getting-started.md)
+For interactive work, `dm-agent-web` opens the full conversation and audit console. [Configuration and first task →](docs/getting-started.en.md)
+
+Using Xinference or another Chat Completions server? Follow the [local-model extension recipe](docs/local-models.en.md). It uses an explicit endpoint and keeps existing cloud-provider keys separate.
 
 The agent can modify files and run commands with your local permissions. Use a Git checkout you can review; it is not a sandbox. `--trace` is redacted by default. Full model I/O capture, checkpoint recovery, and tool replay have separate, explicit controls—see [session privacy and replay](docs/tracing.md).
 
@@ -72,6 +74,8 @@ The agent can modify files and run commands with your local permissions. Use a G
 The console and CLI use the same trace-analysis functions. A shareable HTML report works without a server and includes replacement excerpts when content export is enabled; it is not a complete Git diff. For local investigation, the trace tools also support explicit replay and checkpoint-based forks.
 
 ## Three things we learned by reading traces
+
+**A real maintenance case:** [Twelve targeted checks passed. The repair still wasn't ready.](docs/case-studies/failure-classification/README.md) A live model repaired a historical defect in this repository, then hit two failing checks in the broader suite and exhausted its step budget. Inspect the [run report](https://hwfengcs.github.io/DM-Code-Agent/cases/failure-classification.html), exact patch, supplied tests, and independent offline reproduction.
 
 These articles explain failures in this project's historical experiments, with small reproductions and links to the original evidence:
 
@@ -98,11 +102,12 @@ Default tests and deterministic evals need no API key. The [contribution guide](
 
 | Start here | Go deeper |
 | --- | --- |
-| [Getting started](docs/getting-started.md) · [中文首页](README_ZH.md) | [Architecture](docs/architecture.md) |
+| [Getting started](docs/getting-started.en.md) · [中文首页](README_ZH.md) | [Architecture](docs/architecture.md) |
+| [Local models / Xinference](docs/local-models.en.md) | [Provider extension example](examples/openai_compatible.py) |
 | [CLI reference](docs/cli.md) · [Web console](docs/web.md) | [Extension API](docs/extensions.md) |
 | [Sessions, privacy, and HTML export](docs/tracing.md) | [Benchmarks](docs/benchmarks.md) |
 | [Articles in English and Chinese](docs/articles/README.md) | [Full documentation index](docs/README.md) |
 
-Most reference documentation is currently in Chinese; the homepage and standalone articles are available in both languages. If the project helps you understand a coding agent's behavior, a star helps other builders find it. Reproducible bug reports and small, focused contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+The homepage, getting-started guide, local-model recipe, and standalone articles are available in both languages; deeper reference documentation is mostly in Chinese. If the project helps you understand a coding agent's behavior, a star helps other builders find it. Reproducible bug reports and small, focused contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 MIT licensed. See [LICENSE](LICENSE).

@@ -1,0 +1,218 @@
+FFF..FF.F.F.                                                             [100%]
+================================== FAILURES ===================================
+__ test_observation_status[read_file-1 | from errors import NotFound-False] ___
+
+action = 'read_file', observation = '1 | from errors import NotFound'
+failed = False
+
+    @pytest.mark.parametrize(
+        "action,observation,failed",
+        [
+            ("read_file", "1 | from errors import NotFound", False),
+            ("edit_file", "已替换 1 处。\n2 | raise ValueError('invalid')", False),
+            ("list_directory", "errors.py\nmain.py", False),
+            ("run_python", "stdout:\nERROR: expected fixture\nreturncode: 0", False),
+            ("run_tests", "stdout:\nall tests passed\nreturncode: 0", False),
+            ("run_python", "stderr:\nprocess stopped\nreturncode: 2", True),
+            ("run_shell", "stderr:\nprocess stopped\nreturncode: 255", True),
+            ("read_file", "文件 missing.py 不存在。", True),
+            ("read_file", "路径 tests 不是文件。", True),
+            ("edit_file", "Tool execution failed: permission denied", True),
+            ("edit_file", "[语法检查] 未通过：invalid syntax", True),
+            ("third_party_tool", "Error: extension failed", True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {"action": action} if "action" in inspect.signature(is_failure_observation).parameters else {}
+>       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert True is False
+E        +  where True = is_failure_observation('1 | from errors import NotFound', **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+_ test_observation_status[edit_file-\u5df2\u66ff\u6362 1 \u5904\u3002\n2 | raise ValueError('invalid')-False] _
+
+action = 'edit_file', observation = "已替换 1 处。\n2 | raise ValueError('invalid')"
+failed = False
+
+    @pytest.mark.parametrize(
+        "action,observation,failed",
+        [
+            ("read_file", "1 | from errors import NotFound", False),
+            ("edit_file", "已替换 1 处。\n2 | raise ValueError('invalid')", False),
+            ("list_directory", "errors.py\nmain.py", False),
+            ("run_python", "stdout:\nERROR: expected fixture\nreturncode: 0", False),
+            ("run_tests", "stdout:\nall tests passed\nreturncode: 0", False),
+            ("run_python", "stderr:\nprocess stopped\nreturncode: 2", True),
+            ("run_shell", "stderr:\nprocess stopped\nreturncode: 255", True),
+            ("read_file", "文件 missing.py 不存在。", True),
+            ("read_file", "路径 tests 不是文件。", True),
+            ("edit_file", "Tool execution failed: permission denied", True),
+            ("edit_file", "[语法检查] 未通过：invalid syntax", True),
+            ("third_party_tool", "Error: extension failed", True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {"action": action} if "action" in inspect.signature(is_failure_observation).parameters else {}
+>       assert is_failure_observation(observation, **kwargs) is failed
+E       assert True is False
+E        +  where True = is_failure_observation("已替换 1 处。\n2 | raise ValueError('invalid')", **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+______ test_observation_status[list_directory-errors.py\nmain.py-False] _______
+
+action = 'list_directory', observation = 'errors.py\nmain.py', failed = False
+
+    @pytest.mark.parametrize(
+        "action,observation,failed",
+        [
+            ("read_file", "1 | from errors import NotFound", False),
+            ("edit_file", "已替换 1 处。\n2 | raise ValueError('invalid')", False),
+            ("list_directory", "errors.py\nmain.py", False),
+            ("run_python", "stdout:\nERROR: expected fixture\nreturncode: 0", False),
+            ("run_tests", "stdout:\nall tests passed\nreturncode: 0", False),
+            ("run_python", "stderr:\nprocess stopped\nreturncode: 2", True),
+            ("run_shell", "stderr:\nprocess stopped\nreturncode: 255", True),
+            ("read_file", "文件 missing.py 不存在。", True),
+            ("read_file", "路径 tests 不是文件。", True),
+            ("edit_file", "Tool execution failed: permission denied", True),
+            ("edit_file", "[语法检查] 未通过：invalid syntax", True),
+            ("third_party_tool", "Error: extension failed", True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {"action": action} if "action" in inspect.signature(is_failure_observation).parameters else {}
+>       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert True is False
+E        +  where True = is_failure_observation('errors.py\nmain.py', **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+_ test_observation_status[run_python-stderr:\nprocess stopped\nreturncode: 2-True] _
+
+action = 'run_python', observation = 'stderr:\nprocess stopped\nreturncode: 2'
+failed = True
+
+    @pytest.mark.parametrize(
+        "action,observation,failed",
+        [
+            ("read_file", "1 | from errors import NotFound", False),
+            ("edit_file", "已替换 1 处。\n2 | raise ValueError('invalid')", False),
+            ("list_directory", "errors.py\nmain.py", False),
+            ("run_python", "stdout:\nERROR: expected fixture\nreturncode: 0", False),
+            ("run_tests", "stdout:\nall tests passed\nreturncode: 0", False),
+            ("run_python", "stderr:\nprocess stopped\nreturncode: 2", True),
+            ("run_shell", "stderr:\nprocess stopped\nreturncode: 255", True),
+            ("read_file", "文件 missing.py 不存在。", True),
+            ("read_file", "路径 tests 不是文件。", True),
+            ("edit_file", "Tool execution failed: permission denied", True),
+            ("edit_file", "[语法检查] 未通过：invalid syntax", True),
+            ("third_party_tool", "Error: extension failed", True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {"action": action} if "action" in inspect.signature(is_failure_observation).parameters else {}
+>       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert False is True
+E        +  where False = is_failure_observation('stderr:\nprocess stopped\nreturncode: 2', **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+_ test_observation_status[run_shell-stderr:\nprocess stopped\nreturncode: 255-True] _
+
+action = 'run_shell', observation = 'stderr:\nprocess stopped\nreturncode: 255'
+failed = True
+
+    @pytest.mark.parametrize(
+        "action,observation,failed",
+        [
+            ("read_file", "1 | from errors import NotFound", False),
+            ("edit_file", "已替换 1 处。\n2 | raise ValueError('invalid')", False),
+            ("list_directory", "errors.py\nmain.py", False),
+            ("run_python", "stdout:\nERROR: expected fixture\nreturncode: 0", False),
+            ("run_tests", "stdout:\nall tests passed\nreturncode: 0", False),
+            ("run_python", "stderr:\nprocess stopped\nreturncode: 2", True),
+            ("run_shell", "stderr:\nprocess stopped\nreturncode: 255", True),
+            ("read_file", "文件 missing.py 不存在。", True),
+            ("read_file", "路径 tests 不是文件。", True),
+            ("edit_file", "Tool execution failed: permission denied", True),
+            ("edit_file", "[语法检查] 未通过：invalid syntax", True),
+            ("third_party_tool", "Error: extension failed", True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {"action": action} if "action" in inspect.signature(is_failure_observation).parameters else {}
+>       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert False is True
+E        +  where False = is_failure_observation('stderr:\nprocess stopped\nreturncode: 255', **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+_ test_observation_status[read_file-\u8def\u5f84 tests \u4e0d\u662f\u6587\u4ef6\u3002-True] _
+
+action = 'read_file', observation = '路径 tests 不是文件。', failed = True
+
+    @pytest.mark.parametrize(
+        "action,observation,failed",
+        [
+            ("read_file", "1 | from errors import NotFound", False),
+            ("edit_file", "已替换 1 处。\n2 | raise ValueError('invalid')", False),
+            ("list_directory", "errors.py\nmain.py", False),
+            ("run_python", "stdout:\nERROR: expected fixture\nreturncode: 0", False),
+            ("run_tests", "stdout:\nall tests passed\nreturncode: 0", False),
+            ("run_python", "stderr:\nprocess stopped\nreturncode: 2", True),
+            ("run_shell", "stderr:\nprocess stopped\nreturncode: 255", True),
+            ("read_file", "文件 missing.py 不存在。", True),
+            ("read_file", "路径 tests 不是文件。", True),
+            ("edit_file", "Tool execution failed: permission denied", True),
+            ("edit_file", "[语法检查] 未通过：invalid syntax", True),
+            ("third_party_tool", "Error: extension failed", True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {"action": action} if "action" in inspect.signature(is_failure_observation).parameters else {}
+>       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert False is True
+E        +  where False = is_failure_observation('路径 tests 不是文件。', **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+_ test_observation_status[edit_file-[\u8bed\u6cd5\u68c0\u67e5] \u672a\u901a\u8fc7\uff1ainvalid syntax-True] _
+
+action = 'edit_file', observation = '[语法检查] 未通过：invalid syntax', failed = True
+
+    @pytest.mark.parametrize(
+        "action,observation,failed",
+        [
+            ("read_file", "1 | from errors import NotFound", False),
+            ("edit_file", "已替换 1 处。\n2 | raise ValueError('invalid')", False),
+            ("list_directory", "errors.py\nmain.py", False),
+            ("run_python", "stdout:\nERROR: expected fixture\nreturncode: 0", False),
+            ("run_tests", "stdout:\nall tests passed\nreturncode: 0", False),
+            ("run_python", "stderr:\nprocess stopped\nreturncode: 2", True),
+            ("run_shell", "stderr:\nprocess stopped\nreturncode: 255", True),
+            ("read_file", "文件 missing.py 不存在。", True),
+            ("read_file", "路径 tests 不是文件。", True),
+            ("edit_file", "Tool execution failed: permission denied", True),
+            ("edit_file", "[语法检查] 未通过：invalid syntax", True),
+            ("third_party_tool", "Error: extension failed", True),
+        ],
+    )
+    def test_observation_status(action, observation, failed):
+        # 历史接口没有 action 参数；调用真实旧接口，避免以 TypeError 冒充缺陷复现。
+        kwargs = {"action": action} if "action" in inspect.signature(is_failure_observation).parameters else {}
+>       assert is_failure_observation(observation, **kwargs) is failed
+E       AssertionError: assert False is True
+E        +  where False = is_failure_observation('[语法检查] 未通过：invalid syntax', **{})
+
+tests\test_maintenance_case.py:30: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_maintenance_case.py::test_observation_status[read_file-1 | from errors import NotFound-False]
+FAILED tests/test_maintenance_case.py::test_observation_status[edit_file-\u5df2\u66ff\u6362 1 \u5904\u3002\n2 | raise ValueError('invalid')-False]
+FAILED tests/test_maintenance_case.py::test_observation_status[list_directory-errors.py\nmain.py-False]
+FAILED tests/test_maintenance_case.py::test_observation_status[run_python-stderr:\nprocess stopped\nreturncode: 2-True]
+FAILED tests/test_maintenance_case.py::test_observation_status[run_shell-stderr:\nprocess stopped\nreturncode: 255-True]
+FAILED tests/test_maintenance_case.py::test_observation_status[read_file-\u8def\u5f84 tests \u4e0d\u662f\u6587\u4ef6\u3002-True]
+FAILED tests/test_maintenance_case.py::test_observation_status[edit_file-[\u8bed\u6cd5\u68c0\u67e5] \u672a\u901a\u8fc7\uff1ainvalid syntax-True]
+7 failed, 5 passed in 5.63s

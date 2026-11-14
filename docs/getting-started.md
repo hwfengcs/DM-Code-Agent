@@ -1,6 +1,6 @@
 # 快速开始
 
-[English homepage](../README.md) · [中文首页](../README_ZH.md) · [在线交互演示](https://hwfengcs.github.io/DM-Code-Agent/)
+[English guide](getting-started.en.md) · [中文首页](../README_ZH.md) · [在线交互演示](https://hwfengcs.github.io/DM-Code-Agent/)
 
 先用离线演示检查一次代码修改，再配置模型，在自己的仓库中运行任务。
 
@@ -107,6 +107,9 @@ CLI 参数 > ./config.json > ~/.dm_agent/config.json > 默认值
 
 配置文件先到先得，项目级存在就使用它。交互设置向导写回已读取的文件；都不存在时写入用户目录。
 自建网关或本地推理服务使用 `--base-url`，自定义供应商见[扩展开发](extensions.md)。
+
+内置 `openai` 客户端使用 Responses API。对于只提供 Chat Completions 的 Xinference 等服务，
+请使用[本地模型扩展配方](local-models.md)，不能仅靠修改 `--base-url` 切换协议。
 
 ## 在自己的仓库中运行
 

@@ -7,6 +7,9 @@
 | 文档 | 内容 |
 | --- | --- |
 | [快速开始](getting-started.md) | 安装、离线演示、HTML 报告、配置模型与第一个真实任务 |
+| [English getting started](getting-started.en.md) | Complete English installation, first task, reports, and troubleshooting |
+| [本地模型](local-models.md) · [English](local-models.en.md) | Xinference/Qwen 的 Chat Completions 扩展与验证范围 |
+| [真实维护案例](case-studies/failure-classification/README_ZH.md) · [English](case-studies/failure-classification/README.md) | 12 项检查通过后的集成失败；真实运行报告、补丁和零模型调用复现 |
 | [CLI 参考](cli.md) | 九个命令行入口、配置优先级、全部开关及其默认值 |
 | [Web 控制台](web.md) | `dm-agent-web`：会话审计、实时运行、安全模型、静态托管 |
 | [在线演示与媒体](demo-site.md) | 静态展厅构建、公开证据来源、截图与录屏复现 |
@@ -47,6 +50,7 @@
 | [最近八轮进展](recent-progress.md) | devlog 36–43 的实验结论、SWE-bench Verified 20/50 归档与边界 |
 | [改进 agent 系统](改进agent系统.md) | 基于 50 题实测的瓶颈诊断与 S0–S3 可执行方案、决策记录、不做清单、判读纪律 |
 | [版本发布](releasing.md) | GitHub 安装包、校验和、PyPI Trusted Publishing 配置 |
+| [传播准备](distribution/README.md) | 双语发布稿、渠道记录与本地 GitHub 流量快照 |
 | [研究日志](research-log/) | 每个非平凡设计决策的动机、实验、ablation、踩坑 |
 | [产品定位](product.md) | 目标用户与落地场景 |
 | [v2.0.0 发布说明](release-v2.0.0.md) | 发布叙事与 smoke checklist |

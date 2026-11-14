@@ -15,6 +15,9 @@ def test_public_exhibit_contains_evidence_without_local_paths(tmp_path: Path) ->
     assert manifest["cases"][1]["verification_gap"] is True
     assert (raw / "sessions" / "verified.jsonl").is_file()
     assert not list(output.rglob("*.jsonl"))
+    case_report = (output / "cases" / "failure-classification.html").read_text(encoding="utf-8")
+    assert "step limit without completion" in case_report
+    assert "2 failed, 464 passed" in case_report
     assert json.loads((output / "demo-manifest.json").read_text()) == manifest
     for name in ("verified.html", "unverified.html", "demo-manifest.json"):
         content = (output / name).read_text(encoding="utf-8")

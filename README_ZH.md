@@ -57,6 +57,8 @@ dm-agent-trace analyze sessions/review.jsonl
 
 运行 `dm-agent-web` 可进入完整的对话与审计控制台。[配置与第一个任务 →](docs/getting-started.md)
 
+使用 Xinference 或其他 Chat Completions 服务时，见[本地模型扩展配方](docs/local-models.md)。扩展使用显式 endpoint，与现有云供应商密钥分开。
+
 Agent 可以用你的本地权限修改文件和运行命令。建议在可审查的 Git 工作区使用；它不是沙箱。`--trace` 默认脱敏，完整模型 I/O、checkpoint 恢复和工具重放有各自的显式控制，见[会话隐私与重放](docs/tracing.md)。
 
 ## 能检查哪些证据？
@@ -72,6 +74,8 @@ Agent 可以用你的本地权限修改文件和运行命令。建议在可审�
 控制台与 CLI 复用同一套 trace 分析函数。独立 HTML 报告无需服务器；开启内容导出时可以展示替换片段，它不是完整的 Git diff。本地排查还可以使用显式工具重放和基于 checkpoint 的分叉。
 
 ## 从 trace 中学到的三件事
+
+**真实维护案例：**[12 项针对性检查通过了，修复仍然不能交付](docs/case-studies/failure-classification/README_ZH.md)。真实模型修复了本仓库的历史缺陷，但更大范围测试仍有 2 项失败，最终耗尽步数。案例提供[运行报告](https://hwfengcs.github.io/DM-Code-Agent/cases/failure-classification.html)、原样补丁、给定检查和独立离线复现。
 
 三篇文章分别解释项目历史实验中的一种失败，包含最小复现和原始证据链接：
 

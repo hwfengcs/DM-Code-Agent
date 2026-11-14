@@ -88,4 +88,4 @@ Run from the repository root. Exit code 1 is expected because there are regressi
 - [Current editing implementation](../../dm_agent/tools/file_tools.py)
 - [Failure-classification follow-up, devlog 39](../research-log/39-observation-failure-classification.md)
 
-[DM-Code-Agent](../../README.md) makes these tool interactions inspectable. [Try the no-key demo](../getting-started.md) to see a content-anchored edit together with its test evidence and exported report.
+[DM-Code-Agent](../../README.md) makes these tool interactions inspectable. [Try the no-key demo](../getting-started.en.md) to see a content-anchored edit together with its test evidence and exported report.

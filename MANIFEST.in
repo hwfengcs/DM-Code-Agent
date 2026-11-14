@@ -1,4 +1,7 @@
 include README_ZH.md README_EN.md
+recursive-include examples *.py
+recursive-include docs/case-studies/failure-classification *.md *.txt *.json *.patch *.html
+include docs/getting-started.en.md docs/getting-started.md docs/local-models.en.md docs/local-models.md
 recursive-include swebench_verified *.py
 recursive-include site *.html *.css *.js *.svg
 recursive-include scripts *.py *.mjs
