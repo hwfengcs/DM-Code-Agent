@@ -1,26 +1,55 @@
-# DM-Code-Agent
+<div align="center">
 
-**一个可以检查过程的编程 Agent：看清改了什么、为什么失败，以及有没有运行测试。**
+<picture>
+  <source media="(max-width: 640px)" srcset="docs/media/readme-hero-mobile.svg">
+  <img src="docs/media/readme-hero.svg" alt="DM-Code-Agent — 看清每一次代码修改。" width="1280">
+</picture>
 
-[![CI](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+<h1>DM-Code-Agent</h1>
 
-[English](README.md) | **简体中文**
+<p><strong>一个可以检查过程的编程 Agent。</strong><br>看清改了什么、为什么失败，以及有没有运行测试。</p>
 
-[**打开交互演示 →**](https://hwfengcs.github.io/DM-Code-Agent/) · [观看操作录屏](docs/media/demo-walkthrough.gif) · [快速开始](docs/getting-started.md)
+<p>
+  <a href="https://github.com/hwfengcs/DM-Code-Agent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/hwfengcs/DM-Code-Agent/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=18251f" alt="CI 状态"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10%2B-81ecb0?style=flat-square&amp;labelColor=18251f" alt="Python 3.10 及以上"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-81ecb0?style=flat-square&amp;labelColor=18251f" alt="MIT 许可证"></a>
+</p>
 
-[![一次编程运行的执行步骤、代码变化和验证证据](docs/media/demo-preview.png)](docs/media/demo-preview.png)
+<p><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-DM-Code-Agent 在本地仓库中调用文件和命令工具，将过程记录为只追加的会话日志。你可以用 CLI 或浏览器控制台检查最终答复背后的证据。
+<p>
+  <a href="https://hwfengcs.github.io/DM-Code-Agent/"><strong>交互演示</strong></a> &nbsp; / &nbsp;
+  <a href="#不用-api-key先看一次完整过程"><strong>快速开始</strong></a> &nbsp; / &nbsp;
+  <a href="docs/case-studies/failure-classification/README_ZH.md"><strong>真实维护案例</strong></a> &nbsp; / &nbsp;
+  <a href="docs/README.md"><strong>文档</strong></a>
+</p>
 
-- **检查修改。** 在同一条时间线上查看读取、编辑、命令和测试输出，导出独立 HTML 报告供人审查。
-- **定位失败。** 看清工具失败、恢复尝试和验证缺口，包括 Agent 宣布完成但没有验证的情况。
-- **读懂并扩展。** 不修改 ReAct 主循环也能添加工具、供应商和生命周期钩子；测试与确定性评估不需要 API key。
+</div>
+
+DM-Code-Agent 在本地仓库中工作，用只追加的会话日志保留每次运行的过程。
+你可以在终端或浏览器中检查证据，再导出一份别人也能打开的报告。
+
+- **看清修改。** 读取、编辑、命令和测试输出，串成一条执行记录。
+- **发现缺口。** 检查失败、恢复尝试，以及宣布完成却没有验证的情况。
+- **按需扩展。** 在可读的 Python Agent 周围添加工具、供应商和生命周期钩子。
+
+## 看看证据怎么说
+
+**两次运行，相同修改，只有一次真正运行了测试。**
+
+<a href="https://hwfengcs.github.io/DM-Code-Agent/">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/media/demo-preview.png">
+    <img src="docs/media/readme-demo.gif" alt="验证过的修复展示先失败后通过的测试；未验证的修复被标记为验证缺口。点击进入交互演示。" width="880">
+  </picture>
+</a>
+
+*真实浏览器录屏的 10 秒节选。助手决策来自脚本，文件修改和 unittest 确实执行，无需模型 key。
+[观看完整 38 秒录屏](docs/media/demo-walkthrough.mp4)。*
 
 ## 不用 API key，先看一次完整过程
 
-需要 Python 3.10+。下面安装 v2.1.0 Release wheel，已包含浏览器控制台所需依赖，不需要 Node.js：
+Python 3.10+，三条命令。Release wheel 已包含浏览器控制台，不需要 Node.js。
 
 ```bash
 pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.0/dm_code_agent-2.1.0-py3-none-any.whl"
@@ -28,64 +57,87 @@ dm-agent-demo --output demo-run
 dm-agent-web --sessions-dir demo-run/sessions --read-only
 ```
 
-打开服务器打印的带 token 本地地址。演示生成两次运行：
+打开服务器打印的完整本地地址，选择 `verified.jsonl` 或 `unverified.jsonl` 检查差异。
+输出路径必须是新目录或空目录。
 
-| 运行 | 值得检查的内容 |
+<details>
+<summary><strong>演示内容 · 终端检查 · HTML 导出</strong></summary>
+
+| 运行 | 可以检查的证据 |
 | --- | --- |
-| `verified.jsonl` | 重试边界缺陷、失败测试、代码编辑、通过的测试 |
-| `unverified.jsonl` | 完成同一修改后直接结束，没有运行测试；分析器标出验证缺口 |
+| `verified.jsonl` | 重试边界缺陷、失败测试、代码编辑和通过的检查 |
+| `unverified.jsonl` | 相同修改后直接结束，分析器标出缺少测试的验证缺口 |
 
-演示使用**脚本化客户端驱动真实 Agent、文件工具和 Python unittest**。它不调用模型、不读取用户配置或扩展，只写入新建或空的输出目录。这是过程可检查性的演示，不代表模型能力。
-
-也可以直接在终端检查和导出：
+演示使用脚本化客户端驱动真实 Agent、文件工具和 Python unittest。
+它不调用模型、不读取用户配置或扩展，只写入指定的新目录或空目录。
+这是过程可检查性的演示，不代表模型能力。
 
 ```bash
 dm-agent-trace analyze demo-run/sessions/unverified.jsonl
 dm-agent-trace export demo-run/sessions/verified.jsonl --output report.html --include-content
 ```
 
-用浏览器打开 `report.html`。默认导出只有结构摘要；`--include-content` 才加入脱敏后的任务、工具输出和编辑片段。分享真实任务的报告前请先审阅：脱敏不能识别所有秘密。本演示只包含随项目提供的示例代码。
+用浏览器打开 `report.html`，不需要服务器。演示只包含随项目提供的示例代码。
+真实会话默认导出结构摘要；`--include-content` 才加入脱敏后的任务、工具输出和编辑片段。
+分享前请审阅，自动脱敏不能识别所有秘密。
+
+</details>
 
 ## 在自己的仓库中使用
 
-配置一个供应商的 API key（`DEEPSEEK_API_KEY`、`OPENAI_API_KEY`、`CLAUDE_API_KEY` 或 `GEMINI_API_KEY`），在目标工作区执行：
+配置供应商密钥：`DEEPSEEK_API_KEY`、`OPENAI_API_KEY`、`CLAUDE_API_KEY` 或 `GEMINI_API_KEY`。
+在可审查的 Git 工作区执行：
 
 ```bash
 dm-agent "分析当前项目结构，列出最适合优先测试的模块" --provider deepseek --trace sessions/review.jsonl --show-steps
 dm-agent-trace analyze sessions/review.jsonl
 ```
 
-运行 `dm-agent-web` 可进入完整的对话与审计控制台。[配置与第一个任务 →](docs/getting-started.md)
+**[配置与第一个任务](docs/getting-started.md)** · **[Xinference / 本地模型配方](docs/local-models.md)** · **[Web 控制台](docs/web.md)**
 
-使用 Xinference 或其他 Chat Completions 服务时，见[本地模型扩展配方](docs/local-models.md)。扩展使用显式 endpoint，与现有云供应商密钥分开。
-
-Agent 可以用你的本地权限修改文件和运行命令。建议在可审查的 Git 工作区使用；它不是沙箱。`--trace` 默认脱敏，完整模型 I/O、checkpoint 恢复和工具重放有各自的显式控制，见[会话隐私与重放](docs/tracing.md)。
+Agent 可以用你的本地权限修改文件和运行命令，它不是沙箱。`--trace` 默认脱敏。
+完整模型 I/O、checkpoint 和工具重放有各自的显式控制，见[会话隐私与重放](docs/tracing.md)。
 
 ## 能检查哪些证据？
 
-| 问题 | 可以检查的证据 |
+| 你的问题 | 可以检查的证据 |
 | --- | --- |
-| Agent 做了什么？ | 按顺序记录的工具调用、参数、观察与完成记录 |
-| 它恢复了吗？ | 失败阶段分析和后续动作 |
-| 它验证了吗？ | 验证动作记录与验证缺口信号；这些不等于正确性证明 |
-| 两次运行哪里不同？ | trace 行为对比和 benchmark 逐题回归 |
-| 旧上下文去了哪里？ | 折叠只追加派生记录，原始会话条目仍然保留 |
+| **改了什么？** | 按顺序记录的工具调用、参数、观察与替换片段 |
+| **哪里失败了？** | 失败阶段分析和恢复尝试 |
+| **有没有验证？** | 验证动作记录与验证缺口信号 |
+| **两次运行哪里不同？** | Trace 行为对比和 benchmark 逐题回归 |
+| **旧上下文去哪了？** | 折叠只追加派生记录，原始条目仍然保留 |
 
-控制台与 CLI 复用同一套 trace 分析函数。独立 HTML 报告无需服务器；开启内容导出时可以展示替换片段，它不是完整的 Git diff。本地排查还可以使用显式工具重放和基于 checkpoint 的分叉。
+CLI 与控制台使用同一套分析函数，独立 HTML 报告无需服务器。
+记录到检查不等于证明正确，替换片段也不是完整 Git diff。
+本地排查还支持显式工具重放和基于 checkpoint 的分叉。
 
-## 从 trace 中学到的三件事
+## 真实修复，也保留不顺利的部分
 
-**真实维护案例：**[12 项针对性检查通过了，修复仍然不能交付](docs/case-studies/failure-classification/README_ZH.md)。真实模型修复了本仓库的历史缺陷，但更大范围测试仍有 2 项失败，最终耗尽步数。案例提供[运行报告](https://hwfengcs.github.io/DM-Code-Agent/cases/failure-classification.html)、原样补丁、给定检查和独立离线复现。
+> **12 项针对性检查通过了，更大范围的测试仍然失败。**
+>
+> 真实模型尝试修复本仓库的历史缺陷，但还有 2 项检查失败，最终耗尽步数。
+> 这个未完成的结果保留了补丁、给定测试、token 用量和独立离线复现。
 
-三篇文章分别解释项目历史实验中的一种失败，包含最小复现和原始证据链接：
+**[检查真实运行](https://hwfengcs.github.io/DM-Code-Agent/cases/failure-classification.html)** · **[阅读与复现案例](docs/case-studies/failure-classification/README_ZH.md)**
 
-- [**更多步数为什么未必更成功**](docs/articles/01-more-steps.zh.md)：30 题的通过数从 22 到 24，但同时有 4 题回归，估算 token 增加 30.6%。
-- [**为什么 `from errors import NotFound` 会触发重规划**](docs/articles/02-error-is-not-failure.zh.md)：源码正文曾被当作工具状态；同批 trace 重新分类后，38 次误报消失。
-- [**内容锚定编辑如何减少相邻代码误伤**](docs/articles/03-content-anchored-edits.zh.md)：唯一文本匹配与编辑回显怎样解决行号区间问题，又怎样暴露了另一处缺陷。
+## 从失败中学到的事
 
-项目自带 **30 道隐藏测试任务**，覆盖 coding 和 maintenance。历史模型运行只能支持对应配置下的结论，不是排行榜声明。离线演示也不是评测。完整口径见 [benchmark 文档](docs/benchmarks.md)、[项目现状](docs/project-status.md)和[原始研究日志](docs/research-log/)。
+每篇文章讲一个具体问题，提供原始证据、最小复现与结论边界。
+
+| 故事 | 学到的事 |
+| --- | --- |
+| [**更多步数为什么未必更成功**](docs/articles/01-more-steps.zh.md) | 通过数从 22 到 24，同时有 4 题回归，估算 token 增加 30.6%。 |
+| [**为什么源码里的 error 会触发重规划**](docs/articles/02-error-is-not-failure.zh.md) | `from errors import NotFound` 被误认成工具失败；同批 trace 重新分类后，38 次误报消失。 |
+| [**先找到内容，再修改代码**](docs/articles/03-content-anchored-edits.zh.md) | 内容锚定编辑解决了行号区间误伤，又暴露了另一处缺陷。 |
+
+自带 **30 道隐藏测试任务**，覆盖 coding 和 maintenance。历史运行只能支持对应配置下的结论，
+不是排行榜声明，离线演示也不是评测。[评测口径](docs/benchmarks.md) · [项目现状](docs/project-status.md) · [研究日志](docs/research-log/)。
 
 ## 开发与验证
+
+<details>
+<summary><strong>从源码开发——测试与确定性评估不需要 API key</strong></summary>
 
 ```bash
 git clone https://github.com/hwfengcs/DM-Code-Agent.git
@@ -96,17 +148,27 @@ uv run --frozen python -m pytest
 uv run --frozen python -m dm_agent.evals.cli --variant full --task direct_finish
 ```
 
-默认测试与确定性评估不需要 API key。[贡献指南](CONTRIBUTING.md)和 [Agent 开发规则](AGENTS.md)列出了完整检查。[扩展示例](examples/)展示了如何在内核之外添加行为。
+[贡献指南](CONTRIBUTING.md)和 [Agent 开发规则](AGENTS.md)列出了完整检查。
+[扩展示例](examples/)展示了如何在内核之外添加行为。
 
-## 文档
+</details>
+
+## 找到下一步
 
 | 从这里开始 | 进一步阅读 |
 | --- | --- |
 | [快速开始](docs/getting-started.md) · [English homepage](README.md) | [架构](docs/architecture.md) |
+| [本地模型 / Xinference](docs/local-models.md) | [供应商扩展示例](examples/openai_compatible.py) |
 | [CLI 参考](docs/cli.md) · [Web 控制台](docs/web.md) | [扩展 API](docs/extensions.md) |
 | [会话、隐私和 HTML 导出](docs/tracing.md) | [Benchmark](docs/benchmarks.md) |
 | [中英文技术文章](docs/articles/README.md) | [完整文档目录](docs/README.md) |
 
-如果这个项目帮你看懂了编程 Agent 的行为，欢迎点一个 Star，让更多开发者找到它。也欢迎可复现的问题报告和范围明确的小改动，见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [SECURITY.md](SECURITY.md)。
+欢迎可复现的问题报告和范围明确的贡献。
 
-使用 MIT 许可证，见 [LICENSE](LICENSE)。
+<div align="center">
+
+**如果这些证据帮到了你，欢迎点一个 Star。**
+
+[参与贡献](CONTRIBUTING.md) · [安全问题](SECURITY.md) · [MIT 许可证](LICENSE)
+
+</div>
