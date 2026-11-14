@@ -206,7 +206,7 @@ class ReplanCoordinator:
         signature = failure_signature(failure)
         previous = str(metadata.get("last_failure_signature") or "")
         metadata["last_failure_signature"] = signature
-        if not signature or signature != previous:
+        if signature != previous:
             return False, None
 
         payload = {

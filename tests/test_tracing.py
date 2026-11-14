@@ -3,7 +3,8 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
-from dm_agent.cli import Config, write_run_report
+from dm_agent.cli.config import Config
+from dm_agent.cli.report import write_run_report
 from dm_agent.core.agent import ReactAgent
 from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter, load_trace_events

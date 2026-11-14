@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -18,7 +17,7 @@ from dm_agent.clients import PROVIDER_DEFAULTS
 from dm_agent.server.process import RunProcess, RunSpec, SpecError, build_argv
 from dm_agent.server.runs import RunRecord, RunRegistry
 from dm_agent.server.security import get_registry, get_settings, require_token, require_writable
-from dm_agent.server.settings import ServerSettings, SessionPathError, resolve_session_path
+from dm_agent.server.settings import ServerSettings
 from dm_agent.server.streaming import parse_last_event_id, sse_message, stream_session_lines
 
 router = APIRouter(
@@ -170,11 +169,3 @@ def _require_record(registry: RunRegistry, run_id: str) -> RunRecord:
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"未知的运行：{run_id}")
     return record
-
-
-def resolve_run_session(settings: ServerSettings, name: str) -> Path:
-    """运行产生的会话名也要过同一道边界检查。"""
-    try:
-        return resolve_session_path(settings, name)
-    except SessionPathError as exc:  # pragma: no cover - 由会话路由覆盖
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

@@ -76,9 +76,6 @@ _TRACE_COUNTER_SOURCES = {
     "edit_state_revisits": ("edit_state_revisit_count", "swebench_edit_state_revisit"),
     "edit_cycle_blocks": ("edit_cycle_block_count", "swebench_edit_cycle_block"),
 }
-_TRACE_EVENT_COUNTERS = {
-    output_name: event_name for output_name, (_, event_name) in _TRACE_COUNTER_SOURCES.items()
-}
 _VERIFICATION_ACTIONS = {"run_python", "run_tests", "run_linter"}
 _MUTATION_CAPABLE_ACTIONS = {"edit_file", "create_file", "run_shell", "run_python"}
 _DETAIL_TEST_AXES = ("FAIL_TO_PASS", "PASS_TO_PASS")
@@ -148,15 +145,7 @@ def analyze_paths(
 
     report = _load_json_object(report_path, "harness report")
     report_index = _index_report(report, report_path)
-    if not report_index["valid"]:
-        warnings.append(
-            _warning(
-                "report_missing_mapping",
-                "report 缺少可用于逐题映射的 ID 字段；逐题官方结论标为 unknown。",
-                path=report_path,
-            )
-        )
-    if manifest_ids is not None and report_index["valid"]:
+    if manifest_ids is not None:
         _validate_id_set(
             report_index["submitted_ids"],
             set(manifest_ids),
@@ -170,16 +159,15 @@ def analyze_paths(
     detail_checked = harness_log_dir is not None
     detail_index = _scan_harness_details(harness_log_dir, set(instance_ids), warnings)
 
-    if report_index["valid"]:
-        extra_report_ids = sorted(set(report_index["submitted_ids"]) - set(instance_ids))
-        if extra_report_ids:
-            warnings.append(
-                _warning(
-                    "report_unknown_instance",
-                    f"report 包含不在 predictions/manifest 中的 instance（{len(extra_report_ids)} 个）。",
-                    path=report_path,
-                )
+    extra_report_ids = sorted(set(report_index["submitted_ids"]) - set(instance_ids))
+    if extra_report_ids:
+        warnings.append(
+            _warning(
+                "report_unknown_instance",
+                f"report 包含不在 predictions/manifest 中的 instance（{len(extra_report_ids)} 个）。",
+                path=report_path,
             )
+        )
 
     rows: list[dict[str, Any]] = []
     for instance_id in instance_ids:
@@ -202,16 +190,15 @@ def analyze_paths(
         _validate_manifest_aggregates(manifest, rows, manifest_path, warnings)
 
     # report 有效但 submitted 中缺 prediction 的情况不改变主样本分母；以 warning 明示。
-    if report_index["valid"]:
-        missing_predictions = sorted(set(report_index["submitted_ids"]) - set(prediction_ids))
-        if missing_predictions:
-            warnings.append(
-                _warning(
-                    "prediction_missing_instance",
-                    f"report submitted_ids 中有 {len(missing_predictions)} 个 instance 缺 prediction。",
-                    path=predictions_path,
-                )
+    missing_predictions = sorted(set(report_index["submitted_ids"]) - set(prediction_ids))
+    if missing_predictions:
+        warnings.append(
+            _warning(
+                "prediction_missing_instance",
+                f"report submitted_ids 中有 {len(missing_predictions)} 个 instance 缺 prediction。",
+                path=predictions_path,
             )
+        )
 
     warnings = _sorted_warnings(warnings)
     scopes = {"all": _summarize_rows(rows)}
@@ -741,11 +728,9 @@ def _index_report(report: dict[str, Any], path: Path) -> dict[str, Any]:
         for instance_id in arrays[field]:
             outcomes[instance_id] = outcome
     return {
-        "valid": True,
         "submitted_ids": arrays["submitted_ids"],
         "outcomes": outcomes,
         "completed": completed,
-        "reason": "",
     }
 
 
@@ -846,7 +831,6 @@ def _scan_traces(
                 event for event in selected_events if event.get("event") != _INVALID_TRACE_EVENT
             ]
             index[instance_id] = _trace_record(
-                instance_id,
                 path,
                 selected_events,
                 malformed=malformed or not complete,
@@ -991,9 +975,7 @@ def _runtime_before_start(
     return candidates[-1] if candidates else None
 
 
-def _trace_record(
-    instance_id: str, path: Path, events: list[dict[str, Any]], malformed: bool
-) -> dict[str, Any]:
+def _trace_record(path: Path, events: list[dict[str, Any]], malformed: bool) -> dict[str, Any]:
     runtime = next((event for event in events if event.get("event") == "runtime"), None)
     run_end = next((event for event in reversed(events) if event.get("event") == "run_end"), None)
     runtime_payload = runtime.get("payload", {}) if isinstance(runtime, dict) else {}
@@ -1262,9 +1244,7 @@ def _merge_instance(
     warnings: list[dict[str, Any]],
 ) -> dict[str, Any]:
     prediction = prediction or {}
-    official_outcome = report["outcomes"].get(instance_id) if report.get("valid") else "unknown"
-    if report.get("valid") and instance_id not in report["outcomes"]:
-        official_outcome = "incomplete"
+    official_outcome = report["outcomes"].get(instance_id, "incomplete")
     if detail is None:
         detail_status = "detail_unavailable" if detail_checked else "unmeasured"
         if detail_checked and official_outcome not in {"empty_patch", "unknown", "incomplete"}:
@@ -1350,9 +1330,7 @@ def _merge_instance(
         "difficulty_source": difficulty_source,
         "official": {
             "outcome": official_outcome,
-            "completed": (
-                instance_id in report.get("completed", set()) if report.get("valid") else None
-            ),
+            "completed": instance_id in report["completed"],
         },
         "patch": {
             "is_empty": patch_empty,
@@ -1463,7 +1441,7 @@ def _trace_output(trace: dict[str, Any] | None, status: str) -> dict[str, Any]:
             "steps": None,
             "duration_seconds": None,
             "event_count": None,
-            "counters": {key: None for key in _TRACE_EVENT_COUNTERS},
+            "counters": {key: None for key in _TRACE_COUNTER_SOURCES},
         }
     if status != "measured":
         return {
@@ -1482,7 +1460,7 @@ def _trace_output(trace: dict[str, Any] | None, status: str) -> dict[str, Any]:
             "steps": None,
             "duration_seconds": None,
             "event_count": None,
-            "counters": {key: None for key in _TRACE_EVENT_COUNTERS},
+            "counters": {key: None for key in _TRACE_COUNTER_SOURCES},
         }
     counters = dict(trace.get("counters", {}))
     return {
@@ -1634,14 +1612,6 @@ def _label_summaries(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             ),
         }
     return result
-
-
-def _count_values(values: Iterable[Any]) -> dict[str, int]:
-    counter: Counter[str] = Counter()
-    for value in values:
-        key = str(value) if value not in (None, "") else "unknown"
-        counter[key] += 1
-    return {key: counter[key] for key in sorted(counter)}
 
 
 def _axis_counts(values: Iterable[Any], known_order: Sequence[str]) -> dict[str, int]:

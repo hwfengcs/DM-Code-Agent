@@ -178,10 +178,6 @@ export function clearConversation(): void {
   emit()
 }
 
-export function dismissNotice(): void {
-  set({ notice: null })
-}
-
 /**
  * 页面加载时尝试接回上一个对话。
  *

@@ -158,19 +158,6 @@ class RunRegistry:
     def new_run_id(self) -> str:
         return uuid.uuid4().hex[:12]
 
-    def running_count(self) -> int:
-        with self._lock:
-            return sum(1 for record in self._records.values() if self._refresh(record).is_running)
-
-    def at_capacity(self) -> bool:
-        """并发上限对一次性运行与对话一视同仁——它们都是在同一个工作区里干活的 agent。"""
-        self.reap_idle()
-        return self.running_count() >= self._max_concurrent
-
-    def register(self, record: RunRecord) -> None:
-        with self._lock:
-            self._records[record.run_id] = record
-
     def start(self, record: RunRecord, *, stdin_pipe: bool = False) -> bool:
         """原子地检查容量、启动并注册，防止并发创建请求越过上限。"""
         self.reap_idle()

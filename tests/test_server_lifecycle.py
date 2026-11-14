@@ -39,7 +39,7 @@ def test_idle_conversation_is_reaped_without_http_requests(
         kind="conversation",
         last_activity=time.time() - 10,
     )
-    registry.register(record)
+    registry._records[record.run_id] = record
 
     async def run() -> None:
         async with _lifespan(app):

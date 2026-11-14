@@ -14,8 +14,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from dm_agent.clients.base_client import BaseLLMClient
-
 from .context_budget import estimate_messages_tokens
 
 MEMORY_TYPES = {"episodic", "semantic", "procedural"}
@@ -236,9 +234,6 @@ class Mem0StyleMemory:
             if item.metadata.get("superseded_at_turn") is not None:
                 score *= 0.25
             scored.append((item, score))
-
-        if not scored and not (query_tokens or query_files):
-            scored = [(item, item.importance) for item in scoped_items]
 
         ranked = sorted(scored, key=lambda pair: pair[1], reverse=True)[:limit]
         hits: list[MemoryHit] = []
@@ -518,13 +513,12 @@ class ContextCompressor:
     """Compress conversation history via scoped atomic memories.
 
     The current run receives recent messages verbatim plus a compact
-    ``<agent_memory>`` block of relevant older context. The public API remains
-    compatible with the previous compressor.
+    ``<agent_memory>`` block of relevant older context. Compression is local and
+    deterministic; it does not use an LLM client.
     """
 
     def __init__(
         self,
-        client: BaseLLMClient | None = None,
         compress_every: int = 20,
         keep_recent: int = 8,
         *,
@@ -537,7 +531,6 @@ class ContextCompressor:
             raise ValueError("compress_every must be at least 1")
         if keep_recent < 1:
             raise ValueError("keep_recent must be at least 1")
-        self.client = client
         self.compress_every = compress_every
         self.keep_recent = keep_recent
         # 显式判 None：空记忆的 __len__ 为 0（falsy），`memory or ...` 会把
@@ -595,14 +588,6 @@ class ContextCompressor:
         self.last_beneficial_compaction = state.last_beneficial_compaction
         self.last_trigger = state.last_trigger
         self.last_estimated_tokens = state.last_estimated_tokens
-
-    def snapshot_candidate_state(self) -> _CompressorRuntimeState:
-        """兼容候选折叠调用点：捕获可完整回滚的运行时状态。"""
-        return self.snapshot_runtime_state()
-
-    def restore_candidate_state(self, state: _CompressorRuntimeState) -> None:
-        """兼容候选折叠调用点：回滚未通过净收益检查的状态。"""
-        self.restore_runtime_state(state)
 
     def should_compress(self, history: list[dict[str, str]]) -> bool:
         user_messages = [msg for msg in history if msg.get("role") == "user"]
@@ -774,13 +759,6 @@ def _message_reports_success(content: str) -> bool:
     return "returncode: 0" in lowered or any(
         marker in lowered for marker in (m.lower() for m in _SUCCESS_MARKERS)
     )
-
-
-def _first_user_content(history: list[dict[str, str]]) -> str:
-    for message in history:
-        if message.get("role") == "user":
-            return str(message.get("content", ""))
-    return ""
 
 
 def json_like_scope(scope: dict[str, str]) -> str:

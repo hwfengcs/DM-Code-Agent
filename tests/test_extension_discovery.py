@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from dm_agent.cli import parse_args
+from dm_agent.cli.args import parse_args
 from dm_agent.core import ReactAgent
 from dm_agent.extensions import (
     ExtensionDiscoveryError,

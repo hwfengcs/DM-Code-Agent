@@ -201,7 +201,7 @@ def test_empty_replan_keeps_the_previous_plan():
     assert result["metadata"]["replan_budget_exhausted_count"] == 0
 
 
-# --- 上下文压缩的预算、记忆卫生与 LLM 摘要分支 -----------------------------------
+# --- 上下文压缩的预算与记忆状态播报 ---------------------------------------------
 
 
 def _budget_agent(responses, **kwargs):

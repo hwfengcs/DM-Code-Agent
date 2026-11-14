@@ -174,14 +174,12 @@ def test_a_session_being_written_cannot_be_deleted(
         trace_path=live,
     )
     process.start()
-    registry.register(
-        RunRecord(
-            run_id="live1",
-            task="正在跑",
-            session_name="clean.jsonl",
-            trace_path=live,
-            process=process,
-        )
+    registry._records["live1"] = RunRecord(
+        run_id="live1",
+        task="正在跑",
+        session_name="clean.jsonl",
+        trace_path=live,
+        process=process,
     )
     try:
         response = client.delete("/api/sessions", params={"name": "clean.jsonl"})
@@ -204,14 +202,12 @@ def test_a_finished_run_no_longer_blocks_deletion(
     deadline = time.time() + 15.0
     while process.poll() is None and time.time() < deadline:
         time.sleep(0.05)
-    registry.register(
-        RunRecord(
-            run_id="done1",
-            task="跑完了",
-            session_name="clean.jsonl",
-            trace_path=live,
-            process=process,
-        )
+    registry._records["done1"] = RunRecord(
+        run_id="done1",
+        task="跑完了",
+        session_name="clean.jsonl",
+        trace_path=live,
+        process=process,
     )
     assert client.delete("/api/sessions", params={"name": "clean.jsonl"}).status_code == 200
 

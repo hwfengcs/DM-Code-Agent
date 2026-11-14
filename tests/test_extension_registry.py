@@ -1,4 +1,5 @@
-from dm_agent.cli import Config, create_agent
+from dm_agent.cli.config import Config
+from dm_agent.cli.runner import create_agent
 from dm_agent.core.events import BeforeToolCallEvent
 from dm_agent.extensions import ExtensionRegistry, create_builtin_registry
 from dm_agent.skills import ConfigSkill, SkillManager

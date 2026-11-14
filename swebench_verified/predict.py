@@ -350,10 +350,6 @@ def extract_patch(workspace: Path) -> str:
     return diff.stdout
 
 
-def reset_workspace(workspace: Path) -> None:
-    _run(["git", "checkout", "--", "."], cwd=str(workspace))
-
-
 def build_client(provider: str, model: str | None, timeout: int) -> UsageTrackingClient:
     load_env_files()
     key_env = PROVIDER_API_KEY_ENV.get(provider)

@@ -228,6 +228,10 @@ npm --prefix web run build      # tsc --noEmit && vite build
 必须直接就有界面，不能要求终端用户装 Node 再构建。改了 `web/` 下的源码请重新
 `npm run build` 并把产物一起提交。
 
+Geist 与 Geist Mono 的两份原始可变字体位于 `web/src/fonts/`，不依赖 Next.js。
+字体按 SIL Open Font License 1.1 分发，版权与完整许可证在
+`web/public/geist-OFL.txt`，构建时随静态产物和 wheel 一起提供。
+
 **前端不算任何结论。** 失败阶段、健康度、验证缺口、行为 diff 全部由后端的
 `dm_agent.tracing` 算好送过来，前端只做分组、归类、格式化。这条边界是刻意的：
 一旦前端开始自己判断，就有了第二套实现，两边迟早漂移。

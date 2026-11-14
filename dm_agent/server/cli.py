@@ -69,7 +69,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="前端产物目录；省略时用随包分发的 dm_agent/server/static。",
     )
-    parser.add_argument("--reload", action="store_true", help="代码变更自动重载（开发用）")
     return parser
 
 

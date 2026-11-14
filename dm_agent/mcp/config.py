@@ -132,47 +132,12 @@ class MCPConfig:
 
         Examples:
             >>> server_config = MCPServerConfig("test", "npx", ["tool"])
-            >>> config = MCPConfig()
-            >>> config.add_server(server_config)
+            >>> config = MCPConfig(servers={"test": server_config})
             >>> data = config.to_dict()
             >>> "mcpServers" in data
             True
         """
         return {"mcpServers": {name: config.to_dict() for name, config in self.servers.items()}}
-
-    def add_server(self, config: MCPServerConfig) -> None:
-        """
-        添加MCP服务器配置到总配置中
-
-        Args:
-            config (MCPServerConfig): 要添加的服务器配置
-
-        Examples:
-            >>> config = MCPConfig()
-            >>> server_config = MCPServerConfig("test", "npx", ["tool"])
-            >>> config.add_server(server_config)
-            >>> "test" in config.servers
-            True
-        """
-        self.servers[config.name] = config
-
-    def remove_server(self, name: str) -> None:
-        """
-        从总配置中移除指定的MCP服务器配置
-
-        Args:
-            name (str): 要移除的服务器名称
-
-        Examples:
-            >>> config = MCPConfig()
-            >>> server_config = MCPServerConfig("test", "npx", ["tool"])
-            >>> config.add_server(server_config)
-            >>> config.remove_server("test")
-            >>> "test" in config.servers
-            False
-        """
-        if name in self.servers:
-            del self.servers[name]
 
     def get_enabled_servers(self) -> dict[str, MCPServerConfig]:
         """
@@ -182,11 +147,9 @@ class MCPConfig:
             enabled_servers (Dict[str, MCPServerConfig]): 包含所有启用服务器配置的字典
 
         Examples:
-            >>> config = MCPConfig()
             >>> server1 = MCPServerConfig("enabled_server", "npx", ["tool"], enabled=True)
             >>> server2 = MCPServerConfig("disabled_server", "npm", ["tool"], enabled=False)
-            >>> config.add_server(server1)
-            >>> config.add_server(server2)
+            >>> config = MCPConfig(servers={"enabled_server": server1, "disabled_server": server2})
             >>> enabled_servers = config.get_enabled_servers()
             >>> enabled_servers
             {"enabled_server" : {"command": "npx", "args": ["tool"] , "enabled": True}}
@@ -223,35 +186,3 @@ def load_mcp_config(config_path: str = "mcp_config.json") -> MCPConfig:
     except Exception as e:
         print(f"⚠️ 加载 MCP 配置失败: {e}，使用空配置")
         return MCPConfig()
-
-
-def save_mcp_config(config: MCPConfig, config_path: str = "mcp_config.json") -> bool:
-    """
-    保存MCP配置到文件
-
-    将MCP配置以JSON格式保存到指定文件中，使用2个空格缩进以提高可读性。
-
-    Args:
-        config (MCPConfig): 要保存的MCP配置对象
-        config_path (str, optional): 配置文件路径，默认为"mcp_config.json"
-
-    Returns:
-        bool: 保存成功返回True，失败返回False
-
-    Examples:
-        >>> config = MCPConfig()
-        >>> success = save_mcp_config(config, "test_config.json")
-        >>> success
-        True
-        >>> import os
-        >>> os.path.exists("test_config.json")
-        True
-        >>> os.remove("test_config.json")  # 清理测试文件
-    """
-    try:
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config.to_dict(), f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        print(f"❌ 保存 MCP 配置失败: {e}")
-        return False

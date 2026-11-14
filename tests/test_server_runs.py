@@ -125,7 +125,7 @@ def add_sleeper(client: TestClient, tmp_path: Path, *, run_id: str = "sleeper1")
         trace_path=trace_path,
         process=process,
     )
-    registry.register(record)
+    registry._records[record.run_id] = record
     return record
 
 
@@ -331,14 +331,12 @@ def test_stream_replays_an_existing_session(
     while time.time() < deadline and process.poll() is None:
         time.sleep(0.05)
 
-    registry.register(
-        RunRecord(
-            run_id="replay01",
-            task="重播",
-            session_name="clean.jsonl",
-            trace_path=source,
-            process=process,
-        )
+    registry._records["replay01"] = RunRecord(
+        run_id="replay01",
+        task="重播",
+        session_name="clean.jsonl",
+        trace_path=source,
+        process=process,
     )
 
     with writable_client.stream("GET", "/api/runs/replay01/stream") as response:
@@ -427,20 +425,22 @@ def test_simultaneous_create_requests_cannot_exceed_capacity(
         with ThreadPoolExecutor(max_workers=2) as executor:
             statuses = list(executor.map(lambda _index: create(), range(2)))
         assert sorted(statuses) == [201, 409]
-        assert registry.running_count() == 1
+        assert sum(record.is_running for record in registry.list()) == 1
     finally:
         registry.stop_all()
 
 
-def test_capacity_frees_up_after_cancel(writable_client: TestClient, tmp_path: Path) -> None:
-    registry = registry_of(writable_client)
+def test_capacity_frees_up_after_cancel(
+    writable_client: TestClient, tmp_path: Path, fake_agent: Callable[..., None]
+) -> None:
+    fake_agent(entries=2)
     first = add_sleeper(writable_client, tmp_path, run_id="sleeper1")
     add_sleeper(writable_client, tmp_path, run_id="sleeper2")
-    assert registry.at_capacity() is True
+    assert writable_client.post("/api/runs", json={"task": "x"}).status_code == 409
 
     writable_client.delete(f"/api/runs/{first.run_id}")
     writable_client.delete("/api/runs/sleeper2")
-    assert registry.at_capacity() is False
+    assert writable_client.post("/api/runs", json={"task": "x"}).status_code == 201
 
 
 def test_stop_all_leaves_no_orphans(writable_client: TestClient, tmp_path: Path) -> None:

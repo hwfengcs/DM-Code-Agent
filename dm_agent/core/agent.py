@@ -140,7 +140,6 @@ class ReactAgent:
         self.context_token_budget = max(0, int(context_token_budget))
         self.compressor = (
             ContextCompressor(
-                client_for("compression"),
                 compress_every=20,
                 keep_recent=8,
                 token_budget=self.context_token_budget,
@@ -336,13 +335,7 @@ class ReactAgent:
 
         Returns:
             含 ``final_answer`` / ``steps`` / ``metadata`` 三个键的结果字典
-
-        Raises:
-            ValueError: 任务不是非空字符串
         """
-        if not isinstance(task, str) or not task.strip():
-            raise ValueError("任务必须是非空字符串。")
-
         # 每次尝试都从基础 prompt/工具重新出发，避免上一次 run（技能、prompt 追加）的残留。
         self.system_prompt = self._base_system_prompt
         self.tools = dict(self._base_tools)

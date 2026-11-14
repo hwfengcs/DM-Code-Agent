@@ -13,9 +13,3 @@ import type { MetaResponse } from './types'
 export function workspaceName(meta: MetaResponse): string {
   return meta.server.workspace_name || meta.server.sessions_dir_name || '工作区'
 }
-
-/** 会话名里的目录部分（若有）。用于长文件名的两段式显示。 */
-export function sessionBasename(name: string): string {
-  const cut = name.lastIndexOf('/')
-  return cut >= 0 ? name.slice(cut + 1) : name
-}

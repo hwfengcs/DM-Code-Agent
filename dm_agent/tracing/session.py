@@ -23,7 +23,6 @@ LEGACY_ID_PREFIX = "legacy-"
 MESSAGE_EVENT = "message"
 COMPACTION_EVENT = "compaction"
 CHECKPOINT_EVENT = "checkpoint"
-FORK_EVENT = "fork"
 RUN_START_EVENT = "run_start"
 PARSE_ERROR_EVENT = "parse_error"
 

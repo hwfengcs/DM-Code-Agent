@@ -59,9 +59,12 @@ def test_skill_manager_loads_custom_json(tmp_path):
 
 
 def test_mcp_config_round_trip_and_enabled_filter():
-    config = MCPConfig()
-    config.add_server(MCPServerConfig("enabled", "npx", ["tool"], enabled=True))
-    config.add_server(MCPServerConfig("disabled", "npx", ["tool"], enabled=False))
+    config = MCPConfig(
+        servers={
+            "enabled": MCPServerConfig("enabled", "npx", ["tool"], enabled=True),
+            "disabled": MCPServerConfig("disabled", "npx", ["tool"], enabled=False),
+        }
+    )
 
     data = config.to_dict()
     restored = MCPConfig.from_dict(data)

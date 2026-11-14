@@ -11,7 +11,7 @@ import { DiffView } from './views/DiffView'
 import { Chat } from './views/Chat'
 
 export function App() {
-  const [route] = useRoute()
+  const route = useRoute()
   const [meta, setMeta] = useState<MetaResponse | null>(null)
   const [sessions, setSessions] = useState<SessionListResponse | null>(null)
   const [error, setError] = useState<ApiError | null>(null)

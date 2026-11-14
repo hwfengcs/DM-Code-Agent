@@ -3,17 +3,13 @@ from types import SimpleNamespace
 import pytest
 
 from dm_agent import Tool
-from dm_agent.cli import (
-    Config,
-    create_agent,
+from dm_agent.cli.args import parse_args, validate_feature_args
+from dm_agent.cli.config import Config, resolve_advanced_features
+from dm_agent.cli.runner import create_agent, format_agent_context_status
+from dm_agent.cli.ui import (
     create_step_callback,
     display_completion_screen,
-    display_result,
-    format_agent_context_status,
-    parse_args,
     print_menu,
-    resolve_advanced_features,
-    validate_feature_args,
 )
 
 
@@ -42,33 +38,6 @@ def test_cli_menu_renders_modern_command_palette(capsys):
     assert "执行新任务" in output
     assert "多轮对话模式" in output
     assert "[1]" not in output
-
-
-def test_display_result_uses_panel_style(capsys):
-    display_result(
-        {
-            "final_answer": "done",
-            "metadata": {"completion_summary": "任务已完成。结果：done"},
-            "steps": [
-                {
-                    "thought": "inspect",
-                    "action": "read_file",
-                    "action_input": {"path": "app.py"},
-                    "observation": "opened app.py",
-                }
-            ],
-        },
-        show_steps=True,
-    )
-
-    output = capsys.readouterr().out
-
-    assert "执行步骤" in output
-    assert "最终答案" in output
-    assert "本轮总结" in output
-    assert "任务已完成" in output
-    assert "read_file" in output
-    assert "done" in output
 
 
 def test_agent_context_status_makes_memory_visible():

@@ -38,10 +38,7 @@ try:
     from colorama import init as colorama_init
 
     colorama_init(autoreset=True)
-    COLORS_AVAILABLE = True
 except ImportError:
-    COLORS_AVAILABLE = False
-
     # 如果没有 colorama，定义空的颜色常量
     class Fore:
         GREEN = ""
@@ -100,20 +97,6 @@ class UI:
         if dim:
             style += getattr(Style, "DIM", "")
         return f"{style}{color}{text}{Style.RESET_ALL}"
-
-    @staticmethod
-    def rule(label: str = "", *, color: str = Fore.CYAN) -> None:
-        if UI.rich_enabled():
-            title = Text(f" {label} ", style="bright_black") if label else ""
-            RICH_CONSOLE.rule(title, style="bright_black")
-            return
-        width = UI.width()
-        if label:
-            prefix = f" {label} "
-            line = prefix + "-" * max(width - len(prefix), 0)
-        else:
-            line = "-" * width
-        print(UI.paint(line, color, dim=not label))
 
     @staticmethod
     def banner(title: str, subtitle: str = "") -> None:
@@ -368,17 +351,6 @@ def configure_console_encoding() -> None:
                 stream.reconfigure(errors="replace")
 
 
-def print_separator(char: str = "=", length: int = 70) -> None:
-    """打印分隔线"""
-    _ = (char, length)
-    UI.rule()
-
-
-def print_header(text: str) -> None:
-    """打印标题"""
-    UI.banner(text)
-
-
 def print_menu() -> None:
     """打印主菜单"""
     UI.menu(
@@ -509,65 +481,6 @@ def ask_bool_setting(label: str, current: bool) -> bool:
     if value in {"n", "no", "否"}:
         return False
     return current
-
-
-def display_result(result: dict[str, Any], show_steps: bool = False) -> None:
-    """格式化显示任务结果"""
-    if show_steps and result.get("steps"):
-        if UI.rich_enabled():
-            table = Table(
-                show_header=True,
-                header_style="bold white",
-                box=box.SIMPLE_HEAD,
-                border_style="bright_black",
-                pad_edge=False,
-            )
-            table.add_column("#", justify="right", style="cyan", no_wrap=True)
-            table.add_column("Action", style="bold white", no_wrap=True)
-            table.add_column("Thought", style="bright_black")
-            table.add_column("Observation", style="bright_black")
-            for idx, step in enumerate(result.get("steps", []), start=1):
-                table.add_row(
-                    str(idx),
-                    str(step.get("action", "")),
-                    UI.truncate(step.get("thought", ""), 120),
-                    UI.truncate(step.get("observation", ""), 140),
-                )
-            RICH_CONSOLE.print(
-                Panel(
-                    table,
-                    title=Text(" 执行步骤 ", style="bold magenta"),
-                    title_align="left",
-                    border_style="bright_black",
-                    box=box.ROUNDED,
-                    padding=(1, 2),
-                )
-            )
-        else:
-            UI.section("执行步骤")
-            for idx, step in enumerate(result.get("steps", []), start=1):
-                print(
-                    f"  {UI.paint(f'{idx:>2}', Fore.MAGENTA, bright=True)}  "
-                    f"{UI.paint(str(step.get('action', '')), Fore.WHITE, bright=True)}"
-                )
-                print(f"      {UI.paint('thought', Fore.WHITE, dim=True)}  {step.get('thought')}")
-                action_input = step.get("action_input")
-                if action_input:
-                    print(
-                        f"      {UI.paint('input', Fore.WHITE, dim=True)}    "
-                        f"{json.dumps(action_input, ensure_ascii=False)}"
-                    )
-                print(
-                    f"      {UI.paint('observe', Fore.WHITE, dim=True)}  "
-                    f"{UI.truncate(step.get('observation'))}"
-                )
-                print()
-
-    final_answer = result.get("final_answer", "")
-    UI.panel("最终答案", str(final_answer), color=Fore.GREEN)
-    completion_summary = str(result.get("metadata", {}).get("completion_summary", "")).strip()
-    if completion_summary and completion_summary != str(final_answer).strip():
-        UI.panel("本轮总结", completion_summary, color=Fore.CYAN)
 
 
 def format_duration(seconds: Any) -> str:

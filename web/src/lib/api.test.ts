@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { subscribeToRun, type StreamEvent } from './api'
+import { subscribeToConversation, type StreamEvent } from './api'
 
 class FakeEventSource {
   static CLOSED = 2
@@ -24,7 +24,7 @@ beforeEach(() => {
 
 it('surfaces a server error frame and stops reconnecting to that terminal stream', () => {
   const events: StreamEvent[] = []
-  subscribeToRun('run-1', (event) => events.push(event))
+  subscribeToConversation('conversation-1', (event) => events.push(event))
   source.listeners.get('error')?.(new MessageEvent('error', {
     data: JSON.stringify({ message: '等待 30s 仍未生成会话日志。' }),
   }))
@@ -34,7 +34,7 @@ it('surfaces a server error frame and stops reconnecting to that terminal stream
 
 it('leaves transient network errors to EventSource automatic reconnect', () => {
   const events: StreamEvent[] = []
-  subscribeToRun('run-1', (event) => events.push(event))
+  subscribeToConversation('conversation-1', (event) => events.push(event))
   source.listeners.get('error')?.(new Event('error'))
   expect(source.close).not.toHaveBeenCalled()
   expect(events).toEqual([])

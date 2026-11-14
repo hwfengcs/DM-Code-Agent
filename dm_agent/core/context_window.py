@@ -88,9 +88,9 @@ class ContextWindow:
         self._sync_current_memory_metadata(context)
 
         if compressor.should_compress(history):
-            # ``plan_compaction`` 会写 memory、推进 cadence、更新 LLM 摘要计数；先快照，
+            # ``plan_compaction`` 会写 memory、推进 cadence；先快照，
             # 净收益不成立时恢复，保证“没折叠”也真的没有留下隐式状态变化。
-            state_before_candidate = compressor.snapshot_candidate_state()
+            state_before_candidate = compressor.snapshot_runtime_state()
             trigger = compressor.last_trigger
             trigger_tokens = compressor.last_estimated_tokens
             try:
@@ -100,7 +100,7 @@ class ContextWindow:
                     candidate_history
                 ) < estimate_messages_tokens(history)
             except Exception:
-                compressor.restore_candidate_state(state_before_candidate)
+                compressor.restore_runtime_state(state_before_candidate)
                 raise
             if candidate_is_beneficial:
                 compressor.accept_beneficial_compaction(candidate)
@@ -120,7 +120,7 @@ class ContextWindow:
                 )
                 self._record_compression_stats(history, candidate_history, context=context)
                 return [{"role": "system", "content": system_prompt}, *candidate_history]
-            compressor.restore_candidate_state(state_before_candidate)
+            compressor.restore_runtime_state(state_before_candidate)
 
         sticky = compressor.last_beneficial_compaction
         if sticky is None:

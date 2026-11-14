@@ -38,7 +38,6 @@ def _window_metadata():
         "memory_compression_count": 0,
         "memory_log_count": 0,
         "budget_compression_count": 0,
-        "memory_invalidation_count": 0,
     }
 
 
@@ -374,10 +373,10 @@ def test_candidate_rollback_ignores_opaque_collaborators_and_preserves_identity(
     backend = memory.backend
     compressor = ContextCompressor(memory=memory)
 
-    snapshot = compressor.snapshot_candidate_state()
+    snapshot = compressor.snapshot_runtime_state()
     memory.add("temporary memory")
     compressor._compression_count = 9
-    compressor.restore_candidate_state(snapshot)
+    compressor.restore_runtime_state(snapshot)
 
     assert memory is compressor.memory
     assert memory.lock is lock

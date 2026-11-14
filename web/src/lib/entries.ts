@@ -183,38 +183,6 @@ export function foldedEntryIds(entries: SessionEntry[]): Set<string> {
   return folded
 }
 
-export interface TreeNode {
-  entry: SessionEntry
-  children: TreeNode[]
-  depth: number
-}
-
-/**
- * 按 parent_id 还原会话树。
- *
- * 正常情况下这是一条链；分叉出来的会话第一条 `fork` 会指回源会话的分叉点，
- * 那个 parent 在本文件里不存在，于是自然成为一个新根——正是想要的效果。
- */
-export function buildTree(entries: SessionEntry[]): TreeNode[] {
-  const nodes = new Map<string, TreeNode>()
-  for (const entry of entries) {
-    nodes.set(entry.id, { entry, children: [], depth: 0 })
-  }
-  const roots: TreeNode[] = []
-  for (const entry of entries) {
-    const node = nodes.get(entry.id)
-    if (!node) continue
-    const parent = entry.parent_id ? nodes.get(entry.parent_id) : undefined
-    if (parent) {
-      parent.children.push(node)
-      node.depth = parent.depth + 1
-    } else {
-      roots.push(node)
-    }
-  }
-  return roots
-}
-
 // --- 格式化 ---------------------------------------------------------------
 
 export function formatDuration(seconds: number | null | undefined): string {

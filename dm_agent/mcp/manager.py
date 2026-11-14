@@ -5,7 +5,7 @@ from typing import Any
 from dm_agent.tools.base import Tool
 
 from .client import MCPClient
-from .config import MCPConfig, MCPServerConfig
+from .config import MCPConfig
 
 
 class MCPManager:
@@ -270,76 +270,3 @@ class MCPManager:
             True
         """
         return self._tools_cache.copy()
-
-    def get_running_servers(self) -> list[str]:
-        """
-        获取正在运行的服务器名称列表
-
-        返回当前所有正在运行的MCP服务器名称列表。
-
-        Returns:
-            List[str]: 服务器名称列表
-
-        Examples:
-            >>> manager = MCPManager()
-            >>> running = manager.get_running_servers()
-            >>> isinstance(running, list)
-            True
-        """
-        return [name for name, client in self.clients.items() if client.is_running()]
-
-    def get_server_status(self) -> dict[str, bool]:
-        """
-        获取所有服务器的运行状态
-
-        返回配置中所有服务器的运行状态映射。
-
-        Returns:
-            status (Dict[str, bool]): 服务器名称到运行状态的映射
-
-        Examples:
-            >>> manager = MCPManager()
-            >>> status = manager.get_server_status()
-            >>> isinstance(status, dict)
-            True
-        """
-        status = {}
-        for name in self.config.servers:
-            client = self.clients.get(name)
-            status[name] = client.is_running() if client else False
-        return status
-
-    def add_server_config(self, config: MCPServerConfig) -> None:
-        """
-        添加新的 MCP 服务器配置
-
-        将新的服务器配置添加到管理器的配置中。
-
-        Args:
-            config (MCPServerConfig): 服务器配置
-
-        Examples:
-            >>> from dm_agent.mcp.config import MCPServerConfig
-            >>> manager = MCPManager()
-            >>> config = MCPServerConfig("test", "npx", ["tool"])
-            >>> manager.add_server_config(config)  # 添加配置
-        """
-        self.config.add_server(config)
-
-    def remove_server_config(self, name: str) -> None:
-        """
-        移除 MCP 服务器配置
-
-        先停止指定的服务器（如果正在运行），然后从配置中移除。
-
-        Args:
-            name (str): 服务器名称
-
-        Examples:
-            >>> manager = MCPManager()
-            >>> manager.remove_server_config("test_server")  # 移除配置
-        """
-        # 先停止服务器（如果正在运行）
-        self.stop_server(name)
-        # 移除配置
-        self.config.remove_server(name)

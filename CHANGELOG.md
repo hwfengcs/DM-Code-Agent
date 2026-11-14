@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Maintenance cleanup (2026-11-14)
+
+- Removed unused CLI rendering helpers and repeated internal exports, MCP configuration
+  mutation helpers, obsolete compressor parameters and telemetry, and unreachable analysis branches.
+  CLI helpers remain in their `config`, `runner`, `report`, and `ui` modules.
+- Removed unused Web tree construction, navigation and run-client wrappers, test-only registry
+  helpers, and the ineffective `dm-agent-web --reload` option.
+- Bundled the unchanged Geist fonts with their SIL OFL license, removing the unused
+  Geist/Next.js/sharp dependency chain. Existing command entry points and historical data remain.
+
 ### Real SWE-bench Verified cross-repo run and Windows harness hardening (2026-08-06)
 
 - Added the archived 20/50 selection manifests, predictions, and official SWE-bench 4.1.0

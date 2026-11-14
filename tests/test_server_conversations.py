@@ -331,9 +331,7 @@ def test_capacity_is_shared_with_one_off_runs(
 ) -> None:
     """对话和一次性运行抢的是同一个工作区，并发上限必须共用一份。"""
     fake_conversation()
-    registry = registry_of(writable_client)
     opened = [open_conversation(writable_client)["run_id"] for _ in range(2)]
-    assert registry.at_capacity() is True
 
     blocked = writable_client.post("/api/conversations", json={"provider": "deepseek"})
     assert blocked.status_code == 409

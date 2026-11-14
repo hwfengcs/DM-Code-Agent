@@ -382,7 +382,7 @@ export function LinkButton({ children, onClick }: { children: ReactNode; onClick
  * 长字符串（观察结果、原始响应）默认折起来——审计时你想先看结构，
  * 需要时再逐字展开，而不是被一屏 8000 字的观察淹掉。
  */
-export function JsonView({ value, depth = 0 }: { value: unknown; depth?: number }) {
+export function JsonView({ value }: { value: unknown }) {
   if (value === null) return <span className="text-ink-4">null</span>
   if (typeof value === 'boolean')
     return <span className={value ? 'text-green-ink' : 'text-orange-ink'}>{String(value)}</span>
@@ -397,7 +397,7 @@ export function JsonView({ value, depth = 0 }: { value: unknown; depth?: number 
           <li key={index} className="flex gap-2.5">
             <span className="shrink-0 tabular-nums text-ink-4">{index}</span>
             <div className="min-w-0 flex-1">
-              <JsonView value={item} depth={depth + 1} />
+              <JsonView value={item} />
             </div>
           </li>
         ))}
@@ -414,7 +414,7 @@ export function JsonView({ value, depth = 0 }: { value: unknown; depth?: number 
           <div key={key} className="flex gap-2.5">
             <dt className="shrink-0 font-medium text-ink-3">{key}</dt>
             <dd className="min-w-0 flex-1">
-              <JsonView value={item} depth={depth + 1} />
+              <JsonView value={item} />
             </dd>
           </div>
         ))}

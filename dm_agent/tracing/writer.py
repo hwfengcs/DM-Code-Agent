@@ -252,13 +252,7 @@ class TraceWriter:
             payload["content"] = content
         return self.record("message", payload)
 
-    def record_compaction(
-        self,
-        payload: dict[str, Any],
-        *,
-        first_kept_index: int | None = None,
-        folded_indexes: Iterable[int] = (),
-    ) -> str:
+    def record_compaction(self, payload: dict[str, Any]) -> str:
         """记录一次非破坏式折叠：原始消息条目一条不删，只记下这次跳过了哪些。"""
         return self.record("compaction", payload)
 

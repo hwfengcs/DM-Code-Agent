@@ -6,7 +6,6 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  buildTree,
   classifyEvent,
   compactionSpans,
   describeIssue,
@@ -185,30 +184,6 @@ describe('compactionSpans 与 foldedEntryIds', () => {
   })
 })
 
-describe('buildTree', () => {
-  it('把线性会话还原成一条链', () => {
-    const roots = buildTree(
-      chain([
-        ['e1', 'run_start'],
-        ['e2', 'step'],
-        ['e3', 'run_end'],
-      ]),
-    )
-    expect(roots).toHaveLength(1)
-    expect(roots[0]?.children[0]?.entry.id).toBe('e2')
-    expect(roots[0]?.children[0]?.children[0]?.depth).toBe(2)
-  })
-
-  it('parent 不在本文件里的条目自成新根（分叉会话的情形）', () => {
-    const roots = buildTree([
-      entry('f1', 'fork', {}, 'source-0007'),
-      entry('f2', 'step', {}, 'f1'),
-    ])
-    expect(roots).toHaveLength(1)
-    expect(roots[0]?.entry.id).toBe('f1')
-    expect(roots[0]?.children).toHaveLength(1)
-  })
-})
 
 describe('格式化', () => {
   it('formatDuration 按量级切换单位', () => {

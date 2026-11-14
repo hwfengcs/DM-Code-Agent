@@ -8,7 +8,7 @@
  * 默认路由是**对话**：这是控制台的主界面。只读模式下 `App` 会把它换成会话库——
  * 那时候发起对话本来就不可用，落在一个只会显示 403 的页面上没有意义。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export type Route =
   | { name: 'chat' }
@@ -49,7 +49,7 @@ export function hrefFor(route: Route): string {
   }
 }
 
-export function useRoute(): [Route, (route: Route) => void] {
+export function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash))
 
   useEffect(() => {
@@ -58,9 +58,5 @@ export function useRoute(): [Route, (route: Route) => void] {
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
 
-  const navigate = useCallback((next: Route) => {
-    window.location.hash = hrefFor(next)
-  }, [])
-
-  return [route, navigate]
+  return route
 }
