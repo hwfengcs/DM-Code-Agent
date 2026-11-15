@@ -2,19 +2,22 @@
  * 展示层纯函数的单测。
  *
  * 这里**不测**任何诊断结论——那些是后端 `dm_agent.tracing` 的职责，
- * 由 `tests/test_server_readonly.py` 覆盖。这里只测分组、归类、树还原、格式化。
+ * 由 `tests/test_server_readonly.py` 覆盖。这里只测分组、归类、条目归一化、格式化。
  */
 import { describe, expect, it } from 'vitest'
 import {
   classifyEvent,
   compactionSpans,
+  describeHallucinationSignal,
   describeIssue,
   foldedEntryIds,
   formatBytes,
   formatDuration,
+  formatHallucinationValue,
   formatRelative,
   groupByStep,
   isFailureEntry,
+  normalizeEntry,
   splitRuns,
 } from './entries'
 import type { SessionEntry } from './types'
@@ -68,6 +71,47 @@ describe('classifyEvent', () => {
 
   it('没见过的事件归到 other，而不是猜', () => {
     expect(classifyEvent(entry('a', 'some_future_event'))).toBe('other')
+  })
+
+  it('守卫拦截与观察截断按后端真实写出的事件名归到 guard', () => {
+    // 事件名以后端为准：core/guards.py 写 edit_guard，core/observation.py 写 observation_truncated。
+    expect(classifyEvent(entry('a', 'edit_guard'))).toBe('guard')
+    expect(classifyEvent(entry('a', 'observation_truncated'))).toBe('guard')
+  })
+})
+
+describe('normalizeEntry', () => {
+  it('补齐缺失的 event 与 payload，分组和归类不再抛异常', () => {
+    // sessions 目录里一份不是会话日志的 JSONL（例如 predictions 文件）送过来就是这种形状：
+    // 后端只补了 id / parent_id，没有 event 也没有 payload。
+    const foreign = normalizeEntry({ id: 'legacy-0000', parent_id: '', instance_id: 'astropy-1' })
+    expect(classifyEvent(foreign)).toBe('other')
+    expect(isFailureEntry(foreign)).toBe(false)
+    expect(groupByStep([foreign])).toHaveLength(1)
+    expect(foreign).toEqual({
+      id: 'legacy-0000',
+      parent_id: '',
+      timestamp: '',
+      run_id: '',
+      event: '',
+      payload: {},
+      instance_id: 'astropy-1',
+    })
+
+    // 合法条目只补缺、不改值。
+    const valid = entry('e1', 'tool_call', { step_number: 1, action: 'read_file' })
+    expect(normalizeEntry(valid)).toEqual(valid)
+  })
+
+  it('数字 id 转成文本，非对象的 payload 换成空对象', () => {
+    // 后端的 id 补齐只看真假值：外来 JSONL 里的数字 id 会原样送过来，
+    // 而时间轴要对 id 调字符串方法。
+    expect(normalizeEntry({ id: 7, event: 42, payload: ['not', 'an', 'object'] })).toMatchObject({
+      id: '7',
+      event: '42',
+      payload: {},
+    })
+    expect(normalizeEntry(null)).toMatchObject({ id: '', event: '', payload: {} })
   })
 })
 
@@ -184,13 +228,19 @@ describe('compactionSpans 与 foldedEntryIds', () => {
   })
 })
 
-
 describe('格式化', () => {
   it('formatDuration 按量级切换单位', () => {
     expect(formatDuration(null)).toBe('—')
     expect(formatDuration(0.25)).toBe('250ms')
     expect(formatDuration(1.25)).toBe('1.3s')
     expect(formatDuration(125)).toBe('2m5s')
+  })
+
+  it('formatDuration 在单位边界上进位，而不是显示 60 秒或 1000 毫秒', () => {
+    expect(formatDuration(59.96)).toBe('1m0s')
+    expect(formatDuration(119.6)).toBe('2m0s')
+    expect(formatDuration(3599.7)).toBe('60m0s')
+    expect(formatDuration(0.9996)).toBe('1.0s')
   })
 
   it('formatBytes 按量级切换单位', () => {
@@ -211,5 +261,31 @@ describe('格式化', () => {
     expect(describeIssue('verification_gap')).toBe('宣布完成前没跑过任何验证')
     expect(describeIssue('final_failure:tool')).toBe('最终失败在 tool 阶段')
     expect(describeIssue('brand_new_signal')).toBe('brand_new_signal')
+  })
+})
+
+describe('幻觉信号', () => {
+  // 键名的真相源是后端 tracing/analysis.py 的 _hallucination_signals（由
+  // tests/test_tracing.py 钉住）。这里钉的是：后端给出的每个键都有人话标签。
+  const BACKEND_KEYS = [
+    'edit_without_read_count',
+    'edit_guard_blocks',
+    'truncation_hits',
+    'truncation_hit_rate',
+    'missing_path_reference_count',
+  ]
+
+  it('后端返回的每个键都有中文标签，未知键原样返回', () => {
+    for (const key of BACKEND_KEYS) {
+      expect(describeHallucinationSignal(key), key).not.toBe(key)
+    }
+    expect(describeHallucinationSignal('brand_new_signal')).toBe('brand_new_signal')
+  })
+
+  it('命中率按百分比显示，计数原样显示', () => {
+    expect(formatHallucinationValue('truncation_hit_rate', 0.25)).toBe('25%')
+    expect(formatHallucinationValue('truncation_hit_rate', 1 / 3)).toBe('33.3%')
+    expect(formatHallucinationValue('truncation_hit_rate', 0)).toBe('0%')
+    expect(formatHallucinationValue('truncation_hits', 2)).toBe('2')
   })
 })

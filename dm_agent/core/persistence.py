@@ -84,24 +84,28 @@ class RunPersistence:
         """
         try:
             if is_session_checkpoint(path):
-                self._append_session_checkpoint(path, checkpoint)
+                saved = self._append_session_checkpoint(path, checkpoint)
             else:
                 save_checkpoint(path, checkpoint)
+                saved = True
         except OSError as exc:
             print(f"[warn] checkpoint 保存失败：{exc}")
             return
-        if self.trace_writer:
+        # 会话 sink 写失败时由写入门面吞掉异常并停用该 sink；没有落盘就不能在 trace 里
+        # 留下 checkpoint_saved，否则审计记录会声称存在一份实际读不到的快照。
+        if saved and self.trace_writer:
             self.trace_writer.record(
                 "checkpoint_saved",
                 {"step_number": checkpoint.step_count, "path": str(path)},
             )
 
-    def _append_session_checkpoint(self, path: Path, checkpoint: RunCheckpoint) -> None:
+    def _append_session_checkpoint(self, path: Path, checkpoint: RunCheckpoint) -> bool:
         self.trace_writer.ensure_checkpoint_sink(path)
-        self.trace_writer.record_checkpoint_state(
+        entry_id = self.trace_writer.record_checkpoint_state(
             step_number=checkpoint.step_count,
             state=checkpoint.to_dict(),
         )
+        return bool(entry_id)
 
 
 def load_resume_state(path: str | Path, *, at: str | None = None) -> RunCheckpoint:

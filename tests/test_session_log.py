@@ -836,3 +836,36 @@ def test_legacy_traces_still_work_with_view_analyze_and_replay(tmp_path):
     assert trace_main(["view", str(legacy_path), "--json"]) == 0
     assert trace_main(["analyze", str(legacy_path), "--json"]) == 0
     assert trace_main(["replay", str(legacy_path)]) == 0
+
+
+@pytest.mark.parametrize("separator", [" ", " ", "\x85"])
+def test_unicode_line_separators_in_recorded_content_do_not_break_the_log(tmp_path, separator):
+    """JSONL 只以换行符为行界；读到含 U+2028 的源码后，日志仍必须能整份读回并续跑。"""
+    from dm_agent.core.persistence import load_resume_state
+    from dm_agent.tracing import load_trace_events
+
+    content = f"var sep = '{separator}';"
+    checkpoint_path = tmp_path / "session.jsonl"
+    agent = ReactAgent(
+        FakeRespondClient(
+            [
+                json.dumps({"thought": "t", "action": "show", "action_input": {}}),
+                json.dumps({"thought": "t", "action": "show", "action_input": {}}),
+            ]
+        ),
+        [Tool("show", "Show the file", lambda arguments: content)],
+        enable_planning=False,
+        enable_compression=False,
+    )
+    agent.run("read the separator file", max_steps=2, checkpoint_path=checkpoint_path)
+
+    entries = load_session_entries(checkpoint_path)
+    tool_results = [
+        entry["payload"]["content"]
+        for entry in message_entries(entries)
+        if entry["payload"]["kind"] == "tool_result"
+    ]
+
+    assert all(content in text for text in tool_results) and tool_results
+    assert load_trace_events(checkpoint_path) == entries
+    assert load_resume_state(checkpoint_path).steps[0]["observation"] == content

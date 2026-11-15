@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -31,6 +32,8 @@ from .settings import ServerSettings
 
 __all__ = ["create_app", "default_static_dir"]
 
+logger = logging.getLogger(__name__)
+
 # Python 的 mimetypes 表里没有 woff2，不补的话 StaticFiles 会把前端自带的 Geist
 # 字体按 application/octet-stream 发出去。浏览器加载 @font-face 时不强制校验 MIME，
 # 所以这不影响显示，但 RFC 8081 定义的就是 font/woff2——放在模块级注册一次，
@@ -41,6 +44,10 @@ mimetypes.add_type("font/woff2", ".woff2")
 # CORS 在这里只是让 `npm run dev` 能直连后端，不承担安全职责。
 _DEV_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
 IDLE_REAP_INTERVAL_SECONDS = 30.0
+
+# 这两个前缀下的 404 就是 404，不回落到 index.html：缺失的 API 端点要让前端拿到 JSON
+# 错误而不是一份解析不了的 HTML；缺失的带哈希资源（升级后旧页面还在引用）同理。
+_NO_SPA_FALLBACK_PREFIXES = frozenset({"api", "assets"})
 
 
 def default_static_dir() -> Path | None:
@@ -60,7 +67,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     async def reap_idle() -> None:
         while True:
             await asyncio.sleep(IDLE_REAP_INTERVAL_SECONDS)
-            await asyncio.to_thread(registry.reap_idle)
+            try:
+                await asyncio.to_thread(registry.reap_idle)
+            except Exception:
+                # 一次回收失败不能让这个任务就此结束：那样空闲对话再也没人回收，
+                # 关停时 await 它还会把异常带出来，跳过下面的 stop_all。
+                logger.exception("回收空闲对话失败，下个周期重试")
 
     reaper = asyncio.create_task(reap_idle())
     try:
@@ -93,6 +105,9 @@ class SPAStaticFiles(StaticFiles):
         except StarletteHTTPException as exc:
             if exc.status_code != 404 or path == "index.html":
                 raise
+            # Windows 上 StaticFiles 给的 path 用反斜杠分段，先规范化再取首段。
+            if path.replace("\\", "/").split("/", 1)[0] in _NO_SPA_FALLBACK_PREFIXES:
+                raise
             return await super().get_response("index.html", scope)
 
 
@@ -100,7 +115,8 @@ def create_app(settings: ServerSettings) -> FastAPI:
     """按配置装配应用。
 
     路由顺序有意义：API 路由先注册，静态文件挂在 ``/`` 兜底。Starlette 按注册顺序
-    匹配，所以根挂载不会吃掉 ``/api/*``。
+    匹配，所以根挂载不会吃掉已注册的 ``/api/*``；没有注册的 ``/api/*`` 落到根挂载后，
+    由 ``SPAStaticFiles`` 保持为 404，不回落成页面。
     """
     app = FastAPI(
         title="DM-Code-Agent Web Console",
@@ -110,6 +126,9 @@ def create_app(settings: ServerSettings) -> FastAPI:
         ),
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
+        # FastAPI 默认还会在根上挂这两个页面。它们不在 /api 之下，本项目也不用。
+        redoc_url=None,
+        swagger_ui_oauth2_redirect_url=None,
         lifespan=_lifespan,
     )
     app.state.settings = settings

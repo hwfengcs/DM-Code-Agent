@@ -16,7 +16,7 @@ from typing import Any, TextIO
 
 from dm_agent.memory.context_budget import estimate_tokens_from_chars
 
-from .session import new_entry_id, normalize_entries
+from .session import new_entry_id, normalize_entries, read_jsonl_lines
 
 # 2.0: 每条 entry 带 id/parent_id，会话日志成为可导航的树；新增 message /
 # compaction / checkpoint / fork 四类条目。老字段（event/payload）一个没动，
@@ -300,11 +300,7 @@ class TraceWriter:
 
 def load_trace_events(path: str | Path) -> list[dict[str, Any]]:
     """读取会话日志（或 1.x 的老 trace），缺失的 id/parent_id 在读侧补齐。"""
-    events: list[dict[str, Any]] = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            events.append(json.loads(line))
-    return normalize_entries(events)
+    return normalize_entries(json.loads(line) for line in read_jsonl_lines(path))
 
 
 class SessionWriter:

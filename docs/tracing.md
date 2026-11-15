@@ -24,7 +24,7 @@ loader synthesizes `legacy-0000`, `legacy-0001`, … on read, so `view`, `analyz
 | Purpose | shareable audit view | local resumable session |
 | Model responses | `content_chars` + `content_sha256` only (full text needs `--trace-llm-io`) | full text |
 | Redaction | yes | `checkpoint` entries are not redacted (redaction rewrites `$HOME` to `~`, which would corrupt resumed context) |
-| Tooling | `view` / `analyze` / `replay` / `diff` / `fork` | same, plus `--resume` |
+| Tooling | `view` / `analyze` / `analyze-dir` / `export` / `replay` / `diff` / `fork` | same, plus `--resume` |
 
 When both flags are supplied, session events fan out to two independent writers. The writers
 do not copy one serialized payload: the shareable trace applies its redaction policy while the
@@ -199,7 +199,19 @@ dm-agent-trace replay traces/retry-fix.jsonl \
   --workspace /path/to/sandbox
 ```
 
-Tool replay compares the new observation with the recorded observation and reports mismatches.
+Tool replay compares the part of the observation retained in the log. It applies the recorded
+`run_start.metadata.max_observation_chars` limit for each run using the same truncation helper,
+then compares directly; if that differs, it applies trace redaction and compares again. This
+supports both raw checkpoint observations and redacted trace observations without treating
+their intentional truncation or redaction as a mismatch. Older logs without that limit are
+compared without truncation: the original limit cannot be inferred reliably.
+
+A match only covers the retained text. Changes inside an omitted or redacted region cannot be
+verified. Redaction uses the current environment's known secrets and home path, so a different
+environment can still produce mismatches. Replay uses the recorded arguments as they are; it
+cannot restore redacted argument values. It loads built-in tools only, does not restore the
+original filesystem state, and does not rerun extension hooks such as `after_tool_result`.
+Those differences can also cause mismatches even when the underlying tool behaves correctly.
 
 ## Events
 
@@ -223,6 +235,8 @@ The current schema records these event types:
 - `plan`: initial planner steps.
 - `plan_error`: planning failure.
 - `llm_call`: message count, roles, temperature, prompt chars, estimated prompt tokens, and response chars.
+- `llm_error`: the main-loop LLM request for a step raised (after any client-side retries);
+  records `step_number` and the `error` text before the exception propagates.
 - `parse_error`: invalid model response information. New runs also record the exact
   `context_replacement` used for the next request: the original assistant `message` remains in
   the append-only log for audit, while the live context carries a short placeholder. Historical
@@ -239,6 +253,10 @@ The current schema records these event types:
   against the current file before writing.
 - `edit_noop`: a content-anchored `edit_file` call supplied identical `old_string` and
   `new_string`; no file write or write-ledger transition occurred.
+- `hook_error`: a lifecycle handler raised or returned an unsupported result; that handler is
+  skipped and the run continues. Records `hook`, `handler`, `handler_position`, `step_number`,
+  `run_id`, `error_type`, and `message`, plus `tool_name` for tool events and `phase` for
+  LLM-request events.
 - `memory_invalidation`: memory hygiene superseded failure memories after a later success.
   **Historical only** — the `--enable-memory-hygiene` switch was removed in v2.1, so new runs
   never emit this event; it is documented because old session logs still contain it.
@@ -248,11 +266,21 @@ The current schema records these event types:
 - `run_resumed`: a run continued from a `--resume` checkpoint (records the resume step).
 - `step`: ReAct step with thought, action, input, and observation.
 - `replan`: regenerated plan after a failure.
+- `replan_decision`: the decision taken before calling the planner again. With
+  `--enable-adaptive-replanning`, each failure handled while a plan is active records
+  `step_number`, `action`, `should_replan`, `strategy`, `reason`, the classified `signal`, and
+  `repeated_failure` (plus `repeated_failure_details` when the same failure signature repeats).
+  Without it, the event is written only when the replan budget is exhausted
+  (`should_replan=false`, `strategy=replan_budget_exhausted`).
 - `run_end`: final answer, status, duration, and agent metadata. Relevant direct counters include
   `edit_guard_block_count`, `edit_noop_count`, `parse_error_context_omitted_count`, and
   `parse_error_context_omitted_chars`; “omitted” means absent from later model context, not deleted
   from the audit log.
 - `run_error`: unhandled runtime error.
+- `conversation_reset`: `--conversation-stdin` only; a `{"type": "reset"}` message cleared the
+  conversation history and local memory. Records `after_turns`.
+- `conversation_end`: `--conversation-stdin` only; the session ended. Records `turns` and
+  `reason` (`eof` or `interrupted`).
 
 ## Trace Analysis
 
@@ -263,8 +291,10 @@ The current schema records these event types:
 - `final_failure_stage`: the stage that still blocked the run, or `none` if the run recovered.
 - `recovery`: failure count, first failure step, replan count, and whether a replan occurred after
   the first failure.
-- `verification`: `run_tests`, `run_linter`, and `run_python` actions before finish, plus a
-  `gap` flag for successful runs that finished without local verification.
+- `verification`: `run_tests`, `run_linter`, and `run_python` actions before the accepted (last)
+  `finish` / `task_complete`, plus a `gap` flag for successful runs that finished without local
+  verification. A completion attempt vetoed by a `before_finish` handler is not the finish: a
+  run that is vetoed, runs a verification action, and then finishes has no gap.
 - `trace_health`: a compact `good` / `warning` / `risky` grade with issue labels.
 
 `dm-agent-trace analyze-dir` applies the same analyzer to every matching trace in a directory and

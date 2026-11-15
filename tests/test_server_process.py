@@ -48,6 +48,12 @@ def test_rejects_overlong_task() -> None:
         spec("x" * (MAX_TASK_CHARS + 1)).validate(PROVIDERS)
 
 
+def test_rejects_a_task_that_cannot_be_an_argv_element() -> None:
+    """NUL 进不了 argv；不在校验阶段拒绝，Popen 抛的 ValueError 会变成 500。"""
+    with pytest.raises(SpecError, match="NUL"):
+        spec("前半段\x00后半段").validate(PROVIDERS)
+
+
 def test_rejects_unknown_provider() -> None:
     with pytest.raises(SpecError, match="未知的 provider"):
         spec(provider="definitely-not-a-provider").validate(PROVIDERS)
@@ -390,3 +396,25 @@ def test_child_runs_in_the_configured_workspace(tmp_path: Path) -> None:
     while time.time() < deadline and process.poll() is None:
         time.sleep(0.05)
     assert (workspace / "proof.txt").read_text() == "ok"
+
+
+def test_child_output_is_decoded_as_utf8(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """子进程的中文报错（缺 API key、参数无效）到了控制台里不能是乱码。
+
+    Windows 上子解释器写管道默认用 ANSI 代码页，而 ``read_output`` 按 UTF-8 解码。
+    显式关掉 UTF-8 模式：开发机的 shell 若设了 ``PYTHONUTF8=1``，这个问题会被掩盖。
+    """
+    monkeypatch.setenv("PYTHONUTF8", "0")
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    process = RunProcess(
+        # 源码保持纯 ASCII，由子进程自己把转义还原成中文再写出来。
+        [sys.executable, "-c", r"print('[ERR] 缺少 API key')"],
+        cwd=tmp_path,
+        trace_path=tmp_path / "t.jsonl",
+    )
+    process.start()
+    try:
+        assert process.wait(timeout=10) == 0
+        assert process.read_output().strip() == "[ERR] 缺少 API key"
+    finally:
+        process.stop(grace_seconds=1.0)

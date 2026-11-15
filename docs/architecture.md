@@ -11,7 +11,8 @@
 
 ## 分层
 
-依赖必须**单向向下**。这条契约由 ruff 的 `TID251` 在 CI 里强制，配置和理由写在
+下图是目标分层，新增依赖应**单向向下**。当前 ruff 的 `TID251` 只强制禁止下层反向导入
+`cli` / `server` 与顶层 `main`，并未检查图中的全部依赖边。配置和理由写在
 `pyproject.toml` 的 `[tool.ruff.lint.flake8-tidy-imports.banned-api]`。
 
 ```
@@ -28,6 +29,9 @@ extensions   依赖 core（把内置能力装到事件总线上）
 cli          最外层组装者，可以依赖任何层
 server       与 cli 同级的另一个最外层组装者；可依赖任何下层，但不得依赖 cli
 ```
+
+现有注册入口仍有例外：客户端工厂、工具和技能加载器会懒导入 `extensions`，以获取内置
+注册表。完整分层尚未由静态检查保证；这也不是允许新增任意反向依赖的豁免。
 
 `cli` 是**参考实现，不是被复用的库**。想自己造 agent 就直接用 `dm_agent.core.ReactAgent`，
 不必接受这套 CLI 与 UI。
@@ -76,6 +80,7 @@ CLI 子进程**，不把 CLI 当库用。这样 Web 界面永远和命令行做�
 | `completion.py` | 完成门禁与结果格式化 |
 | `replan.py` | 失败签名与重规划 |
 | `persistence.py` | checkpoint 编解码、写前备份、`--resume` 加载 |
+| `checkpoint.py` | 存储原语：`RunCheckpoint` 快照与 schema 校验、单文件快照的原子落盘、写前备份的文件拷贝 |
 | `events.py` | 事件总线、事件对象、按 phase 包装的 LLM 客户端 |
 | `capabilities.py` | `AgentCapability` 协议与 `CapabilityContext` |
 | `guards.py` | read-before-edit 守卫（作为钩子处理器实现） |

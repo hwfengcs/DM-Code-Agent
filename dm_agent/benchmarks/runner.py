@@ -71,8 +71,9 @@ def run_benchmark_suite(
 
     if variant_names:
         allowed_variants = set(variant_names)
+        available_variants = variants if variants is not None else BENCH_VARIANTS
         selected_variants = [
-            variant for variant in BENCH_VARIANTS if variant.name in allowed_variants
+            variant for variant in available_variants if variant.name in allowed_variants
         ]
 
     if config.repeat < 1:
@@ -610,7 +611,9 @@ def load_trace_analysis_for_report(trace_path: Path) -> tuple[dict[str, Any], st
 
     try:
         analysis = analyze_events(load_trace_events(trace_path))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
+        # ValueError 涵盖半行 JSON、非对象条目与坏 UTF-8：trace 只是附带诊断，
+        # 读不了就记下原因，不能让整套 benchmark 连同已完成的结果一起中断。
         return {}, str(exc)
     return {
         "primary_failure_stage": analysis.get("primary_failure_stage", "none"),

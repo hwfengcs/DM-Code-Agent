@@ -266,6 +266,19 @@ def test_save_preserves_source_and_requires_explicit_overwrite(tmp_path: Path) -
     assert source.read_bytes() == original
 
 
+def test_forced_overwrite_writes_the_same_bytes_as_a_first_export(tmp_path: Path) -> None:
+    source = tmp_path / "session.jsonl"
+    _write(source, _events())
+    fresh, replaced = tmp_path / "fresh.html", tmp_path / "replaced.html"
+    replaced.write_text("previous report", encoding="utf-8")
+
+    save_session_report(source, fresh)
+    save_session_report(source, replaced, force=True)
+
+    assert replaced.read_bytes() == fresh.read_bytes()
+    assert b"\r\n" not in replaced.read_bytes()
+
+
 @pytest.mark.parametrize("alias", ["same", "hardlink", "symlink"])
 def test_force_cannot_overwrite_source_or_alias(tmp_path: Path, alias: str) -> None:
     source = tmp_path / "session.jsonl"

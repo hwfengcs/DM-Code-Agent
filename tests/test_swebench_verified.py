@@ -114,7 +114,8 @@ def test_extract_workspace_archive_preserves_native_symlink_and_mode(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "member_name", ["../outside.txt", "..\\outside.txt", "/outside.txt", "C:/outside.txt"]
+    "member_name",
+    ["../outside.txt", "..\\outside.txt", "/outside.txt", "C:/outside.txt", "docs/a:b.txt"],
 )
 def test_extract_workspace_archive_rejects_path_traversal(tmp_path, member_name):
     archive_path = tmp_path / "unsafe.tar"
@@ -130,6 +131,27 @@ def test_extract_workspace_archive_rejects_path_traversal(tmp_path, member_name)
         )
 
     assert not (tmp_path / "outside.txt").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="':' is a legal file name character only on POSIX")
+def test_extract_workspace_archive_keeps_colon_names_under_posix_semantics(tmp_path):
+    archive_path = tmp_path / "workspace.tar"
+    payload = b"data"
+    with tarfile.open(archive_path, "w") as archive:
+        file_info = tarfile.TarInfo("docs/a:b.txt")
+        file_info.size = len(payload)
+        archive.addfile(file_info, BytesIO(payload))
+        link_info = tarfile.TarInfo("docs/latest")
+        link_info.type = tarfile.SYMTYPE
+        link_info.linkname = "a:b.txt"
+        archive.addfile(link_info)
+
+    destination = tmp_path / "workspace"
+    predict._extract_workspace_archive(archive_path, destination, windows_semantics=False)
+
+    assert (destination / "docs/a:b.txt").read_bytes() == payload
+    assert (destination / "docs/latest").is_symlink()
+    assert (destination / "docs/latest").read_bytes() == payload
 
 
 @pytest.mark.parametrize("member_name", ["CON", "docs/NUL.txt", "name. "])
@@ -214,6 +236,161 @@ def test_ensure_image_retries_timed_out_pulls(monkeypatch):
         predict.ensure_image("owner__repo-1", quiet=True)
 
     assert calls == 3
+
+
+def test_docker_preflight_reports_a_missing_docker_binary(monkeypatch):
+    def missing_binary(*_args, **_kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "docker")
+
+    monkeypatch.setattr(predict, "_run", missing_binary)
+
+    assert predict.docker_preflight().startswith("无法执行 docker 命令")
+
+
+def _stub_git_for_extract_patch(monkeypatch, *, returncode: int, stdout: bytes, stderr: bytes):
+    """让 extract_patch 不碰真实 git：add 走文本模式的 _run，diff 必须走字节模式。"""
+    diff_calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def run_add(command, **_kwargs):
+        assert command == ["git", "add", "-A"]
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    def run_diff(command, **kwargs):
+        diff_calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(predict, "_assert_git_root", lambda *_args: None)
+    monkeypatch.setattr(predict, "_run", run_add)
+    monkeypatch.setattr(predict.subprocess, "run", run_diff)
+    return diff_calls
+
+
+def test_extract_patch_reads_the_diff_as_bytes_with_a_pinned_format(monkeypatch, tmp_path):
+    """文本模式的通用换行会吃掉 patch 里的 CR；输出格式也不能随用户的全局 git 配置变化。"""
+    raw = (
+        b"diff --git a/win.py b/win.py\n"
+        b"--- a/win.py\n"
+        b"+++ b/win.py\n"
+        b"@@ -1,2 +1,3 @@\n"
+        b" keep = 1\r\n"
+        b"-value = 1\r\n"
+        b"+value = 2\r\n"
+        b"+bar = 'pro\rgress'\n"
+    )
+    diff_calls = _stub_git_for_extract_patch(monkeypatch, returncode=0, stdout=raw, stderr=b"")
+
+    patch = predict.extract_patch(tmp_path)
+
+    assert patch.encode("utf-8") == raw
+    assert diff_calls == [
+        (
+            [
+                "git",
+                "diff",
+                "--cached",
+                "--binary",
+                "--no-color",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
+            ],
+            {"cwd": str(tmp_path), "capture_output": True},
+        )
+    ]
+
+
+def test_extract_patch_reports_a_failed_diff_with_readable_stderr(monkeypatch, tmp_path):
+    _stub_git_for_extract_patch(
+        monkeypatch, returncode=128, stdout=b"", stderr="fatal: 索引已损坏\n".encode()
+    )
+
+    with pytest.raises(RuntimeError, match="git diff 失败：fatal: 索引已损坏"):
+        predict.extract_patch(tmp_path)
+
+
+def test_extract_patch_can_be_applied_with_crlf_binary_and_custom_diff_settings(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "empty-git-config"))
+
+    def git(*args, input=None):
+        return subprocess.run(
+            ["git", *args], cwd=tmp_path, input=input, capture_output=True, check=True
+        )
+
+    git("init")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "Test")
+    git("config", "core.autocrlf", "false")
+    (tmp_path / ".gitattributes").write_text("*.py diff=custom -text\n", encoding="utf-8")
+    source = tmp_path / "win.py"
+    source.write_bytes(b"value = 1\r\n")
+    git("add", ".")
+    git("commit", "-m", "baseline")
+    git("config", "diff.custom.textconv", "git hash-object")
+    git("config", "diff.noprefix", "true")
+    git("config", "color.ui", "always")
+    git("config", "diff.external", "unused-external-diff")
+    updated = b"value = 2\r\n"
+    binary = b"\x00\xff\x80binary\r\n"
+    source.write_bytes(updated)
+    (tmp_path / "data.bin").write_bytes(binary)
+
+    patch = predict.extract_patch(tmp_path)
+    git("reset", "--hard", "HEAD")
+    git("apply", "--binary", "-", input=patch.encode("utf-8"))
+
+    assert source.read_bytes() == updated
+    assert (tmp_path / "data.bin").read_bytes() == binary
+
+
+def test_build_client_names_the_unsupported_provider(monkeypatch):
+    monkeypatch.setattr(predict, "load_env_files", lambda: [])
+
+    with pytest.raises(RuntimeError) as excinfo:
+        predict.build_client("deepseeek", None, 30)
+
+    message = str(excinfo.value)
+    assert "不支持的 provider：deepseeek" in message
+    assert "deepseek、openai、claude、gemini" in message
+
+
+def test_summarize_only_runs_without_evaluation_arguments(tmp_path, capsys):
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "submitted_instances": 4,
+                "completed_instances": 3,
+                "resolved_instances": 1,
+                "unresolved_instances": 2,
+                "empty_patch_instances": 1,
+                "error_instances": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert evaluate.main(["--summarize-only", str(report)]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "submitted": 4,
+        "completed": 3,
+        "resolved": 1,
+        "unresolved": 2,
+        "empty_patch": 1,
+        "error": 0,
+        "resolve_rate": 0.25,
+    }
+
+
+def test_evaluation_still_requires_predictions_and_run_id(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        evaluate.main(["--run-id", "only-half-of-the-arguments"])
+
+    assert excinfo.value.code == 2
+    assert "--predictions" in capsys.readouterr().err
 
 
 def test_force_lf_writes_uses_utf8_for_harness_text_outputs(tmp_path):

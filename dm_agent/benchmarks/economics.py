@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,7 +122,7 @@ def build_economics_report(
             item.label,
         ),
     )
-    manifest_guard = _manifest_guard(reports)
+    manifest_guard = _manifest_guard(reports, [entry.label for entry in entries])
     return {
         "mode": "benchmark_economics",
         "summary": {
@@ -195,7 +196,10 @@ def load_json_reports(paths: Iterable[Path]) -> list[dict[str, Any]]:
     reports = []
     for path in paths:
         with path.open("r", encoding="utf-8") as handle:
-            reports.append(json.load(handle))
+            report = json.load(handle)
+        if not isinstance(report, dict):
+            raise ValueError(f"{path}: report must be a JSON object")
+        reports.append(report)
     return reports
 
 
@@ -222,8 +226,14 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
 
 def main(argv: Any = None) -> int:
     args = parse_args(argv)
+    try:
+        reports = load_json_reports(args.reports)
+    except (OSError, ValueError) as exc:
+        # 与 dm-agent-score-diff / dm-agent-manifest-diff 一致：输入读不了给一行说明、返回 2。
+        print(f"Cannot read benchmark report: {exc}", file=sys.stderr)
+        return 2
     report = build_economics_report(
-        load_json_reports(args.reports),
+        reports,
         labels=args.label,
         cost_per_1k_tokens=args.cost_per_1k_tokens,
     )
@@ -291,11 +301,11 @@ def _default_label(report: dict[str, Any]) -> str:
     return f"{suite}:{provider}:{model}"
 
 
-def _manifest_guard(reports: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def _manifest_guard(reports: Sequence[dict[str, Any]], labels: Sequence[str]) -> dict[str, Any]:
+    """按 suite 签名给报告分组；用与条目相同的标签，``--label`` 才能分清是哪一份。"""
     signatures: dict[str, list[str]] = {}
     missing = []
-    for index, report in enumerate(reports):
-        label = _default_label(report) or f"report-{index + 1}"
+    for report, label in zip(reports, labels, strict=True):
         manifest = report.get("manifest") or {}
         signature = ""
         if isinstance(manifest, dict):

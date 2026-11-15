@@ -38,7 +38,11 @@ export interface ConversationTurnView {
 
 /** 会被算进「执行过程」的事件。刻意不含 `message`——那是对话历史的原始载体，
  * 在对话视图里由 `run_start` / `run_end` 表达，重复列出来只会让过程变噪音。
- * 需要逐条核对原文时右侧审计抽屉仍能看到全部条目。 */
+ * 需要逐条核对原文时右侧审计抽屉仍能看到全部条目。
+ *
+ * 事件名必须与后端写出的一字不差：守卫拦截是 `edit_guard`（`core/guards.py`），
+ * 观察截断是 `observation_truncated`（`core/observation.py`）。`critic_review` 与
+ * `circuit_breaker` 对应的模块已在 v2.1 移除，保留是为了老日志仍能照常显示。 */
 const ACTIVITY_EVENTS = new Set([
   'plan',
   'step',
@@ -46,8 +50,8 @@ const ACTIVITY_EVENTS = new Set([
   'replan',
   'critic_review',
   'compaction',
-  'guard_block',
-  'truncation',
+  'edit_guard',
+  'observation_truncated',
   'parse_error',
   'llm_error',
   'plan_error',
@@ -55,6 +59,12 @@ const ACTIVITY_EVENTS = new Set([
   'circuit_breaker',
   'hook_error',
 ])
+
+/** `edit_guard.reason` 的人话。取值来自 `memory/context_budget.py` 的 `FileLedger.check_edit`。 */
+const EDIT_GUARD_REASONS: Record<string, string> = {
+  never_read: '本次运行里还没读过',
+  stale_read: '上次读取之后文件又被改写',
+}
 
 /**
  * 把条目流切成轮次。
@@ -141,14 +151,37 @@ export function describeActivityEntry(entry: SessionEntry): string {
       }
       return '上下文折叠（原文仍在）'
     }
+    case 'edit_guard': {
+      const reason = stringField(entry, 'reason')
+      const detail = EDIT_GUARD_REASONS[reason] ?? reason
+      const suffix = detail ? `（${detail}）` : ''
+      return `编辑被拦下：${stringField(entry, 'path')}${suffix}`
+    }
+    case 'observation_truncated': {
+      const original = entry.payload.original_chars
+      const kept = entry.payload.kept_chars
+      const tool = actionOf(entry)
+      const subject = tool ? `${tool} 的观察被截断` : '观察被截断'
+      if (typeof original === 'number' && typeof kept === 'number') {
+        return `${subject}：${original} → ${kept} 字符`
+      }
+      return subject
+    }
     default:
       return stringField(entry, 'error') || stringField(entry, 'message') || stringField(entry, 'observation')
   }
 }
 
-/** 执行过程里某一条的标题：优先显示动作名，其次事件名。 */
+/**
+ * 执行过程里某一条的标题：步骤与工具调用显示动作名，其余显示事件名。
+ *
+ * 只认这两种事件，是因为别的事件也可能带 `action` 字段却不是一次动作——
+ * `observation_truncated.action` 说的是「被截断的是哪个工具的观察」，拿它当标题
+ * 会让一条截断记录看起来像又调了一次工具。
+ */
 export function labelActivityEntry(entry: SessionEntry): string {
-  return actionOf(entry) || entry.event
+  if (entry.event === 'step' || entry.event === 'tool_call') return actionOf(entry) || entry.event
+  return entry.event
 }
 
 /**

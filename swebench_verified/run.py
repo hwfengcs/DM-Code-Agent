@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 from .dataset import fetch_instances
-from .predict import docker_preflight, predict_one
+from .predict import build_client, docker_preflight, predict_one
 from .selection import (
     build_selection_manifest,
     load_selection_manifest,
@@ -42,7 +42,10 @@ def _default_manifest_path(output: Path) -> Path:
 def _load_resume_records(output: Path, selected_ids: set[str]) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     seen: set[str] = set()
-    for line_number, line in enumerate(output.read_text(encoding="utf-8").splitlines(), start=1):
+    # 只按 "\n" 断行：记录用 ensure_ascii=False 写出，patch 或失败文本里的 U+2028 /
+    # U+2029 / U+0085 会原样落盘，而 str.splitlines() 会在这些字符处把一条记录切成两半。
+    lines = output.read_text(encoding="utf-8").split("\n")
+    for line_number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         record = json.loads(line)
@@ -116,12 +119,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="Skip instances already present in --output.",
+        help="Skip instances that already ran the agent; harness_error records are retried.",
     )
     args = parser.parse_args(argv)
 
     if args.limit < 0:
         parser.error("--limit must be non-negative")
+    if args.max_steps <= 0:
+        # 0 步的 agent 一次模型调用都不会发出：每题白拉一个镜像、交出一个空 patch。
+        parser.error("--max-steps must be greater than 0")
     if args.output.exists() and not args.resume:
         print("predictions 已存在；请使用 --resume 续跑，或指定新的 --output。", file=sys.stderr)
         return 2
@@ -141,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         try:
             existing_manifest = load_selection_manifest(manifest_path)
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             print(f"无法续跑：selection manifest 无法读取：{exc}", file=sys.stderr)
             return 2
         mismatches = resume_manifest_mismatches(existing_manifest, manifest)
@@ -175,6 +181,14 @@ def main(argv: list[str] | None = None) -> int:
     if docker_error:
         print(f"docker 不可用：{docker_error}", file=sys.stderr)
         print("请确认 Docker Desktop 正在运行（docker info 能返回版本号）后重试。", file=sys.stderr)
+        return 2
+
+    # 缺 API key、provider 写错必须在这里失败。predict_one 要先把每题约 3.9 GB 的镜像物化成
+    # 工作区才会构造客户端，届时每一题都白拉一次镜像，只留下一条 harness_error。
+    try:
+        build_client(args.provider, args.model, args.timeout)
+    except (RuntimeError, ValueError) as exc:
+        print(f"无法创建 LLM 客户端：{exc}", file=sys.stderr)
         return 2
 
     if not (args.resume and args.output.exists()):

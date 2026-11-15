@@ -187,8 +187,11 @@ async def stream_conversation(
     """跟读该对话的会话日志。
 
     与单次运行的流唯一的区别：``is_finished`` 判的是**整个对话进程**是否退出，
-    所以这条连接会横跨全部轮次。前端因此可以在切视图、甚至刷新页面后重新接上
-    （``Last-Event-ID`` 续传），而不是每轮重连一次。
+    所以这条连接会横跨全部轮次，而不是每轮重连一次。
+
+    接回来有两种情形：连接掉线后浏览器自动重连会带上 ``Last-Event-ID``，从下一行
+    接着发；刷新页面则是一条**新的** ``EventSource``，不带这个头，于是从第 0 行
+    全量重放。
     """
     record = _require_conversation(registry, conversation_id)
     start_after = parse_last_event_id(last_event_id)

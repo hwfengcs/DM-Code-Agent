@@ -38,7 +38,10 @@ export function classifyEvent(entry: SessionEntry): EventKind {
   if (event === 'critic_review') return 'critic'
   if (event === 'checkpoint') return 'lifecycle'
   if (event.endsWith('_error') || event === 'run_error') return 'failure'
-  if (event.includes('guard') || event.includes('breaker') || event === 'truncation') return 'guard'
+  // 截断的事件名以后端为准：core/observation.py 写的是 observation_truncated。
+  if (event.includes('guard') || event.includes('breaker') || event === 'observation_truncated') {
+    return 'guard'
+  }
   if (event === 'tool_call') return entry.payload.failed === true ? 'failure' : 'tool'
   return 'other'
 }
@@ -187,10 +190,12 @@ export function foldedEntryIds(entries: SessionEntry[]): Set<string> {
 
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return '—'
-  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`
-  if (seconds < 60) return `${seconds.toFixed(1)}s`
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes}m${Math.round(seconds % 60)}s`
+  // 每一档都按「取整之后」的值分档，否则边界上会写出 1000ms、60.0s、1m60s 这类没进位的值。
+  const millis = Math.round(seconds * 1000)
+  if (millis < 1000) return `${millis}ms`
+  if (seconds < 59.95) return `${seconds.toFixed(1)}s`
+  const total = Math.round(seconds)
+  return `${Math.floor(total / 60)}m${total % 60}s`
 }
 
 export function formatBytes(bytes: number): string {
@@ -232,6 +237,63 @@ export function describeIssue(issue: string): string {
   if (prefix === 'final_failure') return `最终失败在 ${detail} 阶段`
   if (prefix === 'primary_failure') return `首次失败在 ${detail} 阶段`
   return issue
+}
+
+/**
+ * 幻觉信号的键 → 中文标签。键名的真相源是后端 `tracing/analysis.py` 的
+ * `_hallucination_signals`；这里少一个，诊断面板上就会露出原始英文键。
+ */
+const HALLUCINATION_LABELS: Record<string, string> = {
+  edit_without_read_count: '未读先改',
+  edit_guard_blocks: '被守卫拦下',
+  truncation_hits: '观察被截断',
+  truncation_hit_rate: '截断命中率',
+  missing_path_reference_count: '引用了不存在的路径',
+}
+
+/** 看不懂的键原样返回，不猜。 */
+export function describeHallucinationSignal(key: string): string {
+  return HALLUCINATION_LABELS[key] ?? key
+}
+
+/** 信号值的展示文本：命中率是 0–1 的比例，按百分比写；其余是计数。 */
+export function formatHallucinationValue(key: string, value: number): string {
+  if (key === 'truncation_hit_rate' && typeof value === 'number') {
+    return `${Number((value * 100).toFixed(1))}%`
+  }
+  return String(value)
+}
+
+/**
+ * 把后端送来的一行补成合法的 `SessionEntry`。
+ *
+ * 后端读侧只保证「每行是 JSON 对象、payload 若有则是对象」并补齐空缺的 id。sessions
+ * 目录里一份不是会话日志的 JSONL（例如 predictions 文件）因此会原样送到前端：没有
+ * `event`，也没有 `payload`。本文件的纯函数与各视图都按 `SessionEntry` 的类型直接
+ * 取值，缺了字段就在渲染途中抛 TypeError，而前端没有 ErrorBoundary——整个控制台白屏。
+ * 所以在数据入口（`api.ts`）补一次：只补缺、不改已有的值，多出来的字段原样留着。
+ */
+export function normalizeEntry(raw: unknown): SessionEntry {
+  const source = isRecord(raw) ? raw : {}
+  return {
+    ...source,
+    id: textField(source.id),
+    parent_id: textField(source.parent_id),
+    timestamp: textField(source.timestamp),
+    run_id: textField(source.run_id),
+    event: textField(source.event),
+    payload: isRecord(source.payload) ? source.payload : {},
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** 字符串原样返回；数字转成文本（外来 JSONL 里常见数字 id）；其余当作缺失。 */
+function textField(value: unknown): string {
+  if (typeof value === 'string') return value
+  return typeof value === 'number' ? String(value) : ''
 }
 
 function stringArray(value: unknown): string[] {

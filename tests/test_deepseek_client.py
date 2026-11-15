@@ -54,6 +54,8 @@ def test_deepseek_retries_bad_request_before_success():
 
     assert data["choices"][0]["message"]["content"] == "ok"
     assert len(session.calls) == 2
+    # 内部重试也要计入统一的重试计数，run metadata 的 llm_retry_count 取自它。
+    assert client.total_respond_retries == 1
 
 
 def test_deepseek_stops_after_retry_budget():

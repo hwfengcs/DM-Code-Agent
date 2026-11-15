@@ -10,6 +10,31 @@ from typing import Any
 from .base import _require_str
 
 
+def _read_python_source(path: Path) -> str:
+    """读取 Python 源码；解释器接受的 UTF-8 BOM 不应让 ``ast.parse`` 报语法错误。"""
+    return path.read_text(encoding="utf-8-sig")
+
+
+def _parameter_names(arguments: ast.arguments) -> list[ast.arg]:
+    """按声明顺序返回全部形参节点（仅位置、普通、*args、仅关键字、**kwargs）。"""
+    ordered = [*arguments.posonlyargs, *arguments.args]
+    if arguments.vararg:
+        ordered.append(arguments.vararg)
+    ordered.extend(arguments.kwonlyargs)
+    if arguments.kwarg:
+        ordered.append(arguments.kwarg)
+    return ordered
+
+
+def _parameter_label(arguments: ast.arguments, arg: ast.arg) -> str:
+    """形参的展示名：可变参数带上 ``*`` / ``**`` 前缀。"""
+    if arg is arguments.vararg:
+        return f"*{arg.arg}"
+    if arg is arguments.kwarg:
+        return f"**{arg.arg}"
+    return arg.arg
+
+
 def parse_ast(arguments: dict[str, Any]) -> str:
     """
     解析 Python 文件的 AST，提取函数、类、导入等结构信息
@@ -28,11 +53,11 @@ def parse_ast(arguments: dict[str, Any]) -> str:
     if not path.is_file():
         return f"路径 {path} 不是文件。"
     if path.suffix != ".py":
-        return f"文件 {path} 不是 Python 文件。"
+        # 以"解析失败："开头，内核才会把它识别为本工具的失败回执。
+        return f"解析失败：{path} 不是 Python 文件。"
 
     try:
-        with open(path, encoding="utf-8") as f:
-            source_code = f.read()
+        source_code = _read_python_source(path)
 
         tree = ast.parse(source_code, filename=str(path))
 
@@ -97,7 +122,10 @@ def _extract_classes(tree: ast.AST) -> list[dict[str, Any]]:
                         {
                             "name": item.name,
                             "line": item.lineno,
-                            "args": [arg.arg for arg in item.args.args],
+                            "args": [
+                                _parameter_label(item.args, arg)
+                                for arg in _parameter_names(item.args)
+                            ],
                             "is_async": isinstance(item, ast.AsyncFunctionDef),
                         }
                     )
@@ -121,8 +149,8 @@ def _extract_functions(tree: ast.Module) -> list[dict[str, Any]]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             # 提取参数信息
             args_info = []
-            for arg in node.args.args:
-                arg_dict = {"name": arg.arg}
+            for arg in _parameter_names(node.args):
+                arg_dict = {"name": _parameter_label(node.args, arg)}
                 if arg.annotation:
                     arg_dict["annotation"] = _get_name(arg.annotation)
                 args_info.append(arg_dict)
@@ -172,12 +200,9 @@ def _get_name(node: ast.AST) -> str:
         return f"{value}.{node.attr}"
     elif isinstance(node, ast.Constant):
         return str(node.value)
-    elif isinstance(node, ast.Subscript):
-        value = _get_name(node.value)
-        slice_value = _get_name(node.slice)
-        return f"{value}[{slice_value}]"
     else:
-        return ast.unparse(node) if hasattr(ast, "unparse") else "<unknown>"
+        # 下标注解交给 unparse：手工拼接会把 dict[str, Any] 的元组切片写成 dict[(str, Any)]。
+        return ast.unparse(node)
 
 
 def get_function_signature(arguments: dict[str, Any]) -> str:
@@ -200,8 +225,7 @@ def get_function_signature(arguments: dict[str, Any]) -> str:
         return f"路径 {path} 不是文件。"
 
     try:
-        with open(path, encoding="utf-8") as f:
-            source_code = f.read()
+        source_code = _read_python_source(path)
 
         tree = ast.parse(source_code, filename=str(path))
 
@@ -251,8 +275,7 @@ def find_dependencies(arguments: dict[str, Any]) -> str:
         return f"路径 {path} 不是文件。"
 
     try:
-        with open(path, encoding="utf-8") as f:
-            source_code = f.read()
+        source_code = _read_python_source(path)
 
         tree = ast.parse(source_code, filename=str(path))
 
@@ -351,9 +374,7 @@ def get_code_metrics(arguments: dict[str, Any]) -> str:
 
         if path.suffix == ".py":
             try:
-                with open(path, encoding="utf-8") as f:
-                    source = f.read()
-                tree = ast.parse(source)
+                tree = ast.parse(_read_python_source(path))
 
                 # 统计函数和类数量
                 num_functions = sum(

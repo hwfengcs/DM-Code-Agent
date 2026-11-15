@@ -55,11 +55,20 @@ def one_turn(answer: str) -> list[str]:
 def conversation(monkeypatch: pytest.MonkeyPatch) -> Any:
     """跑一次长驻会话，返回 (退出码, scripted client, 会话条目)。
 
-    MCP 与技能都装真的（它们不联网），只把 LLM 客户端换成脚本化的那个。
+    MCP 与技能都走真实装配，只把 LLM 客户端换成脚本化的那个。``responses`` 通常是
+    脚本化响应列表；需要自定义客户端行为（例如某次调用抛异常）时，也可以直接传一个
+    ``ScriptedLLMClient`` 实例。
+
+    会话在 trace 所在的临时目录里跑：``load_mcp_config()`` 读的是**当前目录**的
+    ``mcp_config.json``，不切目录的话，调用 pytest 的那个目录里配了哪些 MCP 服务器
+    （文档让用户把带 npx 的示例配置复制到仓库根），这里就会真的把它们拉起来。
     """
 
-    def run(lines: list[str], responses: list[str], *, trace_path: Path) -> Any:
-        client = ScriptedLLMClient(responses)
+    def run(lines: list[str], responses: list[str] | ScriptedLLMClient, *, trace_path: Path) -> Any:
+        monkeypatch.chdir(trace_path.parent)
+        client = (
+            responses if isinstance(responses, ScriptedLLMClient) else ScriptedLLMClient(responses)
+        )
         monkeypatch.setattr(
             "dm_agent.cli.runner.create_llm_client",
             lambda **_kwargs: client,
@@ -143,20 +152,47 @@ def test_reset_clears_the_shared_history(conversation: Any, tmp_path: Path) -> N
     assert len(events_of(entries, "conversation_reset")) == 1
 
 
+class OutageOnceClient(ScriptedLLMClient):
+    """第 ``fail_on_call`` 次调用抛异常且不消耗脚本，其余调用照常按脚本应答。"""
+
+    def __init__(self, responses: list[str], *, fail_on_call: int) -> None:
+        super().__init__(responses)
+        self.fail_on_call = fail_on_call
+        self.seen = 0
+
+    def respond(self, messages: list[dict[str, str]], **extra: Any) -> str:
+        self.seen += 1
+        if self.seen == self.fail_on_call:
+            raise RuntimeError("simulated provider outage")
+        return super().respond(messages, **extra)
+
+
 def test_a_failing_turn_does_not_kill_the_conversation(conversation: Any, tmp_path: Path) -> None:
     """单轮炸了要记一条证据然后继续等下一轮，而不是让整个会话进程退出。"""
-    # 第一轮的 planner 响应故意给成非 JSON：planner 失败会被吞掉（走常规模式），
-    # 所以改用「响应耗尽」来制造一次真正的轮内异常。
-    _code, _client, entries = conversation(
+    # 让第 2 次模型调用（第一轮的 ReAct 请求）抛异常：planner 的失败会被内核吞掉走
+    # 常规模式，ReAct 请求的异常才会真正逸出这一轮。异常不消耗脚本，所以第二轮照常
+    # 拿到自己的 planner + ReAct 响应。
+    client = OutageOnceClient(
+        [planner_response("task_complete"), *one_turn("第二轮成功")], fail_on_call=2
+    )
+    code, _client, entries = conversation(
         [task_line("会失败的一轮"), task_line("正常的一轮")],
-        # 第一轮的 planner 用掉第一条；第一轮的 ReAct 调用于是拿到下一条 planner
-        # 响应并解析失败——这就是我们要的「轮内异常」。
-        [planner_response("task_complete"), *one_turn("第二轮成功")],
+        client,
         trace_path=tmp_path / "conv.jsonl",
     )
-    # 无论第一轮如何收场，会话都必须活到第二轮并正常结束。
-    assert len(events_of(entries, "conversation_end")) == 1
-    assert events_of(entries, "conversation_end")[0]["payload"]["turns"] == 2
+    assert code == 0
+
+    # 证据：只有炸掉的那一轮留下 run_error，它也没有伪造出一条 run_end。
+    errors = events_of(entries, "run_error")
+    assert [error["payload"]["turn"] for error in errors] == [1]
+    assert errors[0]["payload"]["error_type"] == "RuntimeError"
+    # 会话活到了第二轮，而且第二轮真的成功了。
+    ends = events_of(entries, "run_end")
+    assert [end["payload"]["status"] for end in ends] == ["success"]
+    assert ends[0]["payload"]["final_answer"] == "第二轮成功"
+    assert [entry["payload"] for entry in events_of(entries, "conversation_end")] == [
+        {"turns": 2, "reason": "eof"}
+    ]
 
 
 def test_blank_and_malformed_lines_are_ignored(conversation: Any, tmp_path: Path) -> None:

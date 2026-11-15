@@ -1,4 +1,4 @@
-﻿"""DeepSeek Responses/Chat API 的 HTTP 客户端。"""
+"""DeepSeek Responses/Chat API 的 HTTP 客户端。"""
 
 from __future__ import annotations
 
@@ -170,6 +170,9 @@ class DeepSeekClient(BaseLLMClient):
         return message
 
     def _sleep_before_retry(self, retry_index: int) -> None:
+        # 本客户端关掉了基类的重试层，计数要在这里补上，否则 run metadata 的
+        # llm_retry_count 在默认供应商下恒为 0。
+        self.total_respond_retries += 1
         if self.retry_backoff <= 0:
             return
         time.sleep(self.retry_backoff * (2**retry_index))

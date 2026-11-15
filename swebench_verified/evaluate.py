@@ -4,7 +4,7 @@
 否则拿到的数字与公开 leaderboard 不可比，等于白跑。
 
 本脚本跑在 .swebench-venv 里（那里装了 swebench 4.1.0），且需要
-``PYTHONPATH=swebench/_winshim`` 以在 Windows 上补上 Unix-only 的 resource 模块。
+``PYTHONPATH=swebench_verified/_winshim`` 以在 Windows 上补上 Unix-only 的 resource 模块。
 README.md 有可直接复制的命令。
 """
 
@@ -48,16 +48,14 @@ def force_lf_writes() -> None:
     original_open = builtins.open
     os.environ["PYTHONUTF8"] = "1"
 
-    def write_text(  # type: ignore[no-untyped-def]
-        self, data, encoding=None, errors=None, newline=None
-    ):
+    def write_text(self, data, encoding=None, errors=None, newline=None):
         if isinstance(data, str):
             data = data.replace("\r\n", "\n")
         if encoding is None:
             encoding = "utf-8"
         return original_write_text(self, data, encoding=encoding, errors=errors, newline="")
 
-    def open_utf8(  # type: ignore[no-untyped-def]
+    def open_utf8(
         file,
         mode="r",
         buffering=-1,
@@ -102,8 +100,8 @@ def summarize(report_path: Path) -> dict[str, object]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score predictions with the official harness.")
-    parser.add_argument("--predictions", type=Path, required=True)
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--predictions", type=Path, default=None)
+    parser.add_argument("--run-id", default=None)
     parser.add_argument("--max-workers", type=int, default=4)
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument(
@@ -117,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.summarize_only is not None:
         print(json.dumps(summarize(args.summarize_only), indent=2))
         return 0
+    if args.predictions is None or args.run_id is None:
+        parser.error("--predictions and --run-id are required unless --summarize-only is given")
 
     from swebench.harness.run_evaluation import main as run_evaluation
 

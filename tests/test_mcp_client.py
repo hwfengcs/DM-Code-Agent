@@ -68,6 +68,60 @@ def test_request_finds_matching_response_and_preserves_unrelated_messages():
     assert client._stdout_queue.empty()
 
 
+def test_rpc_error_detail_reaches_the_model_through_the_tool_wrapper():
+    """服务器回的 JSON-RPC error 说明了参数错在哪；只打到终端的话模型无从纠正。"""
+    from dm_agent.mcp.config import MCPConfig, MCPServerConfig
+    from dm_agent.mcp.manager import MCPManager
+
+    client = MCPClient("srv", "unused", [])
+    client.process = SimpleNamespace(stdin=io.StringIO(), poll=lambda: None)
+    client._stdout_queue.put(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {"code": -32602, "message": "Invalid params: missing 'url'"},
+            }
+        )
+    )
+    client._stdout_queue.put(json.dumps({"id": 2, "result": {"content": [{"text": "loaded"}]}}))
+    manager = MCPManager(
+        MCPConfig(servers={"srv": MCPServerConfig("srv", "unused", [], enabled=True)})
+    )
+    manager.clients["srv"] = client
+    tool = manager._create_tool_wrapper(
+        server_name="srv", tool_name="navigate", description="open a page", input_schema={}
+    )
+
+    rejected = tool.execute({})
+    accepted = tool.execute({"url": "https://example.test"})
+
+    assert (
+        rejected == "❌ 调用 MCP 工具 'navigate' 失败：Invalid params: missing 'url'（code -32602）"
+    )
+    assert is_failure_observation(rejected, action="mcp_srv_navigate")
+    assert accepted == "loaded"
+    assert client.last_error == ""
+
+
+def test_request_timeout_is_reported_as_the_failure_reason(monkeypatch):
+    client = MCPClient("stub", "unused", [], request_timeout=0.1)
+    client.process = SimpleNamespace(stdin=io.StringIO())
+    clock = iter([0.0, 0.0, 0.2])
+    monkeypatch.setattr(mcp_module.time, "monotonic", lambda: next(clock))
+
+    assert client._send_message("tools/call") is None
+    assert client.last_error == "响应超时（0.1 秒）"
+
+
+def test_missing_process_does_not_reuse_a_previous_rpc_error():
+    client = MCPClient("stub", "unused", [])
+    client.last_error = "Invalid params: missing 'url'"
+
+    assert client._send_message("tools/call") is None
+    assert client.last_error == "MCP 进程未启动或输入管道不可用"
+
+
 def test_tool_result_keeps_all_text_blocks_and_error_status(monkeypatch):
     client = MCPClient("stub", "unused", [])
     monkeypatch.setattr(

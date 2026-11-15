@@ -18,6 +18,7 @@ import type {
   SessionListResponse,
   SessionSummary,
 } from './types'
+import { normalizeEntry } from './entries'
 
 const TOKEN_STORAGE_KEY = 'dm-agent-console-token'
 
@@ -103,6 +104,13 @@ async function describeFailure(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { detail?: unknown }
     if (typeof body.detail === 'string') return body.detail
+    // FastAPI 的请求校验错误（422）：detail 是数组，每项的 msg 才是给人看的那句。
+    if (Array.isArray(body.detail)) {
+      const messages = body.detail
+        .map((item: unknown) => (item as { msg?: unknown } | null)?.msg)
+        .filter((message): message is string => typeof message === 'string' && message !== '')
+      if (messages.length > 0) return messages.join('；')
+    }
     return JSON.stringify(body.detail ?? body)
   } catch {
     return `HTTP ${response.status}`
@@ -213,8 +221,10 @@ function subscribeToStream(path: string, onEvent: (event: StreamEvent) => void):
 
   source.addEventListener('entry', (event) => {
     const message = event as MessageEvent<string>
-    const entry = parse<SessionEntry>(message.data)
-    if (entry) onEvent({ kind: 'entry', entry, lineIndex: Number(message.lastEventId) })
+    const entry = parse<unknown>(message.data)
+    if (entry) {
+      onEvent({ kind: 'entry', entry: normalizeEntry(entry), lineIndex: Number(message.lastEventId) })
+    }
   })
 
   source.addEventListener('malformed', (event) => {
@@ -247,15 +257,22 @@ function subscribeToStream(path: string, onEvent: (event: StreamEvent) => void):
   return () => source.close()
 }
 
-/** 一次把整个会话的条目读完（后端按 1000 条一页）。 */
+/**
+ * 一次把整个会话的条目读完（后端按 1000 条一页）。
+ *
+ * 条目在这里统一过一遍 `normalizeEntry`：sessions 目录里可能混进不是会话日志的 JSONL，
+ * 视图层拿到缺 `event` / `payload` 的条目会直接渲染崩溃。
+ */
 export async function fetchAllEntries(name: string): Promise<EntriesResponse> {
   const first = await api.entries(name, 0)
-  if (first.entries.length >= first.total) return first
+  if (first.entries.length >= first.total) {
+    return { ...first, entries: first.entries.map(normalizeEntry) }
+  }
   const entries = [...first.entries]
   while (entries.length < first.total) {
     const page = await api.entries(name, entries.length)
     if (page.entries.length === 0) break
     entries.push(...page.entries)
   }
-  return { ...first, entries, offset: 0, limit: entries.length }
+  return { ...first, entries: entries.map(normalizeEntry), offset: 0, limit: entries.length }
 }

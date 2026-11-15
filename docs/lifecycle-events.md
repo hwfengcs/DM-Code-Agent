@@ -77,7 +77,8 @@ Agent 的 observation 长度限制（`--max-observation-chars`）是内核护栏
 
 被否决时内核记的失败标识是 `critic_rejected`——这是历史字段名（当年只有内置
 Critic 用这条路），会话日志与 planner 的重规划策略都按它对齐，不随内置 Critic
-的移除而改名。
+的移除而改名。否决 `finish` 与否决 `task_complete` 走同一条恢复路径：存在计划时都会进入
+一次重规划（受重规划预算约束），失败类别都是 `critic_rejected`。
 
 ### `on_run_start`
 

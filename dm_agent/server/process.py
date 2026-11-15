@@ -82,6 +82,9 @@ class RunSpec:
             raise SpecError("任务不能为空。")
         if len(self.task) > MAX_TASK_CHARS:
             raise SpecError(f"任务过长（{len(self.task)} 字，上限 {MAX_TASK_CHARS}）。")
+        if "\x00" in self.task:
+            # NUL 进不了 argv：不在这里拒绝的话，Popen 会抛 ValueError，路由只认 OSError。
+            raise SpecError("任务不能包含 NUL 字符。")
         if self.provider not in allowed_providers:
             raise SpecError(f"未知的 provider：{self.provider}")
         # 模型名会作为 argv 元素传给子进程。不做 shell 解析，所以只需挡住
@@ -152,6 +155,18 @@ def build_conversation_argv(spec: RunSpec, *, trace_path: Path) -> list[str]:
     return [*_base_argv(spec, trace_path=trace_path), "--conversation-stdin"]
 
 
+def _child_env() -> dict[str, str]:
+    """子进程的环境变量：让它按 UTF-8 写 stdout / stderr。
+
+    ``read_output`` 按 UTF-8 解码，而 Windows 上子解释器写管道默认用 ANSI 代码页——
+    最常见的失败（缺 API key、参数无效）的中文报错到了控制台里就是一串乱码。
+    用户已显式设置时尊重其取值。
+    """
+    env = dict(os.environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
+
+
 class RunProcess:
     """一个在跑的 ``dm-agent`` 子进程。"""
 
@@ -181,6 +196,7 @@ class RunProcess:
         self._process = subprocess.Popen(
             self.argv,
             cwd=str(self.cwd),
+            env=_child_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE if stdin_pipe else subprocess.DEVNULL,
@@ -196,7 +212,8 @@ class RunProcess:
         if process is None or process.stdout is None:
             return
         try:
-            while chunk := process.stdout.read(8192):
+            # BufferedReader.read(n) 会等满 n 字节或 EOF；直接读管道才能及时收到少量输出。
+            while chunk := os.read(process.stdout.fileno(), 8192):
                 with self._output_lock:
                     self._output.extend(chunk)
                     del self._output[:-MAX_OUTPUT_BYTES]

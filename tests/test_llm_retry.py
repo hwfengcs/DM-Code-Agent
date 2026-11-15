@@ -82,6 +82,7 @@ def test_usage_tracking_client_routes_through_retry_layer() -> None:
     assert text == "ok"
     assert inner.calls == 2
     assert inner.total_respond_retries == 1
+    assert wrapper.total_respond_retries == 1
     assert wrapper.usage.request_count == 1
 
 

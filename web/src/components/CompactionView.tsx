@@ -135,7 +135,7 @@ function FoldedList({ ids, byId }: { ids: string[]; byId: Map<string, SessionEnt
                   {entry
                     ? stringField(entry, 'content') ||
                       `（保真档只留了长度与指纹：${String(entry.payload.content_chars ?? '?')} 字）`
-                    : '（该条目不在当前所选前缀内）'}
+                    : '（该条目不在当前所选 run 段内）'}
                 </p>
               </li>
             )

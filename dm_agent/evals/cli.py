@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -69,21 +70,26 @@ def main(argv: Any = None) -> int:
         return 0
 
     if args.real:
-        report = run_real_suite(
-            task_ids=args.task,
-            variant_names=args.variant,
-            config=RealEvalConfig(
-                provider=args.provider,
-                model=args.model,
-                base_url=args.base_url,
-                api_key_env=args.api_key_env,
-                timeout=args.timeout,
-                temperature=args.temperature,
-                repeat=args.repeat,
-                cost_per_1k_tokens=args.cost_per_1k_tokens,
-                quiet=not args.show_agent_output,
-            ),
-        )
+        try:
+            report = run_real_suite(
+                task_ids=args.task,
+                variant_names=args.variant,
+                config=RealEvalConfig(
+                    provider=args.provider,
+                    model=args.model,
+                    base_url=args.base_url,
+                    api_key_env=args.api_key_env,
+                    timeout=args.timeout,
+                    temperature=args.temperature,
+                    repeat=args.repeat,
+                    cost_per_1k_tokens=args.cost_per_1k_tokens,
+                    quiet=not args.show_agent_output,
+                ),
+            )
+        except ValueError as exc:
+            # 缺 API key、--repeat 0 等配置问题：与 dm-agent-bench 一致，给一行说明并返回 2。
+            print(str(exc), file=sys.stderr)
+            return 2
     else:
         report = run_suite(
             task_ids=args.task,

@@ -10,8 +10,8 @@
  * 这里改成模块级单例：
  *
  * * 订阅的生命周期跟着**对话**走，不跟着组件走。切视图、开关抽屉都不影响它。
- * * `conversationId` 落 sessionStorage，刷新页面后自动重连——后端进程还活着，
- *   `Last-Event-ID` 负责把断线期间的条目补回来。
+ * * `conversationId` 落 sessionStorage，刷新页面后新建连接并全量重放；同一连接断线时，
+ *   浏览器用 `Last-Event-ID` 续传尚未收到的条目。
  * * 用 `useSyncExternalStore` 订阅，React 18/19 的并发渲染下不会读到撕裂的状态。
  */
 import { useSyncExternalStore } from 'react'
@@ -115,7 +115,7 @@ async function refresh(conversationId: string): Promise<void> {
     const record = await api.conversation(conversationId)
     if (state.record?.run_id === conversationId) set({ record })
   } catch (cause) {
-    set({ notice: describe(cause) })
+    if (state.record?.run_id === conversationId) set({ notice: describe(cause) })
   }
 }
 

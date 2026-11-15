@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -36,7 +37,7 @@ def test_health_and_meta_shape(client: TestClient) -> None:
         "claude",
         "gemini",
     }
-    # 17 个内置工具，与 README 声明一致。
+    # 17 个内置工具（docs/extensions.md 的示例引用了同一个数）。
     assert len(meta["tools"]) == 17
     # 开关目录必须同时覆盖两类，前端才能渲染出「护栏默认开 / 行为默认关」的分组。
     categories = {item["category"] for item in meta["capabilities"]}
@@ -199,6 +200,59 @@ def test_fork_rejects_unknown_entry(client: TestClient) -> None:
     assert response.status_code == 400
 
 
+@pytest.mark.skipif(os.name != "nt", reason="NTFS alternate data streams are Windows-specific")
+def test_automatic_fork_name_rejects_an_entry_id_with_a_colon(
+    client: TestClient, sessions_dir: Path
+) -> None:
+    source = sessions_dir / "imported.jsonl"
+    original = json.dumps({"id": "imported:entry", "event": "runtime", "payload": {}}) + "\n"
+    source.write_text(original, encoding="utf-8")
+    before = set(sessions_dir.iterdir())
+
+    response = client.post("/api/sessions/fork", json={"name": source.name, "at": "imported:entry"})
+
+    assert response.status_code == 400
+    assert "冒号" in response.json()["detail"]
+    assert set(sessions_dir.iterdir()) == before
+    assert source.read_text(encoding="utf-8") == original
+
+
+def test_fork_conflict_names_the_session_without_its_absolute_path(
+    client: TestClient, sessions_dir: Path
+) -> None:
+    """同一条目分叉两次：第二次是 400，文案里只有相对会话名。"""
+    request = {"name": "recovered.jsonl", "at": "recovrd1-0007"}
+    first = client.post("/api/sessions/fork", json=request)
+    assert first.status_code == 201
+
+    second = client.post("/api/sessions/fork", json=request)
+    assert second.status_code == 400
+    assert first.json()["output"] in second.json()["detail"]
+    # 按 tmp 目录名找，而不是整条路径：不管绝对路径被转义成什么形式都躲不过。
+    assert sessions_dir.parent.name not in second.text
+
+
+def test_unreadable_file_errors_do_not_leak_absolute_paths(
+    client: TestClient, sessions_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """系统错误的原文带着完整路径（``[Errno 13] Permission denied: '<绝对路径>'``）。"""
+
+    def deny(path: Path) -> list[dict]:
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr("dm_agent.server.routes.sessions.load_session_entries", deny)
+
+    listing = client.get("/api/sessions")
+    assert listing.status_code == 200
+    assert {error["error"] for error in listing.json()["errors"]} == {"Permission denied"}
+    assert sessions_dir.parent.name not in listing.text
+
+    entries = client.get("/api/sessions/entries", params={"name": "clean.jsonl"})
+    assert entries.status_code == 422
+    assert "Permission denied" in entries.json()["detail"]
+    assert sessions_dir.parent.name not in entries.text
+
+
 def test_unreadable_session_does_not_break_the_listing(
     client: TestClient, sessions_dir: Path
 ) -> None:
@@ -219,6 +273,48 @@ def test_invalid_session_content_is_reported_as_unreadable(
     payload = client.get("/api/sessions").json()
     assert payload["aggregate"]["unreadable"] == 1
     assert [error["name"] for error in payload["errors"]] == ["invalid.jsonl"]
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        [{"event": "run_end", "payload": {"status": "success", "metadata": None}}],
+        [{"event": "step"}],
+        [{"event": "step", "payload": {"step_number": "three", "action": "finish"}}],
+        [{"event": "step", "payload": {"step_number": float("inf"), "action": "finish"}}],
+    ],
+    ids=[
+        "metadata-is-not-an-object",
+        "step-without-payload",
+        "step-number-is-text",
+        "step-number-is-infinite",
+    ],
+)
+def test_oddly_shaped_session_is_unreadable_not_a_server_error(
+    client: TestClient, sessions_dir: Path, entries: list[dict]
+) -> None:
+    """每行都是合法的 JSON 对象，但形状不是会话条目（手改过的、别的工具写进来的）。
+
+    那是这个文件读不了，不是服务器故障：列表把它单列为不可读，其余会话照常返回；
+    派生端点给 422。
+    """
+    (sessions_dir / "odd.jsonl").write_text(
+        "".join(json.dumps(entry) + "\n" for entry in entries), encoding="utf-8"
+    )
+
+    listing = client.get("/api/sessions")
+    assert listing.status_code == 200
+    payload = listing.json()
+    assert [error["name"] for error in payload["errors"]] == ["odd.jsonl"]
+    assert len(payload["sessions"]) == 2
+
+    analysis = client.get("/api/sessions/analysis", params={"name": "odd.jsonl"})
+    assert analysis.status_code == 422
+    # 摘要与 diff 对其中几种形状本来就算得出来；算不出来时同样必须是 422。
+    summary = client.get("/api/sessions/summary", params={"name": "odd.jsonl"})
+    assert summary.status_code in {200, 422}
+    diff = client.get("/api/sessions/diff", params={"a": "odd.jsonl", "b": "clean.jsonl"})
+    assert diff.status_code in {200, 422}
 
 
 def test_listing_reflects_appended_entries(client: TestClient, sessions_dir: Path) -> None:
@@ -301,6 +397,13 @@ def test_built_frontend_is_served_with_spa_fallback(
     # 静态挂载在 / 兜底，但绝不能吃掉 /api/*。
     assert client.get("/api/health").status_code == 200
     assert client.get("/api/sessions").json()["aggregate"]["total"] == 2
+
+    # 回落只给页面路由用。没有这个端点 / 没有这个资源就是 404——否则前端会把一份
+    # HTML 当成 JSON 或脚本去解析（前后端版本不一致、升级后旧页面引用旧哈希时）。
+    missing_endpoint = client.get("/api/no-such-endpoint")
+    assert missing_endpoint.status_code == 404
+    assert missing_endpoint.headers["content-type"].startswith("application/json")
+    assert client.get("/assets/missing-hash.js").status_code == 404
 
 
 def test_woff2_is_served_with_the_right_mime(

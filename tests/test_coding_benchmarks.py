@@ -20,6 +20,7 @@ from dm_agent.benchmarks.manifest_diff import (
 from dm_agent.benchmarks.models import (
     BenchmarkRunConfig,
     BenchmarkTask,
+    BenchmarkVariant,
     CodingBenchResult,
     CommandResult,
 )
@@ -157,6 +158,34 @@ def test_benchmark_report_includes_default_off_feature_flags(monkeypatch: pytest
 
     assert report["manifest"]["task_fingerprints"][task.task_id]
     assert report["manifest"]["suite_signature"]
+
+
+@pytest.mark.parametrize(
+    ("variants", "selected"),
+    [
+        ([BenchmarkVariant("custom", False, False, False)], "custom"),
+        ([BenchmarkVariant("full", False, False, False)], "full"),
+        (None, "no_planning"),
+    ],
+)
+def test_named_benchmark_variant_preserves_explicit_configuration(monkeypatch, variants, selected):
+    used = []
+
+    def run_task(task, variant, config, **kwargs):
+        used.append(variant)
+        result = _bench_result(task.task_id, success=True, final_answer="ok", tokens=1)
+        return replace(result, variant=variant.name)
+
+    monkeypatch.setattr(runner_module, "run_benchmark_task", run_task)
+    report = runner_module.run_benchmark_suite(
+        tasks=get_coding_tasks(["slugify_cleanup"]),
+        variants=variants,
+        variant_names=[selected],
+    )
+
+    expected = variants or [runner_module.BENCH_VARIANTS[1]]
+    assert used == expected
+    assert report["variants"] == [variant.__dict__ for variant in expected]
 
 
 def test_benchmark_task_fingerprint_detects_hidden_contract_drift():
@@ -668,6 +697,22 @@ def test_benchmark_trace_analysis_loader_is_keyless(tmp_path):
     assert analysis["trace_health"]["grade"] == "warning"
 
 
+@pytest.mark.parametrize(
+    "content",
+    [b'{"event": "run_start"', b"[1, 2]\n", b'{"event": "step", "payload": []}\n', b"\xff\xfe\n"],
+    ids=["truncated-line", "non-object-entry", "non-object-payload", "invalid-utf8"],
+)
+def test_unreadable_trace_is_reported_instead_of_aborting_the_benchmark(tmp_path, content):
+    """trace 只是附带诊断：读不了就记下原因，不能连同已完成的结果一起中断整套运行。"""
+    trace_path = tmp_path / "broken.jsonl"
+    trace_path.write_bytes(content)
+
+    analysis, error = load_trace_analysis_for_report(trace_path)
+
+    assert analysis == {}
+    assert error
+
+
 def test_benchmark_economics_report_is_deterministic_and_keyless():
     report = {
         "suite": "maintenance",
@@ -737,6 +782,43 @@ def test_benchmark_economics_warns_on_manifest_signature_mismatch():
     assert set(guard["suite_signatures"]) == {"suite-a", "suite-b"}
     assert guard["missing_suite_signature"] == ["legacy:scripted:old"]
     assert "different benchmark suite signatures" in render_markdown(economics)
+
+
+def test_economics_manifest_guard_names_reports_by_their_labels():
+    """两份同模型的报告只有 --label 能区分；守卫必须用同一套标签。"""
+    reports = [
+        {
+            "suite": "all",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "summary": {"total_runs": 1, "overall_pass_rate": 1.0},
+            "manifest": {"suite_signature": signature},
+            "results": [{"success": True, "estimated_tokens": 100}],
+        }
+        for signature in ("sig-a", "sig-b")
+    ]
+
+    guard = build_economics_report(reports, labels=["before", "after"])["summary"]["manifest_guard"]
+
+    assert guard["suite_signatures"] == {"sig-a": ["before"], "sig-b": ["after"]}
+
+
+@pytest.mark.parametrize("content", [None, "{not json", "[]"], ids=["missing", "invalid", "array"])
+def test_economics_cli_reports_unreadable_input_without_writing_output(tmp_path, capsys, content):
+    from dm_agent.benchmarks.economics import main as economics_main
+
+    report_path = tmp_path / "report.json"
+    if content is not None:
+        report_path.write_text(content, encoding="utf-8")
+    output_json, output_md = tmp_path / "out.json", tmp_path / "out.md"
+
+    exit_code = economics_main(
+        [str(report_path), "--output-json", str(output_json), "--output-md", str(output_md)]
+    )
+
+    assert exit_code == 2
+    assert "Cannot read benchmark report" in capsys.readouterr().err
+    assert not output_json.exists() and not output_md.exists()
 
 
 @pytest.mark.parametrize("price", [0.0, 0.002])

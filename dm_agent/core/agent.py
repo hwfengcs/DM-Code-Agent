@@ -703,7 +703,14 @@ class ReactAgent:
             # 调用回调函数实时输出步骤
             self._publish_step(step, step_num)
 
-            if self._is_failure_observation(observation, action=action) and plan and self.planner:
+            # 被 before_finish 否决的 task_complete 与被否决的 finish 走同一条恢复路径：
+            # 否决理由是扩展自定的文案，不能指望它恰好命中失败句式。
+            completion_rejected = error_kind == "critic_rejected"
+            if (
+                (completion_rejected or self._is_failure_observation(observation, action=action))
+                and plan
+                and self.planner
+            ):
                 plan = self._replan_after_failure(
                     task,
                     plan,

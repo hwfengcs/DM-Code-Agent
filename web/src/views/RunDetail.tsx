@@ -78,6 +78,7 @@ export function RunDetail({
     setSelectedId(null)
     setRunIndex(0)
     setTab('conversation')
+    setForkNotice(null)
     Promise.all([api.summary(session), api.analysis(session), fetchAllEntries(session)])
       .then(([summary, analysis, entries]) => {
         if (cancelled) return

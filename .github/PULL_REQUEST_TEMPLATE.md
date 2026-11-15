@@ -39,6 +39,7 @@ python -m dm_agent.evals.cli --variant full --task direct_finish
 python -m dm_agent.benchmarks.cli --suite maintenance --list
 python -m ruff check .
 python -m black --check .
+python -m mypy dm_agent
 ```
 
 If this change touches benchmarks or live-model behavior:

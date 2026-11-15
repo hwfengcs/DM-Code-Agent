@@ -145,16 +145,6 @@
     @apply inline-flex items-center gap-1.5 rounded-chip border px-2 py-0.5 text-micro font-medium whitespace-nowrap;
   }
 
-  /* 元信息标签。上一版是 mono + uppercase + 11px，这版改回正常的 sans 小标题。 */
-  .label-meta {
-    @apply text-micro font-medium text-ink-3;
-  }
-
-  /* 证据文本：任何需要被逐字核对的东西。等宽 + 表格数字对齐。 */
-  .evidence {
-    @apply font-mono text-caption tabular-nums;
-  }
-
   .field {
     @apply w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-body text-ink
       transition-colors placeholder:text-ink-4 hover:border-ink-4

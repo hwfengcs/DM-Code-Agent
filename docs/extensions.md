@@ -105,7 +105,7 @@ my_extension = "my_package.extension:setup"
 | --- | --- | --- |
 | `name` | `str` | 工具名，必须非空；模型用它作为 `action` |
 | `description` | `str` | 会进 system prompt。**把参数格式写清楚**，模型只看这一段 |
-| `runner` | `Callable[[dict], Any]` | 接收 `action_input` 字典，返回值会被 `str()` 后作为 observation |
+| `runner` | `Callable[[dict[str, Any]], str]` | 接收 `action_input` 字典，返回值会被 `str()` 后作为 observation |
 
 名字为空会抛 `ValueError`。覆盖内置工具时，工具在提示词里的**位置不变**（只换实现），
 所以不会打乱默认工具顺序。
@@ -252,7 +252,7 @@ from dm_agent.extensions import ExtensionAPI
 class EchoClient:
     """最小可用客户端：只需要一个 respond(messages, **kwargs) -> str。"""
 
-    def __init__(self, *, model: str, base_url: str | None = None) -> None:
+    def __init__(self, *, model: str | None, base_url: str | None = None) -> None:
         self.model = model or "echo-1"
         self.base_url = base_url
 
@@ -265,7 +265,7 @@ class EchoClient:
 
 
 def setup(api: ExtensionAPI) -> None:
-    def create_client(*, api_key=None, model="", base_url=None, timeout=None, **kwargs):
+    def create_client(*, api_key=None, model=None, base_url=None, timeout=None, **kwargs):
         return EchoClient(model=model, base_url=base_url)
 
     api.register_provider("echo", create_client)
@@ -276,7 +276,8 @@ dm-agent --extension ./echo_provider.py --provider echo "随便说点什么"
 ```
 
 实跑结果：可用 provider 从 `['deepseek', 'openai', 'claude', 'gemini']` 变成多一个 `echo`，
-`create_llm_client(provider="echo")` 返回 `EchoClient`，run status `success`。
+`create_llm_client("echo", "", extension_registry=registry)`（`registry` 即
+`discover_extensions(...).registry`）返回 `EchoClient`，run status `success`。
 
 把 `EchoClient` 换成真的 HTTP 客户端（公司内网网关、本地 llama.cpp、自建代理）就是
 生产用法。

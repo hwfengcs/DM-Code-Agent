@@ -69,10 +69,19 @@ def normalize_entries(raw_entries: Iterable[dict[str, Any]]) -> list[dict[str, A
     return entries
 
 
+def read_jsonl_lines(path: str | Path) -> list[str]:
+    r"""按 JSONL 的行界（``\n``）切分文件，返回非空行。
+
+    不能用 ``str.splitlines()``：它还会在 U+2028 / U+2029 / U+0085 等字符处断行，而
+    写入端用 ``ensure_ascii=False``，这些字符会原样出现在 JSON 字符串里（例如读到一份
+    含 U+2028 的 JS 源码）。一旦被拆开，整份日志就再也读不回来。
+    """
+    return [line for line in Path(path).read_text(encoding="utf-8").split("\n") if line.strip()]
+
+
 def load_session_entries(path: str | Path) -> list[dict[str, Any]]:
     """读取会话日志（或老 trace）并归一化。"""
-    lines = Path(path).read_text(encoding="utf-8").splitlines()
-    return normalize_entries(json.loads(line) for line in lines if line.strip())
+    return normalize_entries(json.loads(line) for line in read_jsonl_lines(path))
 
 
 def find_entry_index(entries: list[dict[str, Any]], reference: str) -> int:

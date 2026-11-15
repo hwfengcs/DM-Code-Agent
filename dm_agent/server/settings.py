@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -88,19 +89,42 @@ class ServerSettings:
 
     def public_url(self) -> str:
         """启动时打印给用户的地址，带上 token 以便直接点开。"""
-        host = "127.0.0.1" if self.host in {"0.0.0.0", "::", ""} else self.host
+        if self.host == "::":
+            # IPv6 通配绑定的监听套接字只收 IPv6 连接，127.0.0.1 连不上。
+            host = "::1"
+        else:
+            host = "127.0.0.1" if self.host in {"0.0.0.0", ""} else self.host
         if ":" in host and not host.startswith("["):
             host = f"[{host}]"
         base = f"http://{host}:{self.port}/"
         return f"{base}?token={quote(self.token, safe='')}" if self.token else base
 
 
+def reject_unsafe_name_characters(name: str) -> None:
+    """拒绝文件系统会另作解释的字符——后缀检查与边界检查都拦不住它们。
+
+    * NUL：POSIX 上 ``Path.resolve()`` 遇到它抛的是普通 ``ValueError``，会绕过调用方对
+      ``SessionPathError`` 的处理变成 500。
+    * 冒号（仅 Windows）：``notes.txt:x.jsonl`` 是 NTFS 备用数据流的写法。后缀合法、
+      解析后也在目录内，内容却落进 ``notes.txt`` 的一个列表里看不见的流里。
+
+    Raises:
+        SessionPathError: 名字里出现上述字符
+    """
+    if "\x00" in name:
+        raise SessionPathError("会话名不能包含 NUL 字符。")
+    if os.name == "nt" and ":" in name:
+        raise SessionPathError(f"会话名不能包含冒号：{name}")
+
+
 def resolve_session_path(settings: ServerSettings, name: str) -> Path:
     """把 API 传来的会话名解析成 ``sessions_dir`` 内的真实路径。
 
-    这是整个 server 层唯一的「外部字符串 → 文件路径」入口，因此四道检查都放在这里：
-    后缀必须是 ``.jsonl``、不得是绝对路径、解析后必须仍在 ``sessions_dir`` 内
-    （挡 ``../`` 穿越与符号链接逃逸）、且必须是已存在的普通文件。
+    这是 server 层把外部字符串解析成**已有**会话文件的入口（分叉目标尚不存在，由
+    ``routes/sessions.py`` 的 ``_resolve_new_session_path`` 做同样的检查），所以检查都放在
+    这里：后缀必须是 ``.jsonl``、不得是绝对路径、不含会被文件系统另作解释的字符、
+    解析后必须仍在 ``sessions_dir`` 内（挡 ``../`` 穿越与符号链接逃逸）、且必须是已存在的
+    普通文件。
 
     Raises:
         SessionPathError: 上述任一条不满足
@@ -110,6 +134,7 @@ def resolve_session_path(settings: ServerSettings, name: str) -> Path:
     candidate = Path(name)
     if candidate.is_absolute() or candidate.drive or name.startswith(("/", "\\")):
         raise SessionPathError(f"会话名必须是相对路径：{name}")
+    reject_unsafe_name_characters(name)
     if candidate.suffix.lower() != SESSION_SUFFIX:
         raise SessionPathError(f"只接受 {SESSION_SUFFIX} 会话文件：{name}")
 

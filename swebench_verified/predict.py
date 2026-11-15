@@ -93,7 +93,10 @@ def docker_preflight() -> str:
     还埋在最后一条错误里。实测踩过：Docker Desktop 中途退出，10 题跑了一遍全是
     harness_error，看着像限流或磁盘满。
     """
-    probe = _run(["docker", "info", "--format", "{{.ServerVersion}}"])
+    try:
+        probe = _run(["docker", "info", "--format", "{{.ServerVersion}}"])
+    except OSError as exc:  # PATH 上根本没有 docker 可执行文件
+        return f"无法执行 docker 命令：{exc}"
     if probe.returncode == 0 and probe.stdout.strip():
         return ""
     reason = (probe.stderr or probe.stdout).strip().splitlines()
@@ -159,7 +162,8 @@ def _archive_target(destination: Path, member_name: str, *, windows_semantics: b
         "\x00" in member_name
         or archive_path.is_absolute()
         or not parts
-        or any(part == ".." or ":" in part for part in parts)
+        # ":" 只在 Windows 上有特殊含义（盘符、NTFS 备用数据流）；POSIX 上是合法的文件名字符。
+        or any(part == ".." or (windows_semantics and ":" in part) for part in parts)
     ):
         raise RuntimeError(f"Docker workspace archive 包含不安全路径：{member_name}")
     if windows_semantics and any(
@@ -206,12 +210,7 @@ def _extract_workspace_archive(
                 else:
                     normalized_link = member.linkname.replace("\\", "/")
                     link_path = PurePosixPath(normalized_link)
-                    if (
-                        "\x00" in member.linkname
-                        or link_path.is_absolute()
-                        or not link_path.parts
-                        or any(":" in part for part in link_path.parts)
-                    ):
+                    if "\x00" in member.linkname or link_path.is_absolute() or not link_path.parts:
                         raise RuntimeError(
                             f"Docker workspace archive 包含不安全 symlink：{member.name}"
                         )
@@ -345,16 +344,39 @@ def extract_patch(workspace: Path) -> str:
     staged = _run(["git", "add", "-A"], cwd=str(workspace))
     if staged.returncode != 0:
         raise RuntimeError(f"git add 失败：{staged.stderr.strip()[:300]}")
-    diff = _run(["git", "diff", "--cached"], cwd=str(workspace))
+    # 按字节取 diff：``_run`` 的文本模式会做通用换行转换，把 patch 里的 ``\r\n`` 与行内
+    # 孤立的 ``\r`` 都译成 ``\n``，CRLF 文件的 patch 因此无法 ``git apply``。输出格式
+    # 也在这里钉死，不随用户的全局 git 配置（diff.noprefix / mnemonicPrefix、color.ui、
+    # 外部 diff 工具）变化；``--binary`` 让新建的二进制文件带上可应用的内容，而不是
+    # 一行 "Binary files differ"；文本和二进制改动都保留可供 git apply 使用的格式。
+    diff = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--cached",
+            "--binary",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+        ],
+        cwd=str(workspace),
+        capture_output=True,
+    )
     if diff.returncode != 0:
-        raise RuntimeError(f"git diff 失败：{diff.stderr.strip()[:300]}")
-    return diff.stdout
+        error = diff.stderr.decode("utf-8", errors="replace").strip()[:300]
+        raise RuntimeError(f"git diff 失败：{error}")
+    return diff.stdout.decode("utf-8", errors="replace")
 
 
 def build_client(provider: str, model: str | None, timeout: int) -> UsageTrackingClient:
     load_env_files()
     key_env = PROVIDER_API_KEY_ENV.get(provider)
-    api_key = os.environ.get(key_env or "", "")
+    if key_env is None:
+        supported = "、".join(PROVIDER_API_KEY_ENV)
+        raise RuntimeError(f"不支持的 provider：{provider}（可选：{supported}）")
+    api_key = os.environ.get(key_env, "")
     if not api_key:
         raise RuntimeError(f"环境变量 {key_env} 未设置；预测阶段需要真实 API key。")
     defaults = PROVIDER_DEFAULTS.get(provider, {})

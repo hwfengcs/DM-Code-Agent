@@ -7,7 +7,7 @@
  * 前端不重算任何结论——全部来自后端 `dm_agent.tracing.analysis`，这里只负责渲染。
  */
 import type { SessionAnalysis } from '../lib/types'
-import { describeIssue } from '../lib/entries'
+import { describeHallucinationSignal, describeIssue, formatHallucinationValue } from '../lib/entries'
 import { HealthBadge, HealthDetail } from './ui'
 
 export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
@@ -37,8 +37,9 @@ export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
         )}
       </section>
 
+      {/* 没跑完的运行既谈不上「验证过」也谈不上「缺验证」，用中性色，不给绿灯。 */}
       <Card
-        tone={verification.gap ? 'warn' : 'good'}
+        tone={verification.gap ? 'warn' : verification.before_finish ? 'good' : 'neutral'}
         title="验证"
         headline={
           verification.gap
@@ -112,8 +113,8 @@ export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
         {Object.entries(analysis.hallucination_signals).map(([key, value]) => (
           <Line
             key={key}
-            label={HALLUCINATION_LABEL[key] ?? key}
-            value={String(value)}
+            label={describeHallucinationSignal(key)}
+            value={formatHallucinationValue(key, value)}
             tone={typeof value === 'number' && value > 0 ? 'warn' : undefined}
           />
         ))}
@@ -128,13 +129,6 @@ export function Diagnostics({ analysis }: { analysis: SessionAnalysis }) {
       )}
     </div>
   )
-}
-
-const HALLUCINATION_LABEL: Record<string, string> = {
-  edit_without_read: '未读先改',
-  guard_blocks: '被守卫拦下',
-  truncations: '观察被截断',
-  missing_paths: '引用了不存在的路径',
 }
 
 function hasAnySignal(signals: Record<string, number>): boolean {

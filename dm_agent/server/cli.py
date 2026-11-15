@@ -139,8 +139,13 @@ def main(argv: list[str] | None = None) -> int:
         host=settings.host,
         port=settings.port,
         log_level="info",
-        # 每条 SSE 事件都要立刻到达浏览器，不能被访问日志的缓冲拖住。
+        # SSE 的 token 只能放在查询参数里（EventSource 不能设请求头），访问日志会把
+        # 整条 URL 连同 ?token= 一起打出来。
         access_log=False,
+        # 对话页的 SSE 流要等子进程退出才结束，而子进程要等 lifespan 关停才被收掉；
+        # uvicorn 默认先无限期等连接关闭，两边互相等，Ctrl+C 就走不到 stop_all。
+        # 给等待设上限，到点后照常执行 lifespan 关停。
+        timeout_graceful_shutdown=3,
     )
     return 0
 

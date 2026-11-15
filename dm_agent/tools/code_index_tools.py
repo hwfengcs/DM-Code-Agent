@@ -27,16 +27,24 @@ DEFAULT_INDEX_EXCLUDES = {
 }
 
 
+def _root_refusal(root: Path) -> str | None:
+    """root 不可用时的回执。句式与文件工具一致，内核据此把这次调用判为未完成。"""
+    if not root.exists():
+        return f"目录 {root} 不存在。"
+    if not root.is_dir():
+        return f"路径 {root} 不是目录。"
+    return None
+
+
 def build_code_index(arguments: dict[str, Any]) -> str:
     """Build a lightweight Python symbol index for a repository tree."""
     root = Path(arguments.get("root", ".")).resolve()
     max_files = int(arguments.get("max_files", 200))
     include_tests = bool(arguments.get("include_tests", True))
 
-    if not root.exists():
-        return f"Directory {root} does not exist."
-    if not root.is_dir():
-        return f"Path {root} is not a directory."
+    refusal = _root_refusal(root)
+    if refusal:
+        return refusal
 
     files = []
     symbol_count = 0
@@ -44,7 +52,7 @@ def build_code_index(arguments: dict[str, Any]) -> str:
     for path in _iter_python_files(root, max_files=max_files, include_tests=include_tests):
         relative = path.relative_to(root).as_posix()
         try:
-            source = path.read_text(encoding="utf-8")
+            source = path.read_text(encoding="utf-8-sig")
             tree = ast.parse(source, filename=str(path))
         except SyntaxError as exc:
             parse_errors.append({"path": relative, "error": str(exc)})
@@ -84,6 +92,9 @@ def search_symbol(arguments: dict[str, Any]) -> str:
 
     if kind is not None and kind not in {"class", "function", "method"}:
         raise ValueError("kind must be one of: class, function, method")
+    refusal = _root_refusal(root)
+    if refusal:
+        return refusal
 
     index = json.loads(
         build_code_index(
@@ -126,10 +137,9 @@ def dependency_graph(arguments: dict[str, Any]) -> str:
     max_files = int(arguments.get("max_files", 200))
     include_external = bool(arguments.get("include_external", False))
 
-    if not root.exists():
-        return f"Directory {root} does not exist."
-    if not root.is_dir():
-        return f"Path {root} is not a directory."
+    refusal = _root_refusal(root)
+    if refusal:
+        return refusal
 
     paths = list(_iter_python_files(root, max_files=max_files, include_tests=True))
     module_to_path = {_module_name(root, path): path.relative_to(root).as_posix() for path in paths}
@@ -140,7 +150,7 @@ def dependency_graph(arguments: dict[str, Any]) -> str:
     for path in paths:
         module = _module_name(root, path)
         try:
-            source = path.read_text(encoding="utf-8")
+            source = path.read_text(encoding="utf-8-sig")
             tree = ast.parse(source, filename=str(path))
         except SyntaxError:
             continue

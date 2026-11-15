@@ -17,6 +17,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SERVER_DIR = REPO_ROOT / "dm_agent" / "server"
 
@@ -48,9 +50,13 @@ def _imported_modules(path: Path) -> set[str]:
             if node.level:
                 # from .x import y → 用所在包补全成绝对模块名
                 base = package_parts[: len(package_parts) - node.level + 1]
-                modules.add(".".join((*base, node.module)) if node.module else ".".join(base))
-            elif node.module:
-                modules.add(node.module)
+                module = ".".join((*base, node.module)) if node.module else ".".join(base)
+            else:
+                module = node.module or ""
+            modules.add(module)
+            # ``from dm_agent import cli`` / ``from .. import cli`` 导入的是子模块本身。
+            # 只记 ``dm_agent`` 的话，这种写法就从下面两条断言里漏掉了。
+            modules.update(f"{module}.{alias.name}" for alias in node.names)
     return modules
 
 
@@ -99,6 +105,35 @@ def test_prefix_matching_is_module_aware() -> None:
     assert _is_under("dm_agent.cli.runner", "dm_agent.cli")
     assert not _is_under("dm_agent.clients", "dm_agent.cli")
     assert not _is_under("dm_agent.clients.base_client", "dm_agent.cli")
+
+
+def test_submodules_imported_through_from_imports_are_detected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """同样守住检查自己：``from 包 import 子模块`` 的写法不能绕过它。
+
+    server 目录整体豁免了 TID251，这份 AST 检查是 server → cli 的唯一防线。
+    """
+    # 把「仓库根」临时指到 tmp，才能喂给它几份故意违规的文件而不往仓库里写东西。
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+    package = tmp_path / "dm_agent" / "server"
+    package.mkdir(parents=True)
+    absolute = package / "absolute.py"
+    absolute.write_text("from dm_agent import cli\n", encoding="utf-8")
+    relative = package / "relative.py"
+    relative.write_text("from .. import cli as agent_cli\n", encoding="utf-8")
+    harmless = package / "harmless.py"
+    harmless.write_text(
+        "from dm_agent import clients\nfrom dm_agent.clients import PROVIDER_DEFAULTS\n",
+        encoding="utf-8",
+    )
+
+    def offends(path: Path) -> bool:
+        return any(_is_under(module, "dm_agent.cli") for module in _imported_modules(path))
+
+    assert offends(absolute)
+    assert offends(relative)
+    assert not offends(harmless)
 
 
 def test_settings_module_is_importable_without_web_extra() -> None:

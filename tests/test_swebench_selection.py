@@ -102,6 +102,41 @@ def test_complete_cache_is_reused_without_network(tmp_path, monkeypatch):
     assert dataset.fetch_instances(cache_path=cache) == rows
 
 
+@pytest.mark.parametrize("separator", [" ", " ", "\x85"])
+def test_cache_with_unicode_line_separators_is_reused_without_network(
+    tmp_path, monkeypatch, separator
+):
+    """缓存用 ensure_ascii=False 写出；题面里的 U+2028 不是 JSONL 的行界。"""
+    cache = tmp_path / "instances.jsonl"
+    rows = [
+        _row(
+            "alpha-1",
+            "org/alpha",
+            "<15 min fix",
+            problem_statement=f"first paragraph{separator}second paragraph",
+        )
+    ]
+    monkeypatch.setattr(dataset, "_fetch_page", lambda _offset, _length: (rows, len(rows)))
+    assert dataset.fetch_instances(cache_path=cache) == rows
+
+    def unexpected_fetch(_offset: int, _length: int) -> tuple[list[dict[str, Any]], int]:
+        raise AssertionError("complete cache should avoid network")
+
+    monkeypatch.setattr(dataset, "_fetch_page", unexpected_fetch)
+    assert dataset.fetch_instances(cache_path=cache) == rows
+
+
+def test_undecodable_cache_is_refetched_instead_of_crashing(tmp_path, monkeypatch):
+    cache = tmp_path / "instances.jsonl"
+    rows = _candidates()
+    monkeypatch.setattr(dataset, "_fetch_page", lambda _offset, _length: (rows, len(rows)))
+    assert dataset.fetch_instances(cache_path=cache) == rows
+    cache.write_bytes(b"\xff")
+
+    assert dataset.fetch_instances(cache_path=cache) == rows
+    assert cache.read_bytes() != b"\xff"
+
+
 def test_selection_is_deterministic_stratified_and_prefix_stable():
     candidates = _candidates()
     selected = select_instances(candidates, len(candidates))
@@ -182,6 +217,9 @@ def test_selection_only_writes_manifest_without_docker_or_prediction(tmp_path, m
         run, "docker_preflight", lambda: pytest.fail("selection-only must not inspect Docker")
     )
     monkeypatch.setattr(
+        run, "build_client", lambda *_args: pytest.fail("selection-only must not build a client")
+    )
+    monkeypatch.setattr(
         run, "predict_one", lambda *_args, **_kwargs: pytest.fail("selection-only must not predict")
     )
 
@@ -204,20 +242,60 @@ def test_selection_only_writes_manifest_without_docker_or_prediction(tmp_path, m
     assert len(manifest["repo_counts"]) == 3
 
 
-def test_docker_preflight_failure_does_not_replace_existing_output_contract(tmp_path, monkeypatch):
+def test_docker_preflight_failure_does_not_replace_existing_output_contract(
+    tmp_path, monkeypatch, capsys
+):
+    # 不预先创建 output：否则运行会停在更早的防覆盖守卫上，根本走不到 docker 预检。
     output = tmp_path / "preds.jsonl"
     manifest_path = tmp_path / "preds.selection.json"
-    output.write_text('{"instance_id":"old"}\n', encoding="utf-8")
     manifest_path.write_text('{"selection_signature":"old"}\n', encoding="utf-8")
     monkeypatch.setattr(run, "fetch_instances", lambda **_kwargs: _candidates())
     monkeypatch.setattr(run, "docker_preflight", lambda: "daemon unavailable")
+    monkeypatch.setattr(
+        run, "predict_one", lambda *_args, **_kwargs: pytest.fail("must stop at the preflight")
+    )
 
     assert run.main(["--limit", "6", "--output", str(output)]) == 2
-    assert output.read_text(encoding="utf-8") == '{"instance_id":"old"}\n'
+    assert "docker 不可用：daemon unavailable" in capsys.readouterr().err
+    assert not output.exists()
     assert manifest_path.read_text(encoding="utf-8") == '{"selection_signature":"old"}\n'
 
 
-@pytest.mark.parametrize("mode", ["missing", "mismatch", "outside", "duplicate"])
+def test_client_preflight_failure_stops_before_manifest_and_prediction(
+    tmp_path, monkeypatch, capsys
+):
+    """缺 API key 必须在拉任何镜像之前失败，而不是每题物化完工作区再各记一条 harness_error。"""
+    output = tmp_path / "preds.jsonl"
+
+    def missing_key(*_args):
+        raise RuntimeError("环境变量 DEEPSEEK_API_KEY 未设置；预测阶段需要真实 API key。")
+
+    monkeypatch.setattr(run, "fetch_instances", lambda **_kwargs: _candidates())
+    monkeypatch.setattr(run, "docker_preflight", lambda: "")
+    monkeypatch.setattr(run, "build_client", missing_key)
+    monkeypatch.setattr(
+        run, "predict_one", lambda *_args, **_kwargs: pytest.fail("must stop at the preflight")
+    )
+
+    assert run.main(["--limit", "3", "--output", str(output)]) == 2
+    assert "DEEPSEEK_API_KEY" in capsys.readouterr().err
+    assert not output.exists()
+    assert not (tmp_path / "preds.selection.json").exists()
+
+
+@pytest.mark.parametrize("value", ["0", "-5"])
+def test_non_positive_max_steps_is_rejected_before_any_work(tmp_path, monkeypatch, value):
+    monkeypatch.setattr(
+        run, "fetch_instances", lambda **_kwargs: pytest.fail("must validate arguments first")
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        run.main(["--output", str(tmp_path / "preds.jsonl"), "--max-steps", value])
+
+    assert excinfo.value.code == 2
+
+
+@pytest.mark.parametrize("mode", ["missing", "mismatch", "outside", "duplicate", "bad_utf8"])
 def test_resume_rejects_incompatible_selection_before_docker(mode, tmp_path, monkeypatch, capsys):
     output = tmp_path / "preds.jsonl"
     manifest_path = tmp_path / "preds.selection.json"
@@ -233,7 +311,9 @@ def test_resume_rejects_incompatible_selection_before_docker(mode, tmp_path, mon
         records = records * 2
     output.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
     original_output = output.read_text(encoding="utf-8")
-    if mode != "missing":
+    if mode == "bad_utf8":
+        manifest_path.write_bytes(b"\xff")
+    elif mode != "missing":
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     monkeypatch.setattr(run, "fetch_instances", lambda **_kwargs: candidates)
@@ -279,6 +359,7 @@ def test_resume_keeps_completed_records_and_retries_harness_error(
     monkeypatch.setattr(run, "fetch_instances", lambda **_kwargs: candidates)
     monkeypatch.setattr(run, "docker_preflight", lambda: "")
     monkeypatch.setattr(run, "predict_one", predict_one)
+    monkeypatch.setattr(run, "build_client", lambda *_args: object())
 
     assert run.main(["--limit", "2", "--output", str(output), "--resume"]) == 0
     assert predicted == [selected[failed_index]["instance_id"]]
@@ -321,6 +402,7 @@ def test_failed_resume_rewrite_preserves_original_predictions(tmp_path, monkeypa
     monkeypatch.setattr(run, "fetch_instances", lambda **kwargs: candidates)
     monkeypatch.setattr(run, "docker_preflight", lambda: "")
     monkeypatch.setattr(run, "predict_one", lambda *args, **kwargs: pytest.fail("rewrite failed"))
+    monkeypatch.setattr(run, "build_client", lambda *_args: object())
 
     def fail_replace(self, target):
         raise OSError("disk unavailable")
@@ -352,6 +434,7 @@ def test_completed_resume_does_not_rewrite_predictions(tmp_path, monkeypatch):
     monkeypatch.setattr(
         run, "predict_one", lambda *args, **kwargs: pytest.fail("already completed")
     )
+    monkeypatch.setattr(run, "build_client", lambda *_args: object())
 
     assert run.main(["--limit", "1", "--output", str(output), "--resume"]) == 0
     assert output.read_bytes() == original
@@ -374,6 +457,7 @@ def test_completed_legacy_resume_restores_manifest_order_with_backup(tmp_path, m
     monkeypatch.setattr(
         run, "predict_one", lambda *args, **kwargs: pytest.fail("already completed")
     )
+    monkeypatch.setattr(run, "build_client", lambda *_args: object())
 
     assert run.main(["--limit", "2", "--output", str(output), "--resume"]) == 0
     records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]

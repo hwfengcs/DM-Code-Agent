@@ -163,6 +163,10 @@ def main(argv: Any = None) -> int:
             return 2
         return _analyze(events, as_json=args.json)
     if args.command == "analyze-dir":
+        if not args.directory.is_dir():
+            # 路径写错时不能报出一份"0 条 trace、一切健康"的空汇总并返回 0。
+            print(f"Trace directory not found: {args.directory}", file=sys.stderr)
+            return 2
         return _analyze_dir(
             args.directory,
             pattern=args.pattern,

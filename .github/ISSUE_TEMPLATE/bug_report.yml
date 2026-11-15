@@ -54,7 +54,7 @@ body:
     attributes:
       label: DM-Code-Agent version
       description: Output of `python -c "import dm_agent; print(dm_agent.__version__)"`.
-      placeholder: "1.5.0"
+      placeholder: "2.1.0"
     validations:
       required: true
 

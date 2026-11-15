@@ -68,6 +68,25 @@ def test_real_eval_cli_lists_without_api_key():
     assert eval_main(["--real", "--list"]) == 0
 
 
+@pytest.mark.parametrize(
+    ("extra_args", "expected"),
+    [
+        (["--api-key-env", "DM_TEST_ABSENT_EVAL_KEY"], "DM_TEST_ABSENT_EVAL_KEY"),
+        (["--repeat", "0"], "repeat must be at least 1"),
+    ],
+    ids=["missing-key", "zero-repeat"],
+)
+def test_real_eval_cli_reports_configuration_problems_as_exit_code_2(
+    monkeypatch, capsys, extra_args, expected
+):
+    # 先 setenv 再 delenv：变量原本不存在时，单独的 delenv 不会登记回滚。
+    monkeypatch.setenv("DM_TEST_ABSENT_EVAL_KEY", "placeholder")
+    monkeypatch.delenv("DM_TEST_ABSENT_EVAL_KEY")
+
+    assert eval_main(["--real", "--task", "real_direct_finish", *extra_args]) == 2
+    assert expected in capsys.readouterr().err
+
+
 def _eval_result(task_id, *, success, metadata=None, variant="full"):
     return EvalResult(
         task_id=task_id,
@@ -171,6 +190,16 @@ def test_gate_rejects_invalid_success_rates(rate):
 
     assert any("overall_success_rate" in violation for violation in violations)
     assert any("variant 'full'" in violation for violation in violations)
+
+
+def test_gate_reports_a_low_variant_rate_with_the_same_precision_as_the_overall_rate():
+    report = {
+        "summary": {"overall_success_rate": 1.0, "variants": {"full": {"success_rate": 2 / 3}}}
+    }
+
+    violations = evaluate_gate(report, min_success_rate=1.0, min_variant_rate=1.0)
+
+    assert violations == ["variant 'full' success_rate 0.667 is below the required 1.000"]
 
 
 @pytest.mark.parametrize("variants", [None, {}, [], {"full": []}])

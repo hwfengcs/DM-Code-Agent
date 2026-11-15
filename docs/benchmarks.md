@@ -7,7 +7,7 @@ Three suites:
 
 - `coding` (15 tasks): compact hidden-test coding tasks.
 - `maintenance` (15 tasks): repository-maintenance tasks that mimic real fixes more closely,
-  most of them constrained by `allowed_changed_files`.
+  all of them constrained by `allowed_changed_files`.
 - `all` (30 tasks): both of the above in one run — **use this when you want one score.**
 
 Every suite creates a temporary workspace, lets the agent inspect and edit files, injects hidden
@@ -18,7 +18,7 @@ HuggingFace download — but a real API key is required, because the point is to
 
 The headline number is `summary.overall_pass_rate`.
 
-The last archived baseline (`bench_reports/baseline-20260803.json`, DeepSeek `deepseek-chat`)
+The first archived baseline (`bench_reports/baseline-20260803.json`, DeepSeek `deepseek-chat`)
 was measured on the **13-task** suite, before the expansion to 30:
 
 | Metric | Value (13-task suite) |
@@ -30,12 +30,16 @@ was measured on the **13-task** suite, before the expansion to 30:
 
 That report is **not comparable** to a 30-task run — `dm-agent-score-diff` will refuse the
 comparison because the suite signature differs. Re-run the baseline after any task-set change.
+For the current 30-task set, the first archived DeepSeek baseline is
+`bench_reports/baseline-30task-20260804.json`; later 30-task archives sit next to it in
+`bench_reports/`.
 
 Read the gap between those rates, not just the first line. Hidden tests passed on **77%** of
 tasks while only **38%** counted as a pass — the difference is process discipline, not coding
-ability: three tasks edited files the prompt forbade (all three went for the test file), four ran
-out of steps, one produced unparseable output. That finding is what motivated giving most of the
-new maintenance tasks an `allowed_changed_files` constraint.
+ability: three tasks edited files outside their `allowed_changed_files`, a constraint the prompt
+did not state (all three went for the test file), four ran out of steps, one produced unparseable
+output. That finding is what motivated giving every new maintenance task an
+`allowed_changed_files` constraint.
 
 A concrete demonstration of why the noise floor matters: two runs of the same 6 coding tasks with
 the same model scored 3/6 and 4/6. **Same model, same tasks, one task of difference.**
@@ -149,14 +153,14 @@ dm-agent-manifest-diff bench_reports/baseline.json bench_reports/experiment.json
 The manifest diff is offline-only. It exits with `0` when suite signatures, task fingerprints, and
 variant names match; it exits with `1` when reports are from different task contracts.
 
-Default-off plumbing for coding/maintenance benchmark experiments:
-
-```bash
-dm-agent-bench --suite maintenance --enable-adaptive-replanning --max-replans 3
-```
-
 > v2.1 removed the Critic and self-consistency benchmark switches along with the
 > SWE-bench Lite suite. See [devlog 33](research-log/33-scope-reduction.md).
+
+For Python callers, `run_benchmark_suite(variants=..., variant_names=...)` filters the supplied
+`BenchmarkVariant` objects by name and preserves their planning, skill, and compression flags.
+It does not replace a custom variant with a built-in object that happens to have the same name.
+When `variants` is omitted, named selection can use any built-in ablation, including variants
+outside the default run set.
 
 ## Maintenance Suite
 
@@ -177,7 +181,7 @@ The maintenance suite currently includes:
 - `sort_stability_regression`: stable ranking when keys are equal.
 - `filename_sanitizer`: cross-platform filename sanitizing.
 - `error_propagation_contract`: cross-file exception translation.
-- `settings_env_precedence`: environment and file settings across modules.
+- `settings_env_precedence`: defaults, environment, and override precedence across two modules.
 - `log_redaction`: structured log secret redaction.
 
 These tasks are intentionally closer to repository upkeep than puzzle-style algorithms. They
@@ -215,7 +219,7 @@ The report includes:
 - manifest provenance: task ids, per-task fingerprints, variant names, and suite signature
 - compact trace analysis when `--trace-dir` is enabled
 - recovery success rate per variant: `recovered_runs / runs_with_failures`, where a run
-  "had failures" when any parse/tool/unknown/argument/edit-guard counter is non-zero
+  "had failures" when any parse/tool/unknown/argument/replan/edit-guard counter is non-zero
 - `by_tag` capability breakdown: per-tag runs, successes, and success rate
 - repeat-variance stability when `--repeat` is greater than 1: per-task `pass@k`, `pass^k`,
   per-repeat pass lists, and a task pass-rate standard deviation (same config reruns; API

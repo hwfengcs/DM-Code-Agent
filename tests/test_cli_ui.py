@@ -71,8 +71,9 @@ def test_completion_screen_surfaces_summary_and_review_hint(capsys):
     assert "full answer" in output
     assert "do thing" in output
     assert "history=4 messages" in output
-    assert "v" in output
-    assert "s" in output
+    # 断言完整的操作提示，而不是单个字母：输出里到处都有 "s"，那样的断言恒真。
+    assert "v 分页查看步骤" in output
+    assert "s 保存 Markdown 报告" in output
 
 
 def test_compact_step_callback_is_low_noise(capsys):
@@ -231,6 +232,8 @@ def test_cli_provider_override_uses_its_own_defaults(
 ):
     from dm_agent.cli import main
 
+    # main() 会把调用目录的 ./.env 读进 os.environ 且不恢复；这里要测的只是参数合并。
+    monkeypatch.setattr("dm_agent.cli.load_env_files", lambda: [])
     monkeypatch.setattr(
         "dm_agent.cli.args.load_config_from_file",
         lambda: {

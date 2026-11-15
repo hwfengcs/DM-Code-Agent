@@ -35,7 +35,7 @@ export function Chat({ meta, onSessionsChanged }: { meta: MetaResponse; onSessio
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
-  const finishedTurns = useRef(0)
+  const finishedTurns = useRef({ runId: '', done: 0 })
 
   const turns = useMemo(() => splitTurns(state.entries), [state.entries])
   const record = state.record
@@ -52,13 +52,16 @@ export function Chat({ meta, onSessionsChanged }: { meta: MetaResponse; onSessio
   }, [state.entries.length])
 
   // 每跑完一轮就刷新会话库——这次对话的日志刚刚多了一段 run。
+  // 计数按对话归零：换了一个对话之后，上一个对话跑过的轮数不能挡住新对话的前几轮。
   useEffect(() => {
+    const runId = record?.run_id ?? ''
     const done = record?.completed_turns ?? 0
-    if (done > finishedTurns.current) {
-      finishedTurns.current = done
+    if (finishedTurns.current.runId !== runId) finishedTurns.current = { runId, done: 0 }
+    if (done > finishedTurns.current.done) {
+      finishedTurns.current.done = done
       onSessionsChanged()
     }
-  }, [record?.completed_turns, onSessionsChanged])
+  }, [record?.run_id, record?.completed_turns, onSessionsChanged])
 
   const submit = useCallback(async () => {
     const task = draft.trim()
@@ -99,7 +102,8 @@ export function Chat({ meta, onSessionsChanged }: { meta: MetaResponse; onSessio
                 {state.notice}
               </Banner>
             )}
-            {record?.error && (
+            {/* 用户主动结束对话时子进程也可能非零退出；兼容旧服务端在 error 里保留的输出。 */}
+            {record?.error && !record.cancelled && (
               <Banner tone="risk" title="agent 进程报错">
                 <pre className="mt-1 max-h-40 overflow-auto font-mono text-micro break-words whitespace-pre-wrap">
                   {record.error}

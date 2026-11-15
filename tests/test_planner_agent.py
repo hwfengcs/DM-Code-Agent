@@ -58,6 +58,70 @@ def test_task_planner_has_plan_only_while_steps_remain():
     assert planner.current_plan == []
 
 
+def test_plan_steps_are_numbered_by_position_not_by_the_model():
+    """模型写的 "step" 不可信：重号会卡死进度，字符串编号会让 replan 的续号运算崩溃。"""
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": "1", "action": "echo", "reason": "first"},
+                        {"step": "1", "action": "echo", "reason": "duplicate number"},
+                        {"action": "task_complete", "reason": "no number at all"},
+                    ]
+                }
+            ),
+            json.dumps({"plan": [{"step": "one", "action": "task_complete", "reason": "wrap up"}]}),
+        ]
+    )
+    planner = TaskPlanner(client, [Tool("echo", "Echo", lambda arguments: "ok")])
+
+    plan = planner.plan("number the steps")
+    assert [step.step_number for step in plan] == [1, 2, 3]
+
+    for _ in range(2):
+        next_step = planner.get_next_step()
+        planner.mark_completed(next_step.step_number, "ok")
+    assert [step.completed for step in planner.current_plan] == [True, True, False]
+
+    replanned = planner.replan("number the steps", planner.current_plan[:2], "boom")
+    assert [(step.step_number, step.completed) for step in replanned] == [
+        (1, True),
+        (2, True),
+        (3, False),
+    ]
+
+
+@pytest.mark.parametrize("completed_count", [0, 1])
+def test_replan_without_new_steps_keeps_the_current_plan(completed_count):
+    """空的重规划响应不是一份新计划：剩余待办不能被丢掉，也不能算作一次重规划。"""
+    client = FakeRespondClient(
+        [
+            json.dumps(
+                {
+                    "plan": [
+                        {"step": 1, "action": "echo", "reason": "inspect"},
+                        {"step": 2, "action": "task_complete", "reason": "finish"},
+                    ]
+                }
+            ),
+            json.dumps({"plan": []}),
+        ]
+    )
+    planner = TaskPlanner(client, [Tool("echo", "Echo", lambda arguments: "ok")])
+    plan = planner.plan("keep the plan")
+    for step in plan[:completed_count]:
+        planner.mark_completed(step.step_number, "ok")
+
+    replanned = planner.replan("keep the plan", plan[:completed_count], "boom")
+
+    assert replanned == []
+    assert [(step.action, step.completed) for step in planner.current_plan] == [
+        ("echo", completed_count == 1),
+        ("task_complete", False),
+    ]
+
+
 def test_react_agent_can_finish_without_tool_call():
     client = FakeRespondClient(
         [

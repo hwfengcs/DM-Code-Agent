@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -466,6 +467,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # 中文 Windows 的控制台默认按 GBK 编码：失败文本里只要有一个 GBK 之外的字符（emoji、
+    # 孟加拉数字），末尾那次打印就会抛 UnicodeEncodeError，而此时 JSON / Markdown 已经写完。
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(Exception):
+                stream.reconfigure(errors="replace")
+
     try:
         analysis = analyze_paths(
             args.predictions,
@@ -552,7 +560,9 @@ def _load_predictions(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        # 只按 "\n" 断行：记录用 ensure_ascii=False 写出，字段里的 U+2028 / U+2029 /
+        # U+0085 会原样落盘，str.splitlines() 会在这些字符处把一条记录切开。
+        lines = path.read_text(encoding="utf-8").split("\n")
     except (OSError, UnicodeError) as exc:
         raise AnalysisInputError(f"读取 predictions 失败 {path}: {exc}") from exc
     for line_number, line in enumerate(lines, start=1):
@@ -753,9 +763,26 @@ def _scan_traces(
         for path in paths:
             events: list[dict[str, Any]] = []
             try:
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except (OSError, UnicodeError):
-                warnings.append(_warning("trace_read_error", "trace 无法读取，已跳过。", path=path))
+                # 只按 "\n" 断行，理由同 _load_predictions：观察里的 U+2028 等字符不是行界。
+                lines = path.read_text(encoding="utf-8").split("\n")
+            except (OSError, UnicodeError) as exc:
+                # 读不了的文件拿不到 runtime.payload.instance_id，只能按文件名归属。归属到
+                # 本批实例时登记为 invalid：文件明明在，不能让它落进 "missing"。
+                mapped_id = path.stem if path.stem in expected_ids else None
+                warnings.append(
+                    _warning(
+                        "trace_read_error",
+                        "trace 无法读取，已隔离该文件。",
+                        instance_id=mapped_id,
+                        path=path,
+                    )
+                )
+                if mapped_id is not None:
+                    if mapped_id in index:
+                        raise AnalysisInputError(
+                            f"同一 instance 出现在多个 trace 文件/目录: {mapped_id}"
+                        ) from exc
+                    index[mapped_id] = _trace_record(path, [], malformed=True)
                 continue
             for line_number, line in enumerate(lines, start=1):
                 if not line.strip():
@@ -1025,8 +1052,10 @@ def _trace_record(path: Path, events: list[dict[str, Any]], malformed: bool) -> 
         step_number = _optional_int(payload.get("step_number")) or index
         if action in _VERIFICATION_ACTIONS:
             verification_actions.append({"step_number": step_number, "action": action})
-        if action in {"finish", "task_complete"} and finish_step is None:
-            finish_step = step_number
+        if action in {"finish", "task_complete"}:
+            # 与 dm_agent.tracing.analysis 同一条规则：run 在完成被接受的那一步结束，所以
+            # 最后一次 finish/task_complete 才是生效的那次，更早的是被 before_finish 否决的尝试。
+            finish_step = step_number if finish_step is None else max(finish_step, step_number)
     before_finish = bool(
         verification_actions
         and (
@@ -1384,7 +1413,7 @@ def _merge_agent(prediction: dict[str, Any], trace: dict[str, Any] | None) -> di
     trace_counters = trace.get("counters", {}) if trace_measured and trace else {}
     for output_name, prediction_name in _PREDICTION_DIAGNOSTICS.items():
         value = (
-            _optional_number_or_int(prediction.get(prediction_name))
+            _optional_number(prediction.get(prediction_name))
             if prediction_diagnostics_measured
             else None
         )
@@ -1752,10 +1781,6 @@ def _optional_number(value: Any) -> int | float | None:
     return value
 
 
-def _optional_number_or_int(value: Any) -> int | float | None:
-    return _optional_number(value)
-
-
 def _optional_bool(value: Any) -> bool | None:
     return value if isinstance(value, bool) else None
 
@@ -1810,8 +1835,9 @@ def _scope_items(summary: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
 def _metric_cell(metric: dict[str, Any] | None) -> str:
     if not metric:
         return "—"
-    total = metric.get("sum")
     measured = metric.get("measured_count", 0)
+    # 布尔指标没有 sum：显示 true 的个数。一个都没测到时保持 "—"，不冒充实测到的 0。
+    total = metric["sum"] if "sum" in metric else metric.get("true_count") if measured else None
     denominator = metric.get("denominator", 0)
     return f"{_value(total)} ({measured}/{denominator})"
 

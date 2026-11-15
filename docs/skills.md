@@ -17,9 +17,9 @@ python main.py
 你将会看到类似输出：
 
 ```
-正在加载 MCP 服务器...
-ℹ 未启用 MCP 服务器
-✓ 加载了 3 个技能
+  RUN    正在加载 MCP 服务器
+  INFO   未启用 MCP 服务器
+  DONE   加载了 3 个技能
 ```
 
 ### 2. 自动激活机制
@@ -33,35 +33,29 @@ python main.py "优化我 Django 项目中的 SQL 查询"
 你会看到：
 
 ```
-🎯 已激活技能：Python 专家, 数据库专家
-📋 生成的执行计划：
+[skills] 已激活技能：Python 专家, 数据库专家
+
+[plan] 生成的执行计划：
 ...
 ```
 
 ### 3. 查看可用技能
 
-在交互模式下选择菜单选项 `5. 查看可用技能列表`：
+在交互模式下选择菜单选项 `5. 查看可用技能列表`，会看到类似下面的表格（边框样式与列宽随终端而变）：
 
 ```
-可用技能列表：
-
-1. Python 专家
-   标识：python_expert
-   描述：提供 Python 编程最佳实践、代码规范和性能优化指导
-   类型：内置  版本：1.0.0  专用工具：1 个
-   关键词：python, pip, pytest, async, 类型提示, dataclass, 装饰器, 生成器...
-
-2. 数据库专家
-   标识：db_expert
-   描述：提供 SQL 最佳实践、数据库设计、ORM 使用和性能优化指导
-   类型：内置  版本：1.0.0  专用工具：1 个
-   关键词：sql, mysql, postgresql, sqlite, 数据库, 索引, orm, sqlalchemy...
-
-3. 前端开发专家
-   标识：frontend_dev
-   描述：提供 HTML/CSS/JavaScript/React/Vue/TypeScript 开发最佳实践和性能优化指导
-   类型：内置  版本：1.0.0  专用工具：0 个
-   关键词：html, css, javascript, react, vue, typescript, 前端, npm...
+╭─  可用技能 (3)  ─────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                  │
+│                                                                                                  │
+│   #   Skill          Source   Tools   Description                                                │
+│   ────────────────────────────────────────────────────────────────────────────────────────────   │
+│   1   Python 专家    内置         1   提供 Python 编程最佳实践、代码规范和性能优化指导           │
+│   2   数据库专家     内置         1   提供 SQL 最佳实践、数据库设计、ORM 使用和性能优化指导      │
+│   3   前端开发专家   内置         0   提供 HTML/CSS/JavaScript/React/Vue/TypeScript              │
+│                                       开发最佳实践和性能优化指导                                 │
+│                                                                                                  │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
@@ -149,6 +143,10 @@ python main.py "将这个 JavaScript 项目迁移到 TypeScript"
 #### 步骤 1：创建 JSON 文件
 
 在 `dm_agent/skills/custom/` 目录下创建 `.json` 文件：
+
+这个默认路径位于源码包内，不是当前工作目录；通过 pip 安装后对应的是 `site-packages`
+中的目录。pip 用户建议使用下面的用户目录 Python 扩展方式，避免修改安装包；作为库使用时
+也可显式调用 `SkillManager.load_custom_skills(directory=...)` 指定 JSON 目录。
 
 ```json
 {

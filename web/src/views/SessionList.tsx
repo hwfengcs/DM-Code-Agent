@@ -35,6 +35,9 @@ const HEALTH_OPTIONS: { value: HealthFilter; label: string }[] = [
   { value: 'risky', label: '有风险' },
 ]
 
+/** 单次批量删除请求能带的名字数，与后端 `routes/sessions.py` 的 `MAX_BULK_DELETE` 一致。 */
+const BULK_DELETE_LIMIT = 200
+
 export function SessionList({
   data,
   readOnly,
@@ -86,24 +89,42 @@ export function SessionList({
   const doDelete = async (names: string[]) => {
     setDeleting(true)
     setNotice(null)
+    // 已经搬进回收站的会话名。分批删除可能在中途出错，那时前面几批已经生效了。
+    const removed: string[] = []
     try {
       if (names.length === 1) {
         const result = await api.deleteSession(names[0] as string)
+        removed.push(result.name)
         setNotice(`已移入回收站：${result.trashed_as}`)
       } else {
-        const result = await api.deleteSessions(names)
+        // 后端单次最多收 BULK_DELETE_LIMIT 个名字，超出会整批 422；所以分批发、合并结果。
+        const failed: { name: string; error: string }[] = []
+        for (let start = 0; start < names.length; start += BULK_DELETE_LIMIT) {
+          const result = await api.deleteSessions(names.slice(start, start + BULK_DELETE_LIMIT))
+          removed.push(...result.deleted.map((item) => item.name))
+          failed.push(...result.failed)
+        }
         setNotice(
-          result.failed.length === 0
-            ? `已把 ${result.deleted.length} 个会话移入回收站。`
-            : `${result.deleted.length} 个已移入回收站，${result.failed.length} 个失败：` +
-                result.failed.map((item) => `${item.name}（${item.error}）`).join('；'),
+          failed.length === 0
+            ? `已把 ${removed.length} 个会话移入回收站。`
+            : `${removed.length} 个已移入回收站，${failed.length} 个失败：` +
+                failed.map((item) => `${item.name}（${item.error}）`).join('；'),
         )
       }
       setSelected(new Set())
       onRefresh()
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : String(cause))
+      const message = cause instanceof Error ? cause.message : String(cause)
+      if (removed.length > 0) {
+        setNotice(`${removed.length} 个已移入回收站，之后的请求失败：${message}`)
+        setSelected((current) => new Set([...current].filter((name) => !removed.includes(name))))
+        onRefresh()
+      } else {
+        setNotice(message)
+      }
     } finally {
+      // 基准会话被删掉后不能再留着，否则每个「与基准 diff」都通向一个已经不在的文件。
+      if (compareWith !== null && removed.includes(compareWith)) onCompareWith(null)
       setDeleting(false)
       setConfirming(null)
     }

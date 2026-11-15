@@ -760,3 +760,20 @@ def test_trace_directory_continues_after_invalid_entries(tmp_path, capsys):
 def test_trace_cli_reports_unreadable_path(tmp_path, capsys):
     assert trace_cli.main(["view", str(tmp_path)]) == 2
     assert "Cannot read trace:" in capsys.readouterr().err
+
+
+def test_analyze_dir_rejects_a_missing_directory_instead_of_an_empty_summary(tmp_path, capsys):
+    missing = tmp_path / "typo"
+    markdown_path = tmp_path / "report.md"
+
+    assert trace_cli.main(["analyze-dir", str(missing), "--markdown", str(markdown_path)]) == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert f"Trace directory not found: {missing}" in captured.err
+    assert not markdown_path.exists()
+
+
+def test_analyze_dir_still_succeeds_on_an_existing_directory_without_traces(tmp_path, capsys):
+    assert trace_cli.main(["analyze-dir", str(tmp_path)]) == 0
+    assert "Traces: 0/0 analyzed" in capsys.readouterr().out

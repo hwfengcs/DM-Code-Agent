@@ -16,6 +16,13 @@ interface MetricDelta {
   delta: number
 }
 
+/** `metrics` 里的 `duration_seconds`：任一侧没有 `run_end` 时后端给的是 null。 */
+interface NullableMetricDelta {
+  base: number | null
+  candidate: number | null
+  delta: number | null
+}
+
 interface DiffPayload {
   base: Record<string, unknown>
   candidate: Record<string, unknown>
@@ -23,12 +30,12 @@ interface DiffPayload {
   task_changed: boolean
   final_answer_changed: boolean
   plan_changed: boolean
-  metrics: Record<string, MetricDelta>
+  metrics: Record<string, NullableMetricDelta>
   action_sequence: {
     base: string[]
     candidate: string[]
     common_prefix: number
-    changes: { index: number; base?: string; candidate?: string; kind?: string }[]
+    changes: { step_number: number; base: string; candidate: string }[]
   }
   tool_usage: {
     base: Record<string, number>
@@ -103,7 +110,7 @@ export function DiffView({ a, b }: { a: string; b: string }) {
                   <span className="text-caption text-ink-2">{format(value.base)}</span>
                   <span className="text-micro text-ink-4">→</span>
                   <span className="text-body font-medium text-ink">{format(value.candidate)}</span>
-                  {value.delta !== 0 && (
+                  {value.delta !== null && value.delta !== 0 && (
                     <span
                       className={`text-micro font-medium ${
                         value.delta > 0 ? 'text-orange-ink' : 'text-green-ink'
@@ -121,7 +128,11 @@ export function DiffView({ a, b }: { a: string; b: string }) {
 
         <Panel
           title="动作序列"
-          subtitle={`前 ${actions.common_prefix} 步完全一致，之后开始分叉`}
+          subtitle={
+            actions.common_prefix >= maxLength
+              ? `动作序列完全一致（共 ${maxLength} 步）`
+              : `前 ${actions.common_prefix} 步完全一致，之后开始分叉`
+          }
         >
           <div className="grid grid-cols-[3rem_1fr_1fr] gap-3 border-b border-line px-5 py-2 text-micro font-medium text-ink-3">
             <span>#</span>
@@ -133,19 +144,19 @@ export function DiffView({ a, b }: { a: string; b: string }) {
               const left = actions.base[index]
               const right = actions.candidate[index]
               const same = left === right
-              const inCommonPrefix = index < actions.common_prefix
+              // 公共前缀弱化显示；分叉之后碰巧相同的步骤保持正常的次级色。弱化色必须落在
+              // 这两个 span 上——写在 <li> 上会被它们自己的文字色盖掉。
+              const sameTone = index < actions.common_prefix ? 'text-ink-4' : 'text-ink-2'
               return (
                 <li
                   key={index}
-                  className={`grid grid-cols-[3rem_1fr_1fr] gap-3 px-5 py-2 font-mono text-micro ${
-                    inCommonPrefix ? 'text-ink-4' : ''
-                  }`}
+                  className="grid grid-cols-[3rem_1fr_1fr] gap-3 px-5 py-2 font-mono text-micro"
                 >
                   <span className="tabular-nums text-ink-4">{index + 1}</span>
-                  <span className={same ? 'text-ink-2' : 'font-medium text-orange-ink'}>
+                  <span className={same ? sameTone : 'font-medium text-orange-ink'}>
                     {left ?? '—'}
                   </span>
-                  <span className={same ? 'text-ink-2' : 'font-medium text-blue-ink'}>
+                  <span className={same ? sameTone : 'font-medium text-blue-ink'}>
                     {right ?? '—'}
                   </span>
                 </li>

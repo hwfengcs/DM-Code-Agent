@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import sys
@@ -13,6 +14,33 @@ from .base import _require_str
 
 # run_linter 支持的检查器，按推荐顺序（ruff 最快且覆盖面最广）。
 _LINTER_TOOLS = ("ruff", "flake8", "pylint", "mypy", "black")
+
+
+def _child_env() -> dict[str, str]:
+    """让 Python 子进程按 UTF-8 写管道，与本模块读取端的 ``encoding="utf-8"`` 对齐。
+
+    Windows 上子解释器写管道默认用 ANSI 代码页：中文输出会被读成乱码，打印代码页外的
+    字符（如 ✅）更会让子进程以 ``UnicodeEncodeError`` 退出，一次成功的运行被记成失败。
+    用户已显式设置时尊重其取值。只影响 Python 子进程；``run_shell`` 里的原生命令仍按
+    控制台代码页输出。
+    """
+    env = dict(os.environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
+
+
+def _split_args(text: str) -> list[str]:
+    """把字符串形式的参数拆成 argv。
+
+    Windows 路径里的反斜杠不是转义符：按 POSIX 规则拆会把 ``C:\\tmp\\a.txt`` 吞成
+    ``C:tmpa.txt`` 且不报错。Windows 上因此只保留引号分组，反斜杠原样传递。
+    """
+    lexer = shlex.shlex(text, posix=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    if os.name == "nt":
+        lexer.escape = ""
+    return list(lexer)
 
 
 def available_linters() -> list[str]:
@@ -40,14 +68,19 @@ def run_python(arguments: dict[str, Any]) -> str:
         if isinstance(extra_args, list):
             command.extend(str(item) for item in extra_args)
         elif isinstance(extra_args, str) and extra_args.strip():
-            command.extend(shlex.split(extra_args))
+            command.extend(_split_args(extra_args))
         elif extra_args is not None:
             raise ValueError("工具参数 'args' 必须是字符串或字符串列表。")
     else:
         raise ValueError("run_python 工具需要 'code' 或 'path' 参数。")
 
     result = subprocess.run(
-        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_child_env(),
     )
     segments: list[str] = []
     if result.stdout:
@@ -62,7 +95,13 @@ def run_shell(arguments: dict[str, Any]) -> str:
     """运行 Shell 命令"""
     command = _require_str(arguments, "command")
     result = subprocess.run(
-        command, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        command,
+        shell=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_child_env(),
     )
     segments: list[str] = []
     if result.stdout:
@@ -85,7 +124,9 @@ def run_tests(arguments: dict[str, Any]) -> str:
     if framework not in ["pytest", "unittest"]:
         raise ValueError("framework 必须是 'pytest' 或 'unittest'。")
 
-    path = Path(test_path)
+    # pytest 的 node id（tests/test_x.py::test_a）只有 "::" 之前是文件系统路径。
+    target = test_path.split("::", 1)[0] if framework == "pytest" else test_path
+    path = Path(target)
     if not path.exists():
         return f"测试路径 {path} 不存在。"
 
@@ -93,7 +134,7 @@ def run_tests(arguments: dict[str, Any]) -> str:
         command = [sys.executable, "-m", "pytest"]
         if verbose:
             command.append("-v")
-        command.append(str(path))
+        command.append(str(path) + test_path[len(target) :])
     else:  # unittest
         command = [sys.executable, "-m", "unittest"]
         if verbose:
@@ -106,7 +147,12 @@ def run_tests(arguments: dict[str, Any]) -> str:
             command.extend(["discover", "-s", str(path)])
 
     result = subprocess.run(
-        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_child_env(),
     )
     segments: list[str] = []
 
@@ -143,7 +189,12 @@ def run_linter(arguments: dict[str, Any]) -> str:
         command = [sys.executable, "-m", tool, str(path)]
 
     result = subprocess.run(
-        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_child_env(),
     )
 
     # 当前解释器没装这个检查器。直接把子进程的 "No module named X" 回给模型，会让它

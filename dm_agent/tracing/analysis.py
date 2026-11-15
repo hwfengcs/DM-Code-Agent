@@ -237,7 +237,10 @@ def _verification_analysis(summary: dict[str, Any]) -> dict[str, Any]:
         for index, step in enumerate(steps)
         if step.get("action") in {"finish", "task_complete"}
     ]
-    finish_step = min(finish_steps) if finish_steps else None
+    # 一次 run 在完成被接受的那一步结束，所以最后一个 finish/task_complete 才是生效的那次；
+    # 更早的是被 before_finish 否决的尝试。按第一次计会把"被打回 → 补跑测试 → 再完成"
+    # 的 run 误报成 verification gap。
+    finish_step = max(finish_steps) if finish_steps else None
     actions = [
         {
             "step_number": int(step.get("step_number") or index + 1),

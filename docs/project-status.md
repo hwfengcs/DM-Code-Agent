@@ -16,8 +16,9 @@ Tier-2 verifier 从未实现，CI 也从不跑它。独立的 `swebench_verified
 
 **本项目的记分牌是自带的 coding + maintenance benchmark**：**30 道题**（coding 15 + maintenance 15），本地建工作区 →
 agent 改代码 → 加隐藏测试 → pytest 判定 pass/fail，产出 `overall_pass_rate`。
-它不依赖 Docker、不依赖 HuggingFace，需要一个真实 API key。已实测：DeepSeek 在
-**30 题**（coding 15 + maintenance 15）。13 题时代的存档 baseline 是
+它不依赖 Docker、不依赖 HuggingFace，需要一个真实 API key。DeepSeek 在
+**30 题**（coding 15 + maintenance 15）上已有多轮实测：各轮结论见
+[最近八轮进展](recent-progress.md)，原始报告归档在 `bench_reports/`。13 题时代的存档 baseline 是
 **pass_rate 0.385（5/13）**，95% CI [0.177, 0.645]（`bench_reports/baseline-20260803.json`）；
 同一份报告里隐藏测试通过率是 **0.769**——落差来自「改了不该改的文件」（3 题）与
 「步数耗尽」（4 题），不是写不出代码。该报告对应旧任务集，**不可与 30 题分数直接比较**。

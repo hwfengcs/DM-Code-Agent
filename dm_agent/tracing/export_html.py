@@ -493,7 +493,7 @@ def save_session_report(
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            "w", encoding="utf-8", dir=output.parent, delete=False
+            "w", encoding="utf-8", newline="\n", dir=output.parent, delete=False
         ) as handle:
             temporary = Path(handle.name)
             handle.write(page)

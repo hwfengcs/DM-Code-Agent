@@ -530,7 +530,58 @@ def test_bad_utf8_inputs_are_reported_without_decode_traceback(tmp_path: Path, s
         )
         expected = "trace_read_error" if source == "trace" else "harness_detail_bad_json"
         assert any(warning["code"] == expected for warning in analysis["warnings"])
+        if source == "trace":
+            assert analysis["instances"][0]["trace"]["status"] == "invalid"
+            assert analysis["instances"][0]["trace"]["verification_gap"] is None
     assert paths[source].read_bytes() == b"\xff"
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\x85"])
+def test_predictions_and_traces_keep_unicode_line_separators(tmp_path, separator):
+    predictions = _write_predictions(
+        tmp_path / "predictions.jsonl", [_prediction(IDS[0], patch=f"before{separator}after")]
+    )
+    report = _write_json(
+        tmp_path / "report.json",
+        _report([IDS[0]], resolved=[IDS[0]], unresolved=[], empty=[], error=[]),
+    )
+    trace_dir = tmp_path / "traces"
+    trace_dir.mkdir()
+    _write_trace(
+        trace_dir / f"{IDS[0]}.jsonl",
+        IDS[0],
+        actions=[("run_python", {"code": f"print({separator!r})"}), ("finish", {})],
+        metadata={"failure_reason": f"before{separator}after"},
+    )
+
+    analysis = analyze_paths(predictions, report, trace_dirs=[trace_dir])
+
+    assert analysis["instances"][0]["patch"]["chars"] == len(f"before{separator}after")
+    assert analysis["instances"][0]["trace"]["status"] == "measured"
+    assert not analysis["warnings"]
+
+
+def test_verification_after_rejected_finish_is_counted_and_rendered(tmp_path):
+    predictions = _write_predictions(tmp_path / "predictions.jsonl", [_prediction(IDS[0])])
+    report = _write_json(
+        tmp_path / "report.json",
+        _report([IDS[0]], resolved=[IDS[0]], unresolved=[], empty=[], error=[]),
+    )
+    trace_dir = tmp_path / "traces"
+    trace_dir.mkdir()
+    _write_trace(
+        trace_dir / f"{IDS[0]}.jsonl",
+        IDS[0],
+        actions=[("finish", {}), ("run_tests", {}), ("task_complete", {})],
+    )
+
+    analysis = analyze_paths(predictions, report, trace_dirs=[trace_dir])
+
+    assert analysis["instances"][0]["trace"]["verification_before_finish"] is True
+    assert analysis["instances"][0]["trace"]["verification_gap"] is False
+    agent_table = render_markdown(analysis).split("## Agent / trace 轴\n", 1)[1]
+    summary_row = next(line for line in agent_table.splitlines() if line.startswith("| all |"))
+    assert summary_row.endswith("| 0 (1/1) |")
 
 
 def test_trace_runtime_mapping_fallback_and_bad_trace_isolated(tmp_path: Path) -> None:

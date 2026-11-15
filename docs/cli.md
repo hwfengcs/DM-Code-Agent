@@ -51,7 +51,7 @@ API key 是例外：**只从环境变量读**（`DEEPSEEK_API_KEY` / `OPENAI_API
 也可用 `--api-key` 显式传入；它优先于环境变量。切换 `--provider` 时，配置文件中旧
 供应商的 model / base_url 不会沿用；未显式指定的值采用新供应商默认值。
 
-MCP 配置独立于当前工作目录的 `mcp_config.json`，见 [MCP 配置](mcp.md)。
+MCP 配置不参与上面的链条：只读当前工作目录下的 `mcp_config.json`，没有用户级回退，见 [MCP 配置](mcp.md)。
 
 ## 基础参数
 
@@ -108,15 +108,15 @@ printf '%s\n' \
 | --- | --- | --- |
 | `--enable-adaptive-replanning` | `--max-replans -1` | 错误信号映射到重规划策略 |
 
+`--max-replans` 对自适应与非自适应两条路径都生效：`0` 表示完全不重规划；`-1`（默认）在未开启
+自适应重规划时表示内核默认预算 5 次（`ReactAgent.DEFAULT_REPLAN_BUDGET`），开启后表示不限。
+
 Planning 与上下文折叠**默认开启**，但没有暴露成 `dm-agent` 开关；它们只在 bench/eval
 里作为 ablation 变体存在（`no_planning` / `no_compression`）。
 
 > v2.1 移除了 Reflexion / Critic / Self-Consistency / 工具熔断 / 记忆卫生 /
 > LLM 摘要压缩及其全部开关——它们的毕业标准依赖已冻结的真实评测。
 > 见 [devlog 33](research-log/33-scope-reduction.md)。
-
-这些开关是过渡写法：它们内部等价于「加载对应的内置扩展」，实现见
-[生命周期事件](lifecycle-events.md#内置能力也是事件处理器)。
 
 ## 会话、断点与分叉
 

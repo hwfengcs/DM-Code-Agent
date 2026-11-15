@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from dm_agent.core import EventBus, ReactAgent
 from dm_agent.core.events import AfterToolResultEvent
 from dm_agent.memory.context_compressor import Compaction, Mem0StyleMemory
@@ -281,6 +283,42 @@ def test_before_finish_block_rejects_completion_and_agent_continues():
     assert result["steps"][0]["observation"] == "门禁否决：还没跑测试"
     assert result["final_answer"] == "second"
     assert result["metadata"]["status"] == "success"
+
+
+@pytest.mark.parametrize("terminal", ["finish", "task_complete"])
+def test_before_finish_rejection_replans_for_both_terminal_actions(terminal):
+    """否决理由是扩展自定的文案；两种完成动作被否决后都要走同一条重规划路径。"""
+    bus = EventBus()
+    seen = []
+
+    def reject_first(event):
+        seen.append(event.action)
+        return {"block": True, "reason": "请先运行测试再结束"} if len(seen) == 1 else None
+
+    bus.on("before_finish", reject_first, name="reject_first")
+    plan = json.dumps({"plan": [{"step": 1, "action": terminal, "reason": "wrap up"}]})
+    client = FakeRespondClient(
+        [
+            plan,
+            _action(terminal, "first attempt at a summary"),
+            plan,
+            _action(terminal, "second attempt at a summary"),
+        ]
+    )
+    agent = ReactAgent(
+        client,
+        [Tool("task_complete", "Finish", lambda arguments: str(arguments.get("message", "")))],
+        enable_planning=True,
+        enable_compression=False,
+        event_bus=bus,
+    )
+
+    result = agent.run("finish after a rejected completion", max_steps=3)
+
+    assert seen == [terminal, terminal]
+    assert result["metadata"]["status"] == "success"
+    assert result["metadata"]["replan_count"] == 1
+    assert client.responses == []
 
 
 def test_on_run_start_suffix_is_appended_to_system_prompt_each_attempt():

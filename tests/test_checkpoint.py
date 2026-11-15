@@ -483,6 +483,36 @@ def test_checkpoint_save_is_recorded_in_trace(tmp_path):
     assert saved[0]["payload"]["step_number"] == 0
 
 
+def test_session_checkpoint_that_could_not_be_written_is_not_recorded_as_saved(
+    tmp_path, monkeypatch, capsys
+):
+    """会话 sink 写失败后被停用；trace 不能声称存在一份实际读不到的快照。"""
+    trace_path = tmp_path / "trace.jsonl"
+    checkpoint_path = tmp_path / "session.jsonl"
+
+    def disk_full(self, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(TraceWriter, "record_checkpoint_state", disk_full)
+    writer = TraceWriter(trace_path)
+    agent = ReactAgent(
+        FakeRespondClient([_action("task_complete", {"message": "x"}), _action("finish", "done")]),
+        _tools(),
+        enable_planning=False,
+        enable_compression=False,
+        trace_writer=writer,
+    )
+
+    result = agent.run("survive a failing sink", max_steps=2, checkpoint_path=checkpoint_path)
+    writer.close()
+
+    events = [event["event"] for event in load_trace_events(trace_path)]
+    assert result["metadata"]["status"] == "success"
+    assert "checkpoint_saved" not in events
+    assert "run_end" in events
+    assert "checkpoint 会话写入失败" in capsys.readouterr().out
+
+
 def test_backup_is_skipped_when_write_arguments_have_no_path(tmp_path):
     tools = [
         Tool("create_file", "Create", lambda arguments: f"created:{arguments.get('path', '')}"),

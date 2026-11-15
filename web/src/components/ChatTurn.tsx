@@ -34,7 +34,7 @@ export function ChatTurn({
   const [open, setOpen] = useState(defaultOpen ?? turn.running)
   const wasRunning = useRef(turn.running)
 
-  // 一轮跑完后自动收起——除非用户已经手动展开过（那时 defaultOpen 也不该覆盖）。
+  // 一轮跑完后自动收起（用户中途手动展开过也一样）；调用方显式传了 defaultOpen 时不干预。
   useEffect(() => {
     if (wasRunning.current && !turn.running && defaultOpen === undefined) setOpen(false)
     wasRunning.current = turn.running
@@ -90,7 +90,9 @@ export function ChatTurn({
               status={turn.status}
               at={turn.finishedAt}
               onOpenEnd={() => {
-                const end = turn.entries[turn.entries.length - 1]
+                // 不能取最后一条：run_end 之后、下一个 run_start 之前的条目
+                // （conversation_end / conversation_reset）也归在这一轮里。
+                const end = [...turn.entries].reverse().find((item) => item.event === 'run_end')
                 if (end) onSelect(end)
               }}
             />

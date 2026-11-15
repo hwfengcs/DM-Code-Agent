@@ -212,11 +212,13 @@ class RunRegistry:
             if record is None or not self._refresh(record).is_running:
                 return False
             kind = record.kind
+            # 先标记再动手：终止要几秒，期间并发的状态查询也会走 _refresh。不先标记的话，
+            # 被停掉的进程会被当成「自己非零退出」，它的普通输出就进了 error。
+            record.cancelled = True
         # 终止会阻塞几秒（先 CTRL_BREAK / SIGTERM 再硬杀），放在锁外做，
         # 否则期间所有状态查询都会被卡住。
         stopped = record.process.shutdown() if kind == "conversation" else record.process.stop()
         with self._lock:
-            record.cancelled = True
             self._refresh(record)
         return stopped
 
@@ -269,7 +271,8 @@ class RunRegistry:
                 record.exit_code = code
                 record.finished_at = time.time()
                 record.agent_status = _read_agent_status(record.trace_path)
-                if code != 0 and not record.error:
+                # 用户主动停掉的运行非零退出是预期结果，它的输出不是报错。
+                if code != 0 and not record.error and not record.cancelled:
                     record.error = record.process.read_output()
             elif record.kind == "conversation" and record.is_busy:
                 # 正在跑的一轮就是活动本身。不刷新的话，一轮跑了超过 idle_timeout
@@ -341,7 +344,9 @@ def _read_agent_status(trace_path: Path) -> str:
     except OSError:
         return ""
 
-    for line in reversed(tail.splitlines()):
+    # 只按 "\n" 切：写入端用 ensure_ascii=False，final_answer 里的 U+2028 / U+2029 /
+    # U+0085 会原样落盘，而 splitlines() 会在这些字符处把一条 run_end 拆成两截。
+    for line in reversed(tail.split("\n")):
         text = line.strip()
         if not text.startswith("{"):
             continue

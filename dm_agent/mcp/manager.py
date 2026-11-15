@@ -234,7 +234,9 @@ class MCPManager:
                 if client is not None:
                     result = client.call_tool(tool_name, arguments)
             if result is None:
-                return f"❌ 调用 MCP 工具 '{tool_name}' 失败"
+                detail = str(getattr(client, "last_error", "") or "")
+                suffix = f"：{detail}" if detail else ""
+                return f"❌ 调用 MCP 工具 '{tool_name}' 失败{suffix}"
 
             return result
 

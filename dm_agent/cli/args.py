@@ -41,7 +41,7 @@ def validate_feature_args(args: argparse.Namespace) -> str:
 
 
 def _validate_conversation_args(args: argparse.Namespace) -> str:
-    """校验 ``--conversation-stdin`` 的四条前置条件。
+    """校验 ``--conversation-stdin`` 的三条前置条件。
 
     这个模式让一个进程用**同一个** ``ReactAgent`` 顺序跑多轮，因此凡是会重置或
     分叉对话历史的开关都与它语义冲突，宁可直接拒绝也不要跑出一个「看起来是多轮、
@@ -144,7 +144,10 @@ def parse_args(argv: Any) -> argparse.Namespace:
         "--max-replans",
         type=int,
         default=saved_config.get("max_replans", -1),
-        help="自适应重规划最多触发次数；-1 表示不限（默认：-1）。",
+        help=(
+            "失败后重规划的次数上限，对默认路径与自适应重规划都生效；0 表示不重规划。"
+            "-1 表示按默认：未启用自适应重规划时最多 5 次，启用后不限（默认：-1）。"
+        ),
     )
     parser.add_argument(
         "--interactive",

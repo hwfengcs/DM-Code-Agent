@@ -4,8 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 // 产物直接落进 Python 包里，这样 `pip install dm-code-agent[web]` 拿到的 wheel
 // 自带前端，终端用户不需要 Node。
-// base 用相对路径：既能被 uvicorn 挂在 / 下，也能被静态托管在
-// GitHub Pages 的子路径（/<repo>/）下，不用为两种部署各出一份构建。
+// base 用相对路径：index.html 对 JS / CSS / 字体的引用不依赖挂载点。
+// 这不等于能纯静态托管——数据全部来自同源的 /api（绝对路径，见 src/lib/api.ts），
+// 单独把产物放上 GitHub Pages 读不到任何会话。见 docs/web.md「前端构建与托管边界」。
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: './',

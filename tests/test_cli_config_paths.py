@@ -1,9 +1,11 @@
 """配置文件与 ``.env`` 的落点解析。
 
 这些测试存在的唯一理由是 **pip 全局安装**：在 editable 安装下，「相对包位置算路径」
-和「相对工作目录算路径」恰好重合，所以下面每一条断言在修复前都是「碰巧通过」的。
-真正的回归守卫是 ``test_config_paths_never_land_inside_the_package``——
-它直接钉死「配置不许写进 site-packages」这条。
+和「相对工作目录算路径」恰好重合，所以在仓库根目录里跑、或显式注入 ``cwd`` /
+``home_dir`` 的断言在修复前都是「碰巧通过」的。真正的回归守卫是不注入任何路径的两条：
+``test_default_config_paths_follow_cwd_and_home`` 钉死无参解析跟着工作目录与 ``HOME`` 走，
+``test_save_then_load_round_trips_through_the_user_level_file`` 钉死保存与读取落在同一个
+用户级文件上。
 
 ``conftest.py`` 的 ``isolate_user_home`` 已经把 ``~`` 指向 tmp，但这里仍然显式传
 ``home_dir`` / ``cwd``：路径解析函数的可注入性本身就是被测行为之一。
@@ -78,23 +80,28 @@ def test_writes_fall_back_to_user_level_when_nothing_exists(tmp_path: Path) -> N
     assert write_path == home / ".dm_agent" / "config.json"
 
 
-def test_config_paths_never_land_inside_the_package(tmp_path: Path) -> None:
-    """**回归守卫**：配置绝不能落在包安装目录里。
+def test_default_config_paths_follow_cwd_and_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**回归守卫**：不注入任何路径时，配置跟着工作目录与 ``HOME`` 走，而不是包位置。
 
     修复前 ``CONFIG_FILE`` 是 ``Path(__file__).parents[2]``，全局安装后等于
     ``site-packages/``——污染别人的 site-packages，系统 Python 下还可能直接
-    权限失败。这条断言在 editable 安装下同样有意义：它比对的是包目录，
-    而包目录此刻正好在仓库里。
+    权限失败。那个 bug 的落点（仓库根或 site-packages）本来就不在包目录之内，
+    所以「算出来的路径不在包目录下」这种断言拦不住它，把路径注入成 ``tmp_path``
+    更是什么都测不到。这里换一个工作目录和 ``HOME``，调用**无参**版本，直接比对结果。
     """
-    package_dir = Path(paths.__file__).resolve().parent
+    workdir, home = tmp_path / "work", tmp_path / "home"
+    workdir.mkdir()
+    home.mkdir()
+    monkeypatch.chdir(workdir)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
 
-    for candidate in (
-        paths.user_config_path(tmp_path),
-        paths.project_config_path(tmp_path),
-        paths.resolve_config_write_path(cwd=tmp_path, home_dir=tmp_path),
-        paths.user_env_path(tmp_path),
-    ):
-        assert package_dir not in candidate.resolve().parents
+    assert paths.project_config_path() == workdir / "config.json"
+    assert paths.user_config_path() == home / ".dm_agent" / "config.json"
+    assert paths.user_env_path() == home / ".dm_agent" / ".env"
+    assert paths.resolve_config_write_path() == home / ".dm_agent" / "config.json"
 
 
 def test_save_then_load_round_trips_through_the_user_level_file(
@@ -172,7 +179,10 @@ def test_env_files_load_project_first_then_user(
         "DM_TEST_SHARED=user\nDM_TEST_ONLY_USER=1\n", encoding="utf-8"
     )
     for name in ("DM_TEST_SHARED", "DM_TEST_ONLY_PROJECT", "DM_TEST_ONLY_USER"):
-        monkeypatch.delenv(name, raising=False)
+        # 先 setenv 再 delenv：变量原本不存在时，单独的 delenv 不登记回滚，
+        # dotenv 随后写进 os.environ 的值会留在进程里，污染后面的测试。
+        monkeypatch.setenv(name, "placeholder")
+        monkeypatch.delenv(name)
 
     loaded = paths.load_env_files(cwd=project, home_dir=home)
 
@@ -220,14 +230,16 @@ def test_env_file_with_utf8_bom_still_works(
     project = tmp_path / "project"
     project.mkdir()
     (project / ".env").write_bytes(b"\xef\xbb\xbfDM_TEST_BOM=survived\n")
-    monkeypatch.delenv("DM_TEST_BOM", raising=False)
+    # 先 setenv 再 delenv，让 monkeypatch 在收尾时把 dotenv 写入的值清掉（理由同上）。
+    monkeypatch.setenv("DM_TEST_BOM", "placeholder")
+    monkeypatch.delenv("DM_TEST_BOM")
 
     paths.load_env_files(cwd=project, home_dir=tmp_path / "home")
 
     import os
 
     assert os.environ["DM_TEST_BOM"] == "survived"
-    assert not [key for key in os.environ if key.startswith("﻿")]
+    assert not [key for key in os.environ if key.startswith("\ufeff")]
 
 
 @pytest.mark.parametrize("payload", ["[]", "null", '"provider"', "42"])

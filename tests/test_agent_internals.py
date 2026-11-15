@@ -96,6 +96,31 @@ def test_json_repair_preserves_tool_argument_strings():
     assert result["metadata"]["parse_repair_count"] == 1
 
 
+def test_unparseable_brace_output_is_a_parse_error_not_a_crash():
+    # 双花括号能通过 literal_eval 的语法检查，求值时才因字典不可哈希抛 TypeError；
+    # 重复输出同一个括号的退化响应则在 JSON 解码阶段抛 RecursionError。两者都必须走
+    # 解析失败的恢复路径。嵌套深度取 10 万，超过所有受支持解释器的递归上限。
+    doubled = '{{"thought": "t", "action": "finish", "action_input": "wrapped twice"}}'
+    nested = '{"action_input": ' + "[" * 100_000 + "]" * 100_000 + "}"
+    agent = _agent([doubled, nested, _action("finish", {"answer": "recovered"})])
+
+    result = agent.run("recover from malformed brace output", max_steps=4)
+
+    assert result["metadata"]["parse_error_count"] == 2
+    assert [step["action"] for step in result["steps"]] == ["error", "error", "finish"]
+    assert result["final_answer"] == "recovered"
+
+
+def test_curly_single_quotes_are_repaired_as_a_pair():
+    agent = _agent(["{‘thought’: ‘t’, ‘action’: ‘finish’, ‘action_input’: ‘curly quotes ok’}"])
+
+    result = agent.run("parse curly single quotes", max_steps=2)
+
+    assert result["final_answer"] == "curly quotes ok"
+    assert result["metadata"]["parse_repair_count"] == 1
+    assert result["metadata"]["parse_error_count"] == 0
+
+
 # --- 完成判定与摘要 -------------------------------------------------------------
 
 
@@ -203,12 +228,24 @@ def test_replan_exception_is_recorded_without_breaking_the_run():
 
 
 def test_empty_replan_keeps_the_previous_plan():
-    agent = _replan_agent(lambda *args, **kwargs: [])
+    calls = []
+
+    def empty_replan(*args, **kwargs):
+        calls.append(args)
+        return []
+
+    agent = _replan_agent(empty_replan)
 
     result = agent.run("keep the plan when replan returns nothing", max_steps=1)
 
+    # replan 确实被调用了一次，只是返回了空计划：不计入重规划次数，旧计划原样保留。
+    assert len(calls) == 1
     assert result["metadata"]["replan_count"] == 0
-    # 预算未耗尽，说明 replan 确实被调用过，只是返回了空计划。
+    assert [(step.action, step.completed) for step in agent.planner.current_plan] == [
+        ("explode", False),
+        ("task_complete", False),
+    ]
+    # 这次没换计划也不是因为被预算护栏挡下。
     assert result["metadata"]["replan_skipped_count"] == 0
     assert result["metadata"]["replan_budget_exhausted_count"] == 0
 

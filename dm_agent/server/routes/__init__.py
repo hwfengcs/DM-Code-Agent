@@ -2,4 +2,4 @@
 
 from __future__ import annotations
 
-__all__ = ["meta", "runs", "sessions"]
+__all__ = ["conversations", "meta", "runs", "sessions"]

@@ -99,6 +99,26 @@ describe('splitTurns', () => {
     expect(splitTurns(turnEntries('问', '答'))[0]?.failed).toBe(false)
   })
 
+  it('守卫拦截与观察截断进入执行过程', () => {
+    // 事件名以后端真实写出的为准：edit_guard（core/guards.py）与
+    // observation_truncated（core/observation.py）。
+    const turn = splitTurns(
+      turnEntries('问', '答', [
+        entry('edit_guard', { step_number: 1, path: 'retry.py', reason: 'never_read' }),
+        entry('observation_truncated', { step_number: 1, action: 'read_file' }),
+      ]),
+    )[0]
+    expect(turn?.activity.map((item) => item.event)).toEqual([
+      'plan',
+      'edit_guard',
+      'observation_truncated',
+      'tool_call',
+      'step',
+    ])
+    // 截断记录带着 action，但它不是又一次工具调用。
+    expect(turn?.toolCallCount).toBe(1)
+  })
+
   it('空日志得到空数组而不是抛错', () => {
     expect(splitTurns([])).toEqual([])
   })
@@ -140,6 +160,31 @@ describe('describeActivityEntry', () => {
     expect(describeActivityEntry(entry('plan', { steps: [{}, {}, {}] }))).toBe('生成了 3 步计划')
   })
 
+  it('守卫拦截写出被拦的文件与原因，未知原因原样带出', () => {
+    expect(
+      describeActivityEntry(entry('edit_guard', { path: 'retry.py', reason: 'never_read' })),
+    ).toBe('编辑被拦下：retry.py（本次运行里还没读过）')
+    expect(
+      describeActivityEntry(entry('edit_guard', { path: 'retry.py', reason: 'stale_read' })),
+    ).toBe('编辑被拦下：retry.py（上次读取之后文件又被改写）')
+    expect(
+      describeActivityEntry(entry('edit_guard', { path: 'retry.py', reason: 'brand_new_reason' })),
+    ).toBe('编辑被拦下：retry.py（brand_new_reason）')
+  })
+
+  it('观察截断写出是哪个工具、从多少字符截到多少', () => {
+    expect(
+      describeActivityEntry(
+        entry('observation_truncated', {
+          action: 'read_file',
+          original_chars: 26000,
+          kept_chars: 8000,
+        }),
+      ),
+    ).toBe('read_file 的观察被截断：26000 → 8000 字符')
+    expect(describeActivityEntry(entry('observation_truncated', {}))).toBe('观察被截断')
+  })
+
   it('未知事件退回错误或观察字段，不猜', () => {
     expect(describeActivityEntry(entry('weird_event', { error: '炸了' }))).toBe('炸了')
     expect(describeActivityEntry(entry('weird_event', {}))).toBe('')
@@ -153,6 +198,15 @@ describe('labelActivityEntry', () => {
 
   it('没有动作名时退回事件名', () => {
     expect(labelActivityEntry(entry('compaction', {}))).toBe('compaction')
+  })
+
+  it('只有步骤与工具调用拿动作名当标题', () => {
+    // observation_truncated 的 action 是「被截断的是哪个工具的观察」，
+    // 拿它当标题会让截断记录看起来像又一次工具调用。
+    expect(labelActivityEntry(entry('observation_truncated', { action: 'read_file' }))).toBe(
+      'observation_truncated',
+    )
+    expect(labelActivityEntry(entry('step', { action: 'read_file' }))).toBe('read_file')
   })
 })
 

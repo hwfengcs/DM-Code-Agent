@@ -21,8 +21,9 @@ _ROWS_API = "https://datasets-server.huggingface.co/rows"
 _PAGE = 100  # datasets-server 单次返回上限
 _CACHE_SCHEMA_VERSION = 1
 
-# 一条实例真正需要的字段。problem_statement 是喂给 agent 的题面；
-# FAIL_TO_PASS / PASS_TO_PASS 只有官方 harness 用得到，我们原样透传不解读。
+# 一条实例缓存下来的字段。problem_statement 是喂给 agent 的题面；version、
+# FAIL_TO_PASS / PASS_TO_PASS 只随缓存保存，本子系统没有代码读取它们——官方 harness
+# 判分时自己加载数据集。
 _FIELDS = (
     "instance_id",
     "repo",
@@ -69,13 +70,16 @@ def _read_complete_cache(cache_path: Path) -> list[dict[str, Any]] | None:
     if not cache_path.exists() or not metadata_path.exists():
         return None
     try:
+        # 只按 "\n" 断行：缓存用 ensure_ascii=False 写出，题面里的 U+2028 / U+2029 /
+        # U+0085 会原样落盘；str.splitlines() 在这些字符处断行会让缓存永远校验失败、
+        # 每次运行都重新联网。
         instances = [
             json.loads(line)
-            for line in cache_path.read_text(encoding="utf-8").splitlines()
+            for line in cache_path.read_text(encoding="utf-8").split("\n")
             if line.strip()
         ]
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     expected = {
         "schema_version": _CACHE_SCHEMA_VERSION,

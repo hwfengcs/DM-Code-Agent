@@ -3,6 +3,8 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
+
 from dm_agent.cli.config import Config
 from dm_agent.cli.report import write_run_report
 from dm_agent.core.agent import ReactAgent
@@ -121,6 +123,48 @@ def test_trace_tool_replay_can_reexecute_safe_file_read(tmp_path):
     assert tool_results
     assert tool_results[0]["action"] == "read_file"
     assert tool_results[0]["matches"] is True
+
+
+@pytest.mark.parametrize("redact", [False, True])
+def test_replay_compares_recorded_projection_and_detects_visible_changes(tmp_path, redact):
+    trace_path = tmp_path / "run.jsonl"
+    source = tmp_path / "input.txt"
+    content = "token=synthetic-replay-value\n" + "unchanged line\n" * 1000 + "TAIL\n"
+    source.write_text(content, encoding="utf-8")
+    writer = TraceWriter(trace_path, redact=redact)
+    # 同一文件追加两轮：第二轮关闭截断，验证 cap 不会沿用上一轮。
+    for cap in (800, 0):
+        agent = ReactAgent(
+            FakeRespondClient(
+                [
+                    json.dumps({"action": "read_file", "action_input": {"path": "input.txt"}}),
+                    json.dumps({"action": "finish", "action_input": "read complete"}),
+                ]
+            ),
+            default_tools(include_mcp=False),
+            enable_planning=False,
+            enable_compression=False,
+            max_observation_chars=cap,
+            trace_writer=writer,
+        )
+        with chdir(tmp_path):
+            agent.run("read input")
+    writer.close()
+    original_trace = trace_path.read_bytes()
+    events = load_trace_events(trace_path)
+
+    results = replay_tools(iter(events), tmp_path)
+    assert len(results) == 2
+    assert all(item["matches"] for item in results)
+    assert "[truncated:" in results[0]["actual_observation"]
+    assert "[truncated:" not in results[1]["actual_observation"]
+    if redact:
+        assert all("synthetic-replay-value" not in item["actual_observation"] for item in results)
+
+    source.write_text(content.replace("TAIL", "EDIT"), encoding="utf-8")
+    changed = replay_tools(events, tmp_path)
+    assert all(item["status"] == "mismatch" for item in changed)
+    assert trace_path.read_bytes() == original_trace
 
 
 def test_trace_diff_compares_two_runs_without_replay(tmp_path, capsys):
@@ -300,6 +344,39 @@ def test_trace_analyzer_attributes_parse_failure_and_recovery():
     assert analysis["verification"]["before_finish"] is True
     assert analysis["verification"]["gap"] is False
     assert "replanned_after_failure" in analysis["signals"]
+
+
+def test_trace_analyzer_judges_verification_against_the_accepted_finish():
+    """before_finish 打回第一次完成、补跑测试后再完成的 run 不是 verification gap。"""
+
+    def step(number, action, observation):
+        return {
+            "run_id": "r1",
+            "event": "step",
+            "payload": {"step_number": number, "action": action, "observation": observation},
+        }
+
+    events = [
+        {"run_id": "r1", "event": "run_start", "payload": {"schema_version": "2.0", "task": "fix"}},
+        step(1, "finish", "请先运行测试再结束"),
+        step(2, "run_tests", "1 passed\nreturncode: 0"),
+        step(3, "finish", "<finished>"),
+        {
+            "run_id": "r1",
+            "event": "run_end",
+            "payload": {
+                "status": "success",
+                "final_answer": "done",
+                "metadata": {"status": "success"},
+            },
+        },
+    ]
+
+    verification = analyze_events(events)["verification"]
+
+    assert verification["finish_step"] == 3
+    assert verification["before_finish"] is True
+    assert verification["gap"] is False
 
 
 def test_trace_analyzer_extracts_hallucination_signals():

@@ -254,10 +254,13 @@ class TaskPlanner:
         try:
             plan_data = self._parse_plan_response(response)
             steps = []
-            for item in plan_data.get("plan", []):
+            # 步骤号按出现顺序由内核分配，不采信模型写的 "step"：模型把编号写成字符串
+            # 会让后续 replan 的续号运算抛 TypeError，写重了则 mark_completed 永远只命中
+            # 第一个同号步骤，计划进度就此卡死。replan 本来就是这样编号的。
+            for number, item in enumerate(plan_data.get("plan", []), start=1):
                 steps.append(
                     PlanStep(
-                        step_number=item["step"],
+                        step_number=number,
                         action=item["action"],
                         reason=item["reason"],
                     )
@@ -464,6 +467,10 @@ class TaskPlanner:
                         reason=item["reason"],
                     )
                 )
+            if not steps:
+                # 模型没给出任何新步骤：这不是一份新计划。保持 current_plan 不动并返回空，
+                # 调用方据此沿用旧计划；否则剩余待办会被悄悄丢掉，还会记成一次成功的重规划。
+                return []
             self.current_plan = carried + steps
             return self.current_plan
         except Exception as e:

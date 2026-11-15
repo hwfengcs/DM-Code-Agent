@@ -75,6 +75,11 @@ class UsageTrackingClient:
         self.timeout = client.timeout
         self.usage = UsageTotals()
 
+    @property
+    def total_respond_retries(self) -> int:
+        """透传内层客户端的重试计数；``ReactAgent`` 靠它填 ``llm_retry_count``。"""
+        return int(getattr(self.client, "total_respond_retries", 0))
+
     def complete(self, messages: list[dict[str, str]], **extra: Any) -> dict[str, Any]:
         # Route through the inner client's retry layer when available so that
         # transient provider failures are retried for benchmark runs too.

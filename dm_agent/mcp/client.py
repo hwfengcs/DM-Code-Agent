@@ -60,6 +60,9 @@ class MCPClient:
         self.request_timeout = max(0.1, float(request_timeout))
         self.process: subprocess.Popen | None = None
         self.tools: list[dict[str, Any]] = []
+        # 最近一次请求失败的原因（JSON-RPC error、超时、发送失败）；成功或新请求开始时清空。
+        # 工具包装器把它带回观察，模型才看得到"缺了哪个参数"，而不是一句通用的调用失败。
+        self.last_error = ""
         self._lock = Lock()
         self._message_id = 0
         self._stdout_queue: Queue = Queue()
@@ -204,10 +207,11 @@ class MCPClient:
             >>> # response = client._send_message("test_method", {"key": "value"})
             >>> # 注意：这个方法通常由其他方法内部调用
         """
-        if not self.process or not self.process.stdin:
-            return None
-
         with self._lock:
+            self.last_error = ""
+            if not self.process or not self.process.stdin:
+                self.last_error = "MCP 进程未启动或输入管道不可用"
+                return None
             self._message_id += 1
             message = {
                 "jsonrpc": "2.0",
@@ -235,6 +239,7 @@ class MCPClient:
 
                         if response.get("id") == self._message_id:
                             if "error" in response:
+                                self.last_error = _describe_rpc_error(response["error"])
                                 print(f"❌ MCP 错误: {response['error']}")
                                 return None
                             return response.get("result")
@@ -246,10 +251,12 @@ class MCPClient:
                     except json.JSONDecodeError:
                         continue
 
+                self.last_error = f"响应超时（{self.request_timeout:g} 秒）"
                 print("⚠️ MCP 响应超时")
                 return None
 
             except Exception as e:
+                self.last_error = f"发送请求失败：{e}"
                 print(f"❌ 发送 MCP 消息失败: {e}")
                 return None
             finally:
@@ -386,3 +393,15 @@ class MCPClient:
             True
         """
         return self.process is not None and self.process.poll() is None
+
+
+def _describe_rpc_error(error: Any) -> str:
+    """把 JSON-RPC ``error`` 成员压成一行可读文本（``code`` 可选，``message`` 优先）。"""
+    if isinstance(error, dict):
+        message = str(error.get("message") or "").strip()
+        code = error.get("code")
+        if message and isinstance(code, int) and not isinstance(code, bool):
+            return f"{message}（code {code}）"
+        if message:
+            return message
+    return str(error)

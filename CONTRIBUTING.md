@@ -114,7 +114,7 @@ The minimum surface is `dm_agent/skills/base.py:BaseSkill`.
 2. Subclass `BaseSkill`. Implement:
    - `get_metadata()` returning a `SkillMetadata(name=..., display_name=..., description=...,
      keywords=[...], version=...)`.
-   - `get_system_prompt_section()` returning the prompt fragment to inject when active.
+   - `get_prompt_addition()` returning the prompt fragment to inject when active.
    - `get_tools()` returning a list of `Tool` instances (can be empty).
 3. Register it in `dm_agent/skills/builtin/__init__.py:get_builtin_skills()`.
 4. Add a focused unit test under `tests/test_skills_and_mcp.py` that activates the skill
@@ -133,18 +133,23 @@ The maintenance suite (`dm_agent/benchmarks/tasks.py:get_maintenance_tasks()`) i
 new realistic repository tasks should land first.
 
 1. Add a `BenchmarkTask` entry. Required fields:
-   - `task_id`: short, kebab-case, unique.
+   - `task_id`: short, snake_case, unique.
+   - `name`: human-readable title, recorded as `task_name` in reports.
    - `prompt`: written so the agent can solve from the task text alone.
    - `setup_files`: starting workspace, including a small visible test the agent can run.
    - `hidden_files`: hidden tests run *after* the agent finishes; these decide pass/fail.
-   - `max_steps`: budget the agent has.
-   - `tags`: free-form labels used in reports.
 2. Optional but encouraged:
+   - `max_steps`: budget the agent has (default 14).
+   - `tags`: free-form labels used in reports (default: none).
    - `allowed_changed_files`: limit which files the agent may touch.
    - `required_changed_files`: files the agent must touch (e.g., regression tests).
 3. Add a row to `tests/test_coding_benchmarks.py` (or the maintenance equivalent) that
    loads the task and verifies metadata round-trips through `to_public_dict()`.
-4. Optional: run the task with a real provider once and attach a fresh
+4. Regenerate the checked-in `bench_reports/manifest-baseline-*.json` files in the same PR.
+   Changing the task set changes the suite signature, so CI's manifest guard fails until you
+   do; the commands are under
+   [Adding a task in `docs/benchmarks.md`](docs/benchmarks.md#adding-a-task).
+5. Optional: run the task with a real provider once and attach a fresh
    `bench_reports/*.md` to the PR. Include the seed and provider used.
 
 A good task is one where:

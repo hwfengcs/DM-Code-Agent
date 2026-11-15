@@ -53,10 +53,12 @@ it('refreshes busy state after run_end so the next turn can be submitted', async
   expect(useConversation().record?.completed_turns).toBe(1)
 })
 
-it('ignores an old conversation refresh after a new conversation starts', async () => {
+it.each([false, true])('ignores an old conversation refresh after a new conversation starts (fails=%s)', async (fails) => {
   let resolveRefresh: (value: ConversationRecord) => void = () => undefined
-  vi.spyOn(apiModule.api, 'conversation').mockReturnValue(new Promise((resolve) => {
+  let rejectRefresh: (cause: Error) => void = () => undefined
+  vi.spyOn(apiModule.api, 'conversation').mockReturnValue(new Promise((resolve, reject) => {
     resolveRefresh = resolve
+    rejectRefresh = reject
   }))
   await startConversation({ provider: 'deepseek', model: '', options: {} })
   onEvent({
@@ -66,9 +68,11 @@ it('ignores an old conversation refresh after a new conversation starts', async 
   })
   vi.mocked(apiModule.api.createConversation).mockResolvedValue({ ...record, run_id: 'chat-2' })
   await startConversation({ provider: 'deepseek', model: '', options: {} })
-  resolveRefresh(record)
+  if (fails) rejectRefresh(new Error('old request failed'))
+  else resolveRefresh(record)
   await Promise.resolve()
   expect(useConversation().record?.run_id).toBe('chat-2')
+  expect(useConversation().notice).toBeNull()
 })
 
 it('does not restore an old conversation over a newly started one', async () => {

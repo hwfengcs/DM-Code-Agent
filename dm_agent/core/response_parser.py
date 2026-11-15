@@ -99,9 +99,9 @@ def json_candidates(candidate: str) -> list[str]:
 def repair_json_text(text: str) -> str:
     """修掉中文引号与尾随逗号这两类最常见的手写 JSON 问题。"""
     text = text.strip()
-    quote_replacements = {"“": '"', "”": '"', "’": "'"}
+    quote_replacements = {"“": '"', "”": '"', "‘": "'", "’": "'"}
     text = re.sub(
-        r'"(?:\\.|[^"\\])*"|[“”’]',
+        r'"(?:\\.|[^"\\])*"|[“”‘’]',
         lambda match: quote_replacements.get(match.group(0), match.group(0)),
         text,
     )
@@ -115,14 +115,22 @@ def repair_json_text(text: str) -> str:
 
 
 def load_json_object(text: str) -> dict[str, Any] | None:
-    """尽力把文本读成 dict，失败返回 None（含读成非 dict 的情况）。"""
+    """尽力把文本读成 dict，失败返回 None（含读成非 dict 的情况）。
+
+    模型输出不可信，``ast.literal_eval`` 文档列出的五种异常都可能出现：例如
+    ``{{"action": ...}}`` 这类双花括号在求值阶段抛 ``TypeError``（字典不可哈希），
+    反复输出同一个括号的退化响应抛 ``RecursionError``。它们都只表示"这段文本读不成
+    对象"，不能逸出去中断整轮 run。
+    """
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
         try:
             parsed = ast.literal_eval(text)
-        except (ValueError, SyntaxError):
+        except (ValueError, SyntaxError, TypeError, RecursionError, MemoryError):
             return None
+    except RecursionError:
+        return None
     if not isinstance(parsed, dict):
         return None
     return parsed
@@ -132,6 +140,6 @@ def is_strict_json_object(text: str) -> bool:
     """文本本身是否已经是合法的 JSON 对象（无需任何修复）。"""
     try:
         parsed = json.loads(text)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return False
     return isinstance(parsed, dict)

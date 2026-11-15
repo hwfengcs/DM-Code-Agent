@@ -13,9 +13,10 @@
 
 from __future__ import annotations
 
-import shutil
+import os
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -27,12 +28,13 @@ from dm_agent.server.security import get_settings, require_token, require_writab
 from dm_agent.server.settings import (
     ServerSettings,
     SessionPathError,
+    reject_unsafe_name_characters,
     relative_session_name,
     resolve_session_path,
 )
 from dm_agent.tracing.analysis import analyze_events
 from dm_agent.tracing.fork import fork_session
-from dm_agent.tracing.session import load_session_entries
+from dm_agent.tracing.session import find_entry_index, load_session_entries
 from dm_agent.tracing.summary import diff_events, summarize_events
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"], dependencies=[Depends(require_token)])
@@ -58,6 +60,11 @@ _TRASH_LOCK = threading.Lock()
 # 单次批量删除的上限。防止一个请求把整个目录搬空之后才发现点错了。
 MAX_BULK_DELETE = 200
 
+# tracing 的纯函数只保证「每行是 JSON 对象」，不校验条目内部的形状。手改过的、或别的
+# 工具写进 sessions 目录的 JSONL 会让它们抛出下面这些异常——那是这个文件读不了，
+# 不是服务器故障。
+_SESSION_SHAPE_ERRORS = (AttributeError, KeyError, OverflowError, TypeError, ValueError)
+
 
 class DeleteSessionsRequest(BaseModel):
     """批量删除。逐个报结果，单个失败不会让整批 500。"""
@@ -76,6 +83,23 @@ class ForkRequest(BaseModel):
     )
 
 
+def _describe(exc: Exception) -> str:
+    """给客户端看的失败原因，不带开发机的绝对路径（模块 docstring 的第一条约定）。
+
+    ``str(OSError)`` 会带上出错文件的完整路径，而且是 repr 形式（Windows 上反斜杠成对），
+    做子串替换替不干净，所以系统错误只取 ``strerror``。本模块自己抛的单参数 ``OSError``
+    没有 ``strerror``，原样使用其文案。
+    """
+    if isinstance(exc, OSError):
+        return exc.strerror or str(exc)
+    return str(exc)
+
+
+def _without_sessions_root(settings: ServerSettings, text: str) -> str:
+    """去掉文案里 sessions 目录的绝对前缀，只留相对名。"""
+    return text.replace(f"{settings.sessions_dir}{os.sep}", "")
+
+
 def _load(settings: ServerSettings, name: str) -> list[dict[str, Any]]:
     """解析会话名并读出全部条目，把两类失败翻译成合适的 HTTP 状态码。"""
     try:
@@ -87,7 +111,20 @@ def _load(settings: ServerSettings, name: str) -> list[dict[str, Any]]:
     except (OSError, TypeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"会话文件无法解析：{exc}",
+            detail=f"会话文件无法解析：{_describe(exc)}",
+        ) from exc
+
+
+def _derive(
+    function: Callable[..., dict[str, Any]], *sessions: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """在已读出的条目上跑 tracing 的纯函数；条目形状不合预期时是 422，不是 500。"""
+    try:
+        return function(*sessions)
+    except _SESSION_SHAPE_ERRORS as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"会话条目的结构不符合预期：{type(exc).__name__}: {exc}",
         ) from exc
 
 
@@ -134,14 +171,17 @@ def list_sessions(
     errors: list[dict[str, str]] = []
     if settings.sessions_dir.is_dir():
         for path in sorted(settings.sessions_dir.rglob("*.jsonl")):
-            if not path.is_file() or _is_hidden(settings, path):
+            # 先判隐藏再碰磁盘：回收站只增不减，不值得为里面每个文件各做一次 is_file()。
+            if _is_hidden(settings, path) or not path.is_file():
                 continue
             try:
                 resolve_session_path(settings, path.relative_to(settings.sessions_dir).as_posix())
                 cards.append(_session_card(settings, path))
-            except (OSError, KeyError, TypeError, ValueError) as exc:
+            except (OSError, *_SESSION_SHAPE_ERRORS) as exc:
                 # 坏文件不能让整个列表 500——单独列出来，前端标成不可读。
-                errors.append({"name": relative_session_name(settings, path), "error": str(exc)})
+                errors.append(
+                    {"name": relative_session_name(settings, path), "error": _describe(exc)}
+                )
     cards.sort(key=lambda card: card["modified"], reverse=True)
     grades = [str(card["health"].get("grade", "")) for card in cards]
     return {
@@ -163,6 +203,9 @@ def _is_hidden(settings: ServerSettings, path: Path) -> bool:
     「不要显示我」。这条判断放在扫描处而不是删除处——手工往 sessions 里放的点目录
     也应当被一视同仁地忽略。
     """
+    relative = path.relative_to(settings.sessions_dir)
+    if any(part.startswith(".") for part in relative.parts[:-1]):
+        return True  # 字面路径就在点目录里，不必再为它 resolve 一次
     try:
         parts = path.resolve().relative_to(settings.sessions_dir).parts
     except ValueError:  # pragma: no cover - rglob 的结果一定在目录内
@@ -195,7 +238,7 @@ def read_summary(
     name: Annotated[str, Query()],
 ) -> dict[str, Any]:
     """等价于 ``dm-agent-trace view --json``。"""
-    return {"name": name, "summary": summarize_events(_load(settings, name))}
+    return {"name": name, "summary": _derive(summarize_events, _load(settings, name))}
 
 
 @router.get("/analysis", summary="会话诊断")
@@ -204,7 +247,7 @@ def read_analysis(
     name: Annotated[str, Query()],
 ) -> dict[str, Any]:
     """等价于 ``dm-agent-trace analyze --json``：失败阶段、恢复链路、验证缺口、幻觉信号。"""
-    return {"name": name, "analysis": analyze_events(_load(settings, name))}
+    return {"name": name, "analysis": _derive(analyze_events, _load(settings, name))}
 
 
 @router.get("/diff", summary="两次运行的行为 diff")
@@ -217,7 +260,7 @@ def read_diff(
     return {
         "a": a,
         "b": b,
-        "diff": diff_events(_load(settings, a), _load(settings, b)),
+        "diff": _derive(diff_events, _load(settings, a), _load(settings, b)),
     }
 
 
@@ -239,18 +282,31 @@ def create_fork(
     entries = _load(settings, payload.name)
     source = resolve_session_path(settings, payload.name)
 
-    output: Path | None = None
-    if payload.output:
-        try:
-            output = _resolve_new_session_path(settings, payload.output)
-        except SessionPathError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
     try:
+        output_name = payload.output
+        if not output_name:
+            # 默认名含日志中的 entry id，也是不可信输入，必须经过同一套文件名校验。
+            index = find_entry_index(entries, payload.at)
+            entry_id = str(entries[index].get("id", ""))
+            output_name = (
+                source.relative_to(settings.sessions_dir)
+                .with_name(f"{source.stem}.fork-{entry_id}.jsonl")
+                .as_posix()
+            )
+        output = _resolve_new_session_path(settings, output_name)
         result = fork_session(entries, source=source, at=payload.at, output=output)
     except ValueError as exc:
         # at 未命中/歧义，或目标已存在——都是客户端可修正的输入问题。
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_without_sessions_root(settings, str(exc)),
+        ) from exc
+    except OSError as exc:
+        # 目标名含文件系统不接受的字符、或太长——同样是换个名字就能解决的输入问题。
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"无法创建分叉会话：{_describe(exc)}",
+        ) from exc
 
     result["source"] = relative_session_name(settings, Path(result["source"]))
     result["output"] = relative_session_name(settings, Path(result["output"]))
@@ -323,11 +379,14 @@ def _trash_one(request: Request, settings: ServerSettings, name: str) -> dict[st
                 raise OSError("回收站目录越出了 sessions 目录。") from exc
             trash_dir.mkdir(parents=True, exist_ok=True)
             target = _unique_trash_path(trash_dir, source.name)
-            shutil.move(str(source), str(target))
+            # 不用 shutil.move：它在改名失败后会退回「复制 + 删除」，Windows 上源文件被别的
+            # 进程占着时复制成功、删除失败，每试一次就在回收站里多留一份副本。回收站就在
+            # sessions 目录里，改名要么整体成功，要么什么都不留下。
+            os.rename(source, target)
     except OSError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"移入回收站失败：{exc}",
+            detail=f"移入回收站失败：{_describe(exc)}",
         ) from exc
 
     _CARD_CACHE.pop(str(source), None)
@@ -368,11 +427,12 @@ def _resolve_new_session_path(settings: ServerSettings, name: str) -> Path:
     """校验一个**尚不存在**的目标会话名。
 
     ``resolve_session_path`` 要求文件已存在，分叉的目标恰好相反，所以这里单独做
-    同样的后缀 / 绝对路径 / 越界三道检查，只是不检查存在性。
+    同样的后缀 / 绝对路径 / 特殊字符 / 越界检查，只是不检查存在性。
     """
     candidate = Path(name)
     if candidate.is_absolute() or candidate.drive or name.startswith(("/", "\\")):
         raise SessionPathError(f"目标会话名必须是相对路径：{name}")
+    reject_unsafe_name_characters(name)
     if candidate.suffix.lower() != ".jsonl":
         raise SessionPathError(f"目标会话名必须以 .jsonl 结尾：{name}")
     target = (settings.sessions_dir / candidate).resolve()

@@ -78,6 +78,11 @@ signature；任何一项变化、manifest 缺失/损坏、prediction ID 越界�
 `--keep-workspace` 保留每次尝试的 checkout；默认仅在成功提取 patch 后清理本次新工作区，
 不会删除以前保留的 checkout。trace 文件仍为 append-only，预测正常结束或异常时均关闭句柄。
 
+patch 提取固定使用无颜色、无 external diff / textconv 的 Git diff，并固定 `a/`、`b/`
+路径前缀，避免用户 Git 展示配置改写补丁格式。diff 按字节读取，保留 CRLF 与行内回车；
+`--binary` 保留二进制补丁内容。离线回归用 `git apply` 验证文本和二进制内容往返；这项检查
+不代表运行过官方 harness，也不改变 resolved 的判分口径。
+
 如需显式指定 manifest 路径，使用 `--selection-manifest PATH`。
 
 预测记录除官方要求的三列外，还带 `dm_status/failure`、`dm_patch_chars`、

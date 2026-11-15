@@ -14,7 +14,12 @@ from dm_agent.tools.code_analysis_tools import (
     parse_ast,
 )
 from dm_agent.tools.code_index_tools import build_code_index, dependency_graph, search_symbol
-from dm_agent.tools.execution_tools import available_linters, run_linter, run_python
+from dm_agent.tools.execution_tools import (
+    available_linters,
+    run_linter,
+    run_python,
+    run_tests,
+)
 from dm_agent.tools.file_tools import (
     EDIT_ECHO_MAX_LINES,
     _atomic_write_text,
@@ -577,3 +582,177 @@ def test_new_files_are_written_with_lf(tmp_path):
     target = tmp_path / "fresh.py"
     create_file({"path": str(target), "content": "x = 1\ny = 2\n"})
     assert target.read_bytes() == b"x = 1\ny = 2\n"
+
+
+def test_range_read_of_an_empty_file_is_not_a_failed_read(tmp_path):
+    """read-before-edit 守卫提示"先按行段读"；空文件上的行段读取不能被判成失败。"""
+    target = tmp_path / "__init__.py"
+    target.write_text("", encoding="utf-8")
+
+    observation = read_file({"path": str(target), "line_start": 1, "line_end": 50})
+
+    assert observation == ""
+    assert not is_failure_observation(observation, action="read_file")
+
+
+def test_range_read_past_the_end_reports_the_requested_start_line(tmp_path):
+    target = tmp_path / "two.txt"
+    target.write_text("a\nb\n", encoding="utf-8")
+
+    observation = read_file({"path": str(target), "line_start": 9})
+
+    assert observation == "起始行号 9 超出文件范围（共 2 行）。"
+    assert is_failure_observation(observation, action="read_file")
+
+
+def test_search_pattern_keeps_leading_whitespace(tmp_path):
+    target = tmp_path / "sample.txt"
+    target.write_text("ax\n x\n", encoding="utf-8")
+
+    observation = search_in_file({"path": str(target), "pattern": " x", "context_lines": 0})
+
+    assert "找到 1 处匹配" in observation
+    assert ">>> 2:  x" in observation
+
+
+def test_content_edit_echo_marks_only_the_changed_line(tmp_path):
+    target = tmp_path / "mod.py"
+    target.write_text("a = 1\nb = 2\nc = 3\n", encoding="utf-8")
+
+    observation = edit_file(
+        {"path": str(target), "old_string": "b = 2\n", "new_string": "b = 20\n"}
+    )
+
+    assert ">    2 | b = 20" in observation
+    assert "     3 | c = 3" in observation
+    assert ">    3 | c = 3" not in observation
+
+
+def test_utf8_bom_source_is_analyzed_and_edited_without_a_false_syntax_report(tmp_path):
+    target = tmp_path / "bom.py"
+    target.write_bytes(b"\xef\xbb\xbfdef helper():\n    return 1\n")
+
+    parsed = json.loads(parse_ast({"path": str(target)}))
+    signature = json.loads(get_function_signature({"path": str(target), "function_name": "helper"}))
+    index = json.loads(build_code_index({"root": str(tmp_path)}))
+    observation = edit_file(
+        {"path": str(target), "old_string": "return 1", "new_string": "return 2"}
+    )
+
+    assert [function["name"] for function in parsed["functions"]] == ["helper"]
+    assert signature["signature"] == "def helper()"
+    assert index["parse_errors"] == []
+    assert "[语法检查]" not in observation
+    assert target.read_bytes() == b"\xef\xbb\xbfdef helper():\n    return 2\n"
+
+
+def test_signature_and_ast_keep_subscripted_annotations_valid(tmp_path):
+    target = tmp_path / "typed.py"
+    target.write_text(
+        "from typing import Any\n"
+        "def build(x: dict[str, Any]) -> dict[str, list[int]]:\n"
+        "    return {}\n",
+        encoding="utf-8",
+    )
+
+    signature = json.loads(get_function_signature({"path": str(target), "function_name": "build"}))
+    function = json.loads(parse_ast({"path": str(target)}))["functions"][0]
+
+    assert signature["signature"] == "def build(x: dict[str, Any]) -> dict[str, list[int]]"
+    assert function["args"] == [{"name": "x", "annotation": "dict[str, Any]"}]
+    assert function["return_type"] == "dict[str, list[int]]"
+
+
+def test_ast_lists_every_parameter_kind(tmp_path):
+    target = tmp_path / "params.py"
+    target.write_text(
+        "def f(a, /, b, *args, c, **kw):\n    pass\n"
+        "class K:\n    def m(self, x, *rest, flag=False, **extra):\n        pass\n",
+        encoding="utf-8",
+    )
+
+    result = json.loads(parse_ast({"path": str(target)}))
+
+    assert [arg["name"] for arg in result["functions"][0]["args"]] == [
+        "a",
+        "b",
+        "*args",
+        "c",
+        "**kw",
+    ]
+    assert result["classes"][0]["methods"][0]["args"] == ["self", "x", "*rest", "flag", "**extra"]
+
+
+@pytest.mark.parametrize("tool", [build_code_index, dependency_graph])
+def test_index_tools_refuse_a_missing_root_as_a_failure(tmp_path, tool):
+    observation = tool({"root": str(tmp_path / "missing")})
+
+    assert observation.endswith("不存在。")
+    assert is_failure_observation(observation, action="build_code_index")
+
+
+def test_search_symbol_reports_a_bad_root_instead_of_a_json_error(tmp_path):
+    not_a_directory = tmp_path / "file.txt"
+    not_a_directory.write_text("x", encoding="utf-8")
+
+    missing = search_symbol({"name": "x", "root": str(tmp_path / "missing")})
+    wrong_kind = search_symbol({"name": "x", "root": str(not_a_directory)})
+
+    assert missing.endswith("不存在。")
+    assert wrong_kind.endswith("不是目录。")
+    assert is_failure_observation(missing, action="search_symbol")
+    assert is_failure_observation(wrong_kind, action="search_symbol")
+
+
+def test_parse_ast_refuses_non_python_files_as_a_failure(tmp_path):
+    target = tmp_path / "notes.txt"
+    target.write_text("plain text", encoding="utf-8")
+
+    observation = parse_ast({"path": str(target)})
+
+    assert "不是 Python 文件" in observation
+    assert is_failure_observation(observation, action="parse_ast")
+
+
+def test_python_child_output_is_decoded_as_utf8(monkeypatch):
+    """Windows 子解释器默认按 ANSI 代码页写管道；工具必须让读写两端都用 UTF-8。"""
+    monkeypatch.delenv("PYTHONUTF8", raising=False)
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+
+    observation = run_python({"code": "print(chr(0x2705) + ' 中文输出')"})
+
+    assert observation == "\u2705 中文输出\nreturncode: 0"
+
+
+def test_run_python_string_args_keep_quoted_groups(tmp_path):
+    script = tmp_path / "argv.py"
+    script.write_text("import json, sys\nprint(json.dumps(sys.argv[1:]))\n", encoding="utf-8")
+    data_file = tmp_path / "data dir" / "in.csv"
+
+    observation = run_python({"path": str(script), "args": f'"{data_file}" --flag'})
+
+    assert json.loads(observation.splitlines()[0]) == [str(data_file), "--flag"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="反斜杠只在 Windows 上是路径分隔符")
+def test_run_python_string_args_keep_unquoted_windows_backslashes(tmp_path):
+    script = tmp_path / "argv.py"
+    script.write_text("import json, sys\nprint(json.dumps(sys.argv[1:]))\n", encoding="utf-8")
+
+    observation = run_python({"path": str(script), "args": r"C:\tmp\file.txt --flag"})
+
+    assert json.loads(observation.splitlines()[0]) == [r"C:\tmp\file.txt", "--flag"]
+
+
+def test_run_tests_accepts_a_pytest_node_id(tmp_path):
+    test_file = tmp_path / "test_sample.py"
+    test_file.write_text(
+        "def test_a():\n    assert True\n\ndef test_b():\n    assert False\n", encoding="utf-8"
+    )
+
+    selected = run_tests({"test_path": f"{test_file}::test_a"})
+    missing = run_tests({"test_path": f"{tmp_path / 'absent.py'}::test_a"})
+
+    assert "1 passed" in selected
+    assert selected.endswith("returncode: 0")
+    assert missing == f"测试路径 {tmp_path / 'absent.py'} 不存在。"

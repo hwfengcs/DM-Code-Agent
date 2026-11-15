@@ -9,9 +9,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from dm_agent.memory.context_budget import truncate_observation
 from dm_agent.tools import default_tools
 
 from .summary import summarize_events
+from .writer import _sanitize_text
 
 EXECUTION_TOOLS = {"run_python", "run_shell", "run_tests", "run_linter"}
 
@@ -70,8 +72,14 @@ def replay_tools(
 ) -> list[dict[str, Any]]:
     tools = {tool.name: tool for tool in default_tools(include_mcp=False)}
     results: list[dict[str, Any]] = []
+    observation_caps: dict[str, int] = {}
 
     for event in events:
+        run_id = str(event.get("run_id", ""))
+        if event.get("event") == "run_start":
+            metadata = event.get("payload", {}).get("metadata", {})
+            cap = metadata.get("max_observation_chars", 0) if isinstance(metadata, dict) else 0
+            observation_caps[run_id] = cap if isinstance(cap, int) else 0
         if event.get("event") != "tool_call":
             continue
         payload = event.get("payload", {})
@@ -105,6 +113,16 @@ def replay_tools(
             actual = f"Tool execution failed: {exc}"
             item["status"] = "error"
 
+        # 日志记录的是截断后的观察，且分享档还会脱敏。按相同次序投影重放结果，
+        # 同时保留与完整 checkpoint 观察直接匹配的能力。
+        actual = truncate_observation(
+            str(actual),
+            max_chars=observation_caps.get(run_id, 0),
+            action=action,
+            action_input=payload.get("action_input"),
+        ).text
+        if actual != item["expected_observation"]:
+            actual = _sanitize_text(actual)
         item["actual_observation"] = actual
         item["matches"] = actual == item["expected_observation"]
         if item["status"] == "ok" and not item["matches"]:

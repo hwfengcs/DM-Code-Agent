@@ -129,8 +129,10 @@ def read_file(arguments: dict[str, Any]) -> str:
     else:
         end_idx = len(lines)
 
-    if start_idx >= len(lines):
-        return f"起始行号 {line_start} 超出文件范围（共 {len(lines)} 行）。"
+    # 空文件上的任何行段都是空内容，与不带行号读取一致。按"超出范围"回绝会被判成
+    # 读取失败，read-before-edit 守卫又要求先按行段读，空文件就永远编辑不了。
+    if lines and start_idx >= len(lines):
+        return f"起始行号 {start_idx + 1} 超出文件范围（共 {len(lines)} 行）。"
 
     selected_lines = lines[start_idx:end_idx]
     return "\n".join(selected_lines)
@@ -207,7 +209,8 @@ def _check_python_syntax(path: Path, content: str) -> str:
     if path.suffix != ".py":
         return ""
     try:
-        ast.parse(content)
+        # 解释器接受 UTF-8 BOM，而 read_text(encoding="utf-8") 会把它留在内容开头。
+        ast.parse(content.removeprefix("﻿"))
     except SyntaxError as exc:
         location = f"第 {exc.lineno} 行" if exc.lineno else "未知位置"
         return f"\n[语法检查] 未通过：{location} {exc.msg}。文件已写入，请修正后再继续。"
@@ -289,7 +292,8 @@ def _edit_by_old_string(path: Path, arguments: dict[str, Any]) -> str:
 
     prefix_lines = content[: content.index(old_string)].count("\n")
     start_line = prefix_lines + 1
-    new_line_count = new_string.count("\n") + 1 if new_string else 1
+    # 按行数而不是换行符个数计：new_string 以换行结尾时不应把下一行未改动的代码也标成改动。
+    new_line_count = max(1, len(new_string.splitlines()))
     end_line = start_line + new_line_count - 1
     lines = updated.splitlines(keepends=True)
     if not new_string:
@@ -405,7 +409,10 @@ def search_in_file(arguments: dict[str, Any]) -> str:
     import re
 
     path_value = _require_str(arguments, "path")
-    pattern = _require_str(arguments, "pattern")
+    # 不经 _require_str：它会去掉首尾空白，而空白在模式里有意义（" x" 不应匹配 "ax"）。
+    pattern = arguments.get("pattern")
+    if not isinstance(pattern, str) or not pattern:
+        raise ValueError("工具参数 'pattern' 必须是非空字符串。")
     context_lines = arguments.get("context_lines", 2)
 
     if not isinstance(context_lines, int) or context_lines < 0:

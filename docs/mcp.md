@@ -15,7 +15,7 @@ node --version
 npm --version
 ```
 
-### 2. 配置 Playwright MCP（已预置）
+### 2. 配置 Playwright MCP
 
 仓库提供 `mcp_config.json.example`，复制为 `mcp_config.json` 后按需启用服务器。
 例如仅配置 Playwright：
@@ -45,10 +45,10 @@ python main.py
 你将会看到类似输出：
 
 ```
-正在加载 MCP 服务器...
+  RUN    正在加载 MCP 服务器
 ✅ MCP 服务器 'playwright' 启动成功，提供 5 个工具
-✓ 成功启动 1 个 MCP 服务器
-✓ 加载了 5 个 MCP 工具
+  DONE   成功启动 1 个 MCP 服务器
+  DONE   加载了 5 个 MCP 工具
 ```
 
 ---
@@ -137,7 +137,7 @@ python main.py "从 Context7 获取 SQLAlchemy 的事务管理示例"
 - `command`: 启动命令（如 `npx`, `node`, `python`）
 - `args`: 命令参数列表
 - `env`: 环境变量（可选）
-- `timeout`: 单次工具调用的超时秒数（可选，默认 5；慢速服务器如浏览器自动化可调大）
+- `timeout`: 单次 JSON-RPC 请求（初始化握手、`tools/list` 与每次工具调用各算一次）的超时秒数（可选，默认 5；慢速服务器如浏览器自动化可调大）
 
 服务器进程意外退出时，agent 在下一次工具调用会自动做一次重连；仍失败才把错误反馈给模型。
 
@@ -269,7 +269,7 @@ python main.py
 以下配置块是 `mcpServers` 内的服务器映射，需放入完整文件的 `mcpServers` 对象中。
 Filesystem 的参数还需添加允许访问的工作区绝对路径；各外部包的安装与认证参数以其文档为准。
 
-### 1. Playwright（浏览器自动化）✅ 已预置
+### 1. Playwright（浏览器自动化）
 
 ```json
 {
@@ -437,7 +437,7 @@ python main.py "使用 Playwright 打开 https://example.com 并截图"
 
 ### Q4: MCP 服务器会占用很多资源吗？
 
-MCP 服务器是按需启动的独立进程，只有在系统启动时才会加载。如果不需要某个服务器，可以在配置中设置 `"enabled": false`。
+MCP 服务器是独立进程，所有启用的服务器都会在系统启动时一并启动。如果不需要某个服务器，可以在配置中设置 `"enabled": false`。
 
 ### Q5: 如何调试 MCP 服务器？
 

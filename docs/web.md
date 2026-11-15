@@ -175,6 +175,8 @@ SSE，数据源就是会话日志本身（`TraceWriter.record()` 每条都 `flus
 - `event: status` — 连上时先给一次当前状态
 - `event: entry` — 每条会话条目，`id:` 是它在文件里的**行号**
 - `event: malformed` — 某行解析不了，跳过但报出来
+- `event: error` — 等了 30 秒会话日志仍未生成；带一条 `message` 后服务端结束这条流，
+  前端收到后不再自动重连
 - `event: done` — 运行结束，附终态
 
 行号能当续传游标，正是因为会话日志 append-only、行号永不变动。浏览器断线重连时自动

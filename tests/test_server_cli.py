@@ -1,7 +1,8 @@
 """``dm-agent-web`` 入口的行为测试。
 
 这一层不需要 fastapi：参数校验、token 生成、横幅打印全部发生在起 uvicorn 之前，
-所以只测到 ``uvicorn.run`` 之前的那段，不真的开端口。
+所以只测到 ``uvicorn.run`` 之前的那段，不真的开端口。唯一走到 ``uvicorn.run`` 的用例
+把它换成了桩，缺 ``[web]`` extra 时自行跳过。
 """
 
 from __future__ import annotations
@@ -73,3 +74,35 @@ def test_banner_warns_about_write_access_when_not_read_only(
 def test_banner_flags_missing_token(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     _print_banner(ServerSettings(sessions_dir=tmp_path, token=""))
     assert "未启用 token" in capsys.readouterr().out
+
+
+def test_server_is_started_with_a_bounded_shutdown_and_no_access_log(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """对话页开着 SSE 流时按 Ctrl+C，也必须能走到关停清理。
+
+    SSE 流要等子进程退出才结束，子进程要等 lifespan 关停才被收掉；uvicorn 默认先无限期
+    等连接关闭，于是两边互相等，agent 子进程成了孤儿。等待必须有上限。
+
+    访问日志必须关：SSE 的 token 在查询参数里，访问日志会把它原样打出来。
+    """
+    uvicorn = pytest.importorskip("uvicorn")
+    pytest.importorskip("fastapi")
+    captured: dict[str, object] = {}
+
+    def fake_run(_app: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(uvicorn, "run", fake_run)
+    # main() 会把 ./.env 读进 os.environ，测试里不该碰调用目录的任何文件。
+    monkeypatch.setattr("dm_agent.paths.load_env_files", lambda: [])
+    monkeypatch.chdir(tmp_path)
+
+    sessions = tmp_path / "sessions"
+    assert (
+        main(["--sessions-dir", str(sessions), "--workspace", str(tmp_path), "--token", "t"]) == 0
+    )
+
+    timeout = captured["timeout_graceful_shutdown"]
+    assert isinstance(timeout, (int, float)) and 0 < timeout <= 10
+    assert captured["access_log"] is False

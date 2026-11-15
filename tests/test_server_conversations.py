@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from dm_agent.server.runs import RunRegistry
+from dm_agent.server.process import RunProcess
+from dm_agent.server.runs import RunRecord, RunRegistry
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
@@ -111,7 +112,7 @@ def open_conversation(client: TestClient) -> dict[str, Any]:
 def wait_for_completed_turns(
     client: TestClient, conversation_id: str, count: int
 ) -> dict[str, Any]:
-    """轮询到已完成轮数达标。桩进程很快，1.5s 是很宽松的上限。"""
+    """轮询到已完成轮数达标。桩进程很快，15s 是很宽松的上限。"""
     deadline = time.time() + 15.0
     payload: dict[str, Any] = {}
     while time.time() < deadline:
@@ -264,13 +265,37 @@ def test_unknown_conversation_is_404(writable_client: TestClient) -> None:
 
 
 def test_a_run_id_is_not_a_conversation_id(
-    writable_client: TestClient, fake_conversation: Callable[..., None]
+    writable_client: TestClient, fake_conversation: Callable[..., None], tmp_path: Path
 ) -> None:
     """两个注册表是同一个，所以必须按 kind 区分——否则能拿对话端点去操作一次性运行。"""
     fake_conversation()
     conversation_id = open_conversation(writable_client)["run_id"]
     assert writable_client.get(f"/api/runs/{conversation_id}").status_code == 200
-    writable_client.delete(f"/api/conversations/{conversation_id}")
+
+    # 反过来：注册表里的一次性运行，对话端点一个都不认，更不能把它停掉。
+    process = RunProcess(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        cwd=tmp_path,
+        trace_path=tmp_path / "one-off.jsonl",
+    )
+    process.start()
+    registry_of(writable_client)._records["oneoff01"] = RunRecord(
+        run_id="oneoff01",
+        task="一次性运行",
+        session_name="one-off.jsonl",
+        trace_path=process.trace_path,
+        process=process,
+    )
+    try:
+        base = "/api/conversations/oneoff01"
+        assert writable_client.get(base).status_code == 404
+        assert writable_client.post(f"{base}/turns", json={"task": "x"}).status_code == 404
+        assert writable_client.get(f"{base}/stream").status_code == 404
+        assert writable_client.delete(base).status_code == 404
+        assert process.poll() is None, "对话端点把一次性运行停掉了"
+    finally:
+        process.stop(grace_seconds=1.0)
+        writable_client.delete(f"/api/conversations/{conversation_id}")
 
 
 def test_idle_conversations_are_reaped(

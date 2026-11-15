@@ -1,8 +1,8 @@
 """运行端点的端到端测试。
 
-这里 spawn 的是**真的** ``python -m dm_agent.cli`` 子进程，但刻意不配 API key——
-没有 key 的 CLI 会很快自己退出，这足以覆盖完整的生命周期（创建 → 结束 → 状态转移 →
-SSE 收尾），且不花一分钱、不依赖网络。
+子进程一律是**桩进程**（见 ``fake_agent``）：写几条会话条目进 JSONL，再按指定退出码
+退出。这足以覆盖完整的生命周期（创建 → 结束 → 状态转移 → SSE 收尾），而且彻底离线，
+不读 API key、不联网。真 argv 与真 CLI 解析器的一致性由 ``test_server_process.py`` 保证。
 
 需要「进程一直活着」的用例（取消、并发上限）直接往注册表里塞一个 sleep 子进程，
 不绕道 HTTP。
@@ -51,6 +51,8 @@ with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\\n")
         handle.flush()
         time.sleep(delay)
+if exit_code:
+    print("stub agent failure marker", file=sys.stderr)
 sys.exit(exit_code)
 """
 
@@ -167,6 +169,19 @@ def test_missing_task_is_a_validation_error(writable_client: TestClient) -> None
     assert writable_client.post("/api/runs", json={"provider": "deepseek"}).status_code == 422
 
 
+def test_task_with_a_nul_character_is_rejected_before_spawning(
+    writable_client: TestClient, fake_agent: Callable[..., None]
+) -> None:
+    """NUL 进不了 argv。必须在校验阶段给出 400，而不是让 Popen 的 ValueError 变成 500。"""
+    fake_agent()  # 即使校验放行，也只会起桩进程，绝不起真 CLI
+    response = writable_client.post(
+        "/api/runs", json={"task": "前半段\x00后半段", "provider": "deepseek"}
+    )
+    assert response.status_code == 400
+    assert "NUL" in response.json()["detail"]
+    assert writable_client.get("/api/runs").json()["runs"] == []
+
+
 # --- 只读模式 -----------------------------------------------------------
 
 
@@ -270,6 +285,7 @@ def test_failed_run_surfaces_the_exit_code_and_output(
     final = wait_until_finished(writable_client, run_id)
     assert final["status"] == "failed"
     assert final["exit_code"] == 2
+    assert "stub agent failure marker" in final["error"]
 
 
 def test_stream_terminates_when_no_log_was_ever_written(
@@ -387,6 +403,46 @@ def test_cancelling_twice_reports_not_stopped(writable_client: TestClient, tmp_p
     second = writable_client.delete(f"/api/runs/{record.run_id}")
     assert second.status_code == 200
     assert second.json()["stopped"] is False
+
+
+def test_cancelled_run_does_not_report_its_output_as_an_error(
+    writable_client: TestClient, tmp_path: Path
+) -> None:
+    """用户主动停掉的运行非零退出是预期结果，它的进度输出不是「agent 进程报错」。"""
+    trace_path = tmp_path / "chatty.jsonl"
+    process = RunProcess(
+        [
+            sys.executable,
+            "-u",
+            "-c",
+            "import time; print('step 1 | read_file ok'); time.sleep(60)",
+        ],
+        cwd=tmp_path,
+        trace_path=trace_path,
+    )
+    process.start()
+    registry_of(writable_client)._records["chatty01"] = RunRecord(
+        run_id="chatty01",
+        task="会打印进度的任务",
+        session_name=trace_path.name,
+        trace_path=trace_path,
+        process=process,
+    )
+    try:
+        # 等输出真的到了管道里，否则「error 为空」什么都证明不了。
+        deadline = time.time() + 10
+        while time.time() < deadline and "step 1" not in process.read_output():
+            time.sleep(0.05)
+        assert "step 1" in process.read_output()
+
+        payload = writable_client.delete("/api/runs/chatty01").json()
+    finally:
+        process.stop(grace_seconds=1.0)
+
+    assert payload["status"] == "cancelled"
+    assert payload["exit_code"] != 0
+    assert payload["error"] == ""
+    assert writable_client.get("/api/runs/chatty01").json()["error"] == ""
 
 
 def test_concurrency_limit_returns_409(writable_client: TestClient, tmp_path: Path) -> None:

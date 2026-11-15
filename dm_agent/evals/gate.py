@@ -59,8 +59,7 @@ def evaluate_gate(
             )
         elif rate < min_variant_rate:
             violations.append(
-                f"variant '{name}' success_rate "
-                f"{rate if isinstance(rate, (int, float)) else 'missing'} "
+                f"variant '{name}' success_rate {rate:.3f} "
                 f"is below the required {min_variant_rate:.3f}"
             )
 
