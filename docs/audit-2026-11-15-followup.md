@@ -54,7 +54,7 @@
   原始演示测试实际经历退出码 1 → 0；没有验证的案例继续报告 verification gap。
 
 发布沿用仓库工作流；main 部署演示站，v2.1.1 标签生成 GitHub Release。
-`PYPI_PUBLISH_ENABLED=false`，本次不启用或声称发布 PyPI。远端工作流结果另行追加。
+`PYPI_PUBLISH_ENABLED=false`，本次不启用或声称发布 PyPI。远端结果如下。
 
 ### 首次推送与安装链补验
 
@@ -64,3 +64,19 @@
 在不含 node_modules 的临时目录中使用 CI 同系列 npm 10.9.9 重新解析原锁文件，保留顶层
 依赖版本并补齐 bundled 条目。临时目录 npm ci、本仓库 npm ci、62 项前端测试、类型、构建
 及完整 audit 通过；产物没有变化。另做 Linux 目标的 npm ci dry-run，实际 Linux 安装由 CI 验证。
+
+### 发布结果
+
+- 修复提交 `b26b8e6`，锁文件补充提交 `20091e9`；v2.1.1 标签指向 `20091e9`。
+- [main CI](https://github.com/hwfengcs/DM-Code-Agent/actions/runs/43677906509) 与
+  [标签 CI](https://github.com/hwfengcs/DM-Code-Agent/actions/runs/43678175015) 全部通过：
+  Python 3.10/3.11/3.12 × Ubuntu/Windows 六组验证，及前端干净安装、测试、类型与产物一致性。
+- [演示站部署](https://github.com/hwfengcs/DM-Code-Agent/actions/runs/43677906473) 成功，
+  [公开站点](https://hwfengcs.github.io/DM-Code-Agent/) 实测 HTTP 200。
+- [Release 工作流](https://github.com/hwfengcs/DM-Code-Agent/actions/runs/43678175042) 的构建验证、
+  Ubuntu/Windows 包外安装 smoke 和 GitHub 发布全部成功。PyPI/TestPyPI 按现有开关跳过。
+- [v2.1.1 Release](https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v2.1.1) 提供 wheel、sdist
+  与 SHA256SUMS。实际下载两份公开包，SHA-256 全部匹配；从公开 wheel 重新安装后，离线 demo
+  实际测试退出码 1 → 0、零模型请求，随包 UI、配置路径与鉴权 API 再次通过。
+
+本节是发布完成后的文档追加；不移动版本标签，不覆盖 v2.1.0 或 v2.1.1 的任何既有资产。
