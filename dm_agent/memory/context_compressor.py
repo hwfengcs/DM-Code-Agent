@@ -14,6 +14,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from dm_agent.observations import is_failure_observation
+
 from .context_budget import estimate_messages_tokens
 
 MEMORY_TYPES = {"episodic", "semantic", "procedural"}
@@ -314,7 +316,11 @@ class Mem0StyleMemory:
                 }
             )
 
-        error_line = _first_matching_line(content, _ERROR_MARKERS)
+        observation = content.split("\n观察：", 1)[-1]
+        failed = (
+            is_failure_observation(observation, action=tool_match.group(1)) if tool_match else True
+        )
+        error_line = _first_matching_line(observation, _ERROR_MARKERS) if failed else ""
         if error_line:
             memories.append(
                 {
@@ -596,7 +602,12 @@ class ContextCompressor:
         has_old_messages = len(non_system_messages) > self.keep_recent * 2
         new_turns_since_last = self.turn_count - self._last_compressed_turn_count
         cadence_reached = new_turns_since_last >= self.compress_every
-        self.last_estimated_tokens = estimate_messages_tokens(history)
+        effective_history = (
+            apply_compaction(history, self.last_beneficial_compaction)
+            if self.last_beneficial_compaction
+            else history
+        )
+        self.last_estimated_tokens = estimate_messages_tokens(effective_history)
         over_budget = 0 < self.token_budget < self.last_estimated_tokens
         self.last_trigger = ""
         if has_old_messages and (cadence_reached or over_budget):
@@ -628,7 +639,12 @@ class ContextCompressor:
         else:
             folded_indexes = ()
             kept_indexes = list(non_system_indexes)
-        older_messages = [history[index] for index in folded_indexes]
+        previous = (
+            set(self.last_beneficial_compaction.folded_indexes)
+            if self.last_beneficial_compaction
+            else set()
+        )
+        older_messages = [history[index] for index in folded_indexes if index not in previous]
         recent_messages = [history[index] for index in kept_indexes]
 
         if older_messages:

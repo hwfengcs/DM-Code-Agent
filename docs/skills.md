@@ -142,11 +142,14 @@ python main.py "将这个 JavaScript 项目迁移到 TypeScript"
 
 #### 步骤 1：创建 JSON 文件
 
-在 `dm_agent/skills/custom/` 目录下创建 `.json` 文件：
+在 `~/.dm_agent/skills/` 目录下创建 `.json` 文件：
 
-这个默认路径位于源码包内，不是当前工作目录；通过 pip 安装后对应的是 `site-packages`
-中的目录。pip 用户建议使用下面的用户目录 Python 扩展方式，避免修改安装包；作为库使用时
-也可显式调用 `SkillManager.load_custom_skills(directory=...)` 指定 JSON 目录。
+默认依次加载内置技能、旧版安装包 `custom/` 目录和用户目录 `~/.dm_agent/skills/`，
+同名用户技能覆盖前面的定义。JSON 只声明提示与匹配信息，不执行 Python。
+项目目录不会自动扫描；作为库使用时可显式调用 `load_custom_skills(directory=...)`，
+需要执行代码的项目技能使用带信任检查的扩展发现机制。评测只加载内置技能，避免用户配置污染。
+字段类型不符的 JSON 单独告警并跳过，不阻断其他技能。英文关键词按词边界匹配，
+中文保持子串匹配；`ReAct` 算法名称不作为前端 React 关键词，正则仍保留原有更高权重。
 
 ```json
 {
@@ -167,7 +170,7 @@ python main.py "将这个 JavaScript 项目迁移到 TypeScript"
 python main.py
 ```
 
-系统会自动加载 `custom/` 目录下的所有 JSON 技能文件。
+系统会自动加载用户目录下的 JSON 技能文件。
 
 ### 方法 2：通过 Python 类（复杂场景，需要自定义工具）
 
@@ -329,7 +332,7 @@ Skill 系统采用混合选择策略，自动为任务匹配最相关的技能�
 
 ### Q3: 自定义技能 JSON 文件放在哪里？
 
-放在 `dm_agent/skills/custom/` 目录下，文件扩展名为 `.json`。系统启动时会自动扫描该目录。
+放在 `~/.dm_agent/skills/` 目录下，文件扩展名为 `.json`。系统启动时会自动扫描该目录。
 
 ### Q4: 能否同时使用 Skill 系统和 MCP 工具？
 

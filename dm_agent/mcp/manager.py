@@ -228,14 +228,11 @@ class MCPManager:
                     return f"❌ MCP 服务器 '{server_name}' 未运行"
 
             result = client.call_tool(tool_name, arguments)
-            if result is None and not client.is_running():
-                # 调用期间进程死亡：单次重连后重试一次。
-                client = self._try_reconnect(server_name)
-                if client is not None:
-                    result = client.call_tool(tool_name, arguments)
             if result is None:
                 detail = str(getattr(client, "last_error", "") or "")
                 suffix = f"：{detail}" if detail else ""
+                if not getattr(client, "response_received", False):
+                    suffix += "；执行结果未知，请先核验副作用，不自动重放。"
                 return f"❌ 调用 MCP 工具 '{tool_name}' 失败{suffix}"
 
             return result

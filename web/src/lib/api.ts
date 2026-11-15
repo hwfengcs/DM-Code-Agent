@@ -129,10 +129,10 @@ function query(params: Record<string, string | number | undefined>): string {
 export const api = {
   meta: () => request<MetaResponse>('/meta'),
   sessions: () => request<SessionListResponse>('/sessions'),
-  summary: (name: string) =>
-    request<{ name: string; summary: SessionSummary }>(`/sessions/summary${query({ name })}`),
-  analysis: (name: string) =>
-    request<{ name: string; analysis: SessionAnalysis }>(`/sessions/analysis${query({ name })}`),
+  summary: (name: string, run_index?: number) =>
+    request<{ name: string; summary: SessionSummary }>(`/sessions/summary${query({ name, run_index })}`),
+  analysis: (name: string, run_index?: number) =>
+    request<{ name: string; analysis: SessionAnalysis }>(`/sessions/analysis${query({ name, run_index })}`),
   entries: (name: string, offset = 0, limit = 1000) =>
     request<EntriesResponse>(`/sessions/entries${query({ name, offset, limit })}`),
   diff: (a: string, b: string) => request<DiffResponse>(`/sessions/diff${query({ a, b })}`),

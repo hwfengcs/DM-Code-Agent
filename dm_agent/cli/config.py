@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,6 +61,26 @@ def load_config_from_file() -> dict[str, Any]:
             data: dict[str, Any] = json.load(f)
             if not isinstance(data, dict):
                 raise ValueError("配置文件顶层必须是 JSON 对象。")
+            for key in ("provider", "model", "base_url"):
+                if key in data and not isinstance(data[key], str):
+                    raise ValueError(f"配置字段 {key} 必须是字符串。")
+            for key in ("show_steps", "enable_edit_guard", "enable_adaptive_replanning"):
+                if key in data and type(data[key]) is not bool:
+                    raise ValueError(f"配置字段 {key} 必须是 JSON 布尔值。")
+            for key in (
+                "max_steps",
+                "max_observation_chars",
+                "context_token_budget",
+                "llm_max_retries",
+                "max_replans",
+            ):
+                if key in data and type(data[key]) is not int:
+                    raise ValueError(f"配置字段 {key} 必须是整数。")
+            if "temperature" in data and (
+                type(data["temperature"]) not in (int, float)
+                or not math.isfinite(data["temperature"])
+            ):
+                raise ValueError("配置字段 temperature 必须是有限数值。")
             return data
     except Exception as e:
         UI.status("warn", "配置文件加载失败，使用默认设置", f"{path}：{e}")

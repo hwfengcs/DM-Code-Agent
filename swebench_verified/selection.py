@@ -142,7 +142,10 @@ def write_selection_manifest(path: Path, manifest: dict[str, Any]) -> None:
 
 
 def load_selection_manifest(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("selection manifest must be an object")
+    return manifest
 
 
 def resume_manifest_mismatches(existing: dict[str, Any], current: dict[str, Any]) -> list[str]:

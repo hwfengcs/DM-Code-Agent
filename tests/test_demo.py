@@ -89,15 +89,15 @@ def test_demo_rejects_output_symlink(tmp_path):
 def test_demo_cli_creates_evidence_without_pytest(tmp_path, monkeypatch, capsys):
     import dm_agent.tools.execution_tools as execution
 
-    original_run = execution.subprocess.run
+    original_run = execution.execute
     commands = []
 
-    def checked_run(command, **kwargs):
+    def checked_run(command, arguments, **kwargs):
         commands.append(command)
         assert "pytest" not in command
-        return original_run(command, **kwargs)
+        return original_run(command, arguments, **kwargs)
 
-    monkeypatch.setattr(execution.subprocess, "run", checked_run)
+    monkeypatch.setattr(execution, "execute", checked_run)
     output = tmp_path / "empty"
     output.mkdir()
 

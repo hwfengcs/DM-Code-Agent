@@ -266,8 +266,7 @@ def materialize_workspace(instance_id: str, destination: Path) -> Path:
     image = ensure_image(instance_id)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    container = f"dmagent-prep-{instance_id.replace('__', '-')}"
-    _run(["docker", "rm", "-f", container])
+    container = f"dmagent-prep-{uuid.uuid4().hex}"
     created = _run(["docker", "create", "--name", container, image, "true"])
     if created.returncode != 0:
         raise RuntimeError(f"创建容器失败 {instance_id}: {created.stderr.strip()[:300]}")
@@ -367,7 +366,12 @@ def extract_patch(workspace: Path) -> str:
     if diff.returncode != 0:
         error = diff.stderr.decode("utf-8", errors="replace").strip()[:300]
         raise RuntimeError(f"git diff 失败：{error}")
-    return diff.stdout.decode("utf-8", errors="replace")
+    try:
+        return diff.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError(
+            "git patch contains non-UTF-8 text; refusing a lossy prediction"
+        ) from exc
 
 
 def build_client(provider: str, model: str | None, timeout: int) -> UsageTrackingClient:

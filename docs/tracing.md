@@ -378,3 +378,24 @@ dm-agent "Explain this module" --trace traces/debug.jsonl --trace-llm-io
 - Replay starts with dry replay because it is safe and deterministic.
 - Tool replay is a separate opt-in mode so dangerous actions are never hidden behind a default.
 - The schema is intentionally small enough to inspect manually and evolve over time.
+
+## Run segments and strict reads (v2.1.1)
+
+Summaries and diagnostics describe the latest `run_start` segment by default. They never combine
+an earlier task with a later answer. `view --run-index 0` and `analyze --run-index 0` select an
+older segment; `view --raw` still returns all entries unless a segment is explicitly selected.
+`run_count` and `session_event_count` distinguish the whole file from the selected segment.
+`completion_rejected` records a finish-hook veto independently of its free-form reason.
+Conversation `turn_end` is written once per user task, including escaped errors and internal retries.
+
+Offline JSONL readers remain strict: an incomplete final line or malformed metadata/steps yields an
+error, never an apparently complete audit. SSE waits for a complete newline and reports malformed
+lines. No reader deletes, overwrites, or repairs original bytes. Prefix recovery is not automatic.
+
+Execution tools retain captured stdout/stderr in unique directories below the OS temporary
+`dm-agent-tool-output` directory, outside the maintained repository. Each stream defaults to an
+8 MiB budget (at most one additional 8192-byte read is retained); commands default to a 120-second
+timeout. `timeout` and `max_output_bytes` override these positive limits. Limit hits return a failure
+and the captured-file paths. Previews stay bounded; small observation caps retain the status tail.
+These local files may contain sensitive command output and are not automatically uploaded.
+They are separate from opt-in full LLM I/O capture and remain until local temporary-file cleanup.

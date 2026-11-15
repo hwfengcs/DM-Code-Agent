@@ -1,7 +1,7 @@
 {
   "name": "dm-code-agent-console",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.1.1",
   "type": "module",
   "description": "DM-Code-Agent Web 控制台前端。产物构建到 dm_agent/server/static/ 后随 wheel 分发。",
   "scripts": {
@@ -24,6 +24,6 @@
     "tailwindcss": "^4.1.0",
     "typescript": "^5.7.0",
     "vite": "^7.0.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.12"
   }
 }

@@ -23,17 +23,15 @@ export function CompactionView({ entries }: { entries: SessionEntry[] }) {
     )
   }
 
-  const totalSaved = spans.reduce((sum, span) => {
-    if (span.tokensBefore === null || span.tokensAfter === null) return sum
-    return sum + Math.max(0, span.tokensBefore - span.tokensAfter)
-  }, 0)
-  const totalFolded = spans.reduce((sum, span) => sum + span.foldedIds.length, 0)
+  const accepted = spans.filter((span) => span.phase !== 'sticky_reuse')
+  const totalSaved = accepted.length ? Math.max(0, (accepted.at(-1)?.tokensBefore ?? 0) - (accepted.at(-1)?.tokensAfter ?? 0)) : 0
+  const totalFolded = new Set(spans.flatMap((span) => span.foldedIds)).size
 
   return (
     <div className="space-y-4 p-5">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="折叠次数" value={String(spans.length)} />
-        <Stat label="估算节省" value={`${totalSaved}`} hint="tokens" tone="good" />
+        <Stat label="折叠次数" value={String(accepted.length)} hint={`${spans.length} 次应用`} />
+        <Stat label="最近一次窗口节省" value={`${totalSaved}`} hint="tokens" tone="good" />
         <Stat
           label="被删除的原文"
           value="0 条"

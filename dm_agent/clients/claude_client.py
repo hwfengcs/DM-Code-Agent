@@ -45,6 +45,7 @@ class ClaudeClient(BaseLLMClient):
             timeout=self.timeout,
             base_url=self.base_url or None,
             max_retries=0,
+            default_headers={"anthropic-version": anthropic_version},
         )
 
     def complete(
@@ -56,12 +57,12 @@ class ClaudeClient(BaseLLMClient):
 
         try:
             # Claude API 要求分离系统消息
-            system_message = None
+            system_messages = []
             claude_messages = []
 
             for msg in messages:
                 if msg.get("role") == "system":
-                    system_message = msg.get("content", "")
+                    system_messages.append(msg.get("content", ""))
                 else:
                     claude_messages.append(msg)
 
@@ -72,8 +73,8 @@ class ClaudeClient(BaseLLMClient):
                 "max_tokens": extra.pop("max_tokens", 4096),
             }
 
-            if system_message:
-                kwargs["system"] = system_message
+            if system_messages:
+                kwargs["system"] = "\n\n".join(system_messages)
 
             kwargs.update(extra)
 

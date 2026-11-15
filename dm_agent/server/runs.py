@@ -32,7 +32,7 @@ CONVERSATION_IDLE_TIMEOUT_SECONDS = 30 * 60
 class ConversationTurn:
     """对话里的一轮。
 
-    刻意**不记「这轮结束了没有」**——那个真相在会话日志里（本轮的 ``run_end``），
+    刻意**不记「这轮结束了没有」**——那个真相在会话日志里（本轮的 ``turn_end``），
     由 ``RunRecord.completed_turns`` 现读现算。内存里再存一份就会有两个事实来源。
     """
 
@@ -75,7 +75,7 @@ class RunRecord:
 
     @property
     def completed_turns(self) -> int:
-        """已经跑完的轮数 = 会话日志里 ``run_end`` 的条数。
+        """已结束的用户轮数；旧日志回退到 ``run_end``。
 
         不在内存里维护这个计数：日志才是真相源，而且控制台随时可能在两轮之间重启。
         """
@@ -167,6 +167,13 @@ class RunRegistry:
                 return False
             record.process.start(stdin_pipe=stdin_pipe)
             self._records[record.run_id] = record
+            finished = sorted(
+                (item for item in self._records.values() if not item.is_running),
+                key=lambda item: item.finished_at or 0,
+                reverse=True,
+            )
+            for old in finished[256:]:
+                self._records.pop(old.run_id, None)
             return True
 
     def get(self, run_id: str) -> RunRecord | None:
@@ -257,17 +264,17 @@ class RunRegistry:
     def stop_all(self) -> None:
         """进程退出时的清理：把还在跑的都收掉，不留孤儿。"""
         for record in self.list():
-            if record.is_running:
-                if record.kind == "conversation":
-                    record.process.shutdown(grace_seconds=1.0)
-                else:
-                    record.process.stop(grace_seconds=1.0)
+            if record.kind == "conversation":
+                record.process.shutdown(grace_seconds=1.0)
+            else:
+                record.process.stop(grace_seconds=1.0)
 
     def _refresh(self, record: RunRecord) -> RunRecord:
         """按子进程的真实状态更新记录。调用方必须已持锁。"""
         if record.finished_at is None:
             code = record.process.poll()
             if code is not None:
+                record.process.stop(grace_seconds=0)
                 record.exit_code = code
                 record.finished_at = time.time()
                 record.agent_status = _read_agent_status(record.trace_path)
@@ -289,14 +296,14 @@ def _count_run_ends(trace_path: Path) -> int:
     每次状态查询都全文重扫会让长会话越跑越慢。
     """
     key = str(trace_path)
-    offset, count = _RUN_END_SCAN.get(key, (0, 0))
+    offset, count, explicit = _RUN_END_SCAN.get(key, (0, 0, False))
     try:
         size = trace_path.stat().st_size
     except OSError:
         return count
     if size < offset:
         # 文件被替换或截断（正常流程不会发生）。丢掉缓存重来。
-        offset, count = 0, 0
+        offset, count, explicit = 0, 0, False
     if size == offset:
         return count
     try:
@@ -318,14 +325,21 @@ def _count_run_ends(trace_path: Path) -> int:
             entry = json.loads(text)
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
-        if isinstance(entry, dict) and entry.get("event") == "run_end":
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("event") == "conversation_start":
+            explicit = True
+            count = 0
+        if entry.get("event") == ("turn_end" if explicit else "run_end"):
             count += 1
-    _RUN_END_SCAN[key] = (offset + consumed, count)
+    if len(_RUN_END_SCAN) >= 256 and key not in _RUN_END_SCAN:
+        _RUN_END_SCAN.pop(next(iter(_RUN_END_SCAN)))
+    _RUN_END_SCAN[key] = (offset + consumed, count, explicit)
     return count
 
 
 # path → (已扫描到的字节偏移, 已数到的 run_end 条数)。append-only 让增量扫描成立。
-_RUN_END_SCAN: dict[str, tuple[int, int]] = {}
+_RUN_END_SCAN: dict[str, tuple[int, int, bool]] = {}
 
 
 def _read_agent_status(trace_path: Path) -> str:

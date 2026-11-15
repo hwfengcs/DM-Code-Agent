@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -201,7 +202,7 @@ class EventBus:
     ) -> dict[str, Any] | None:
         """执行工具前置链；遇到第一个 ``block=True`` 时停止并返回。"""
         for position, handler in enumerate(self._handlers["before_tool_call"], start=1):
-            previous_arguments = dict(event.arguments)
+            previous_arguments = deepcopy(event.arguments)
             previous_content_anchor_safe = event.content_anchor_safe
             succeeded, result = self._call("before_tool_call", handler, position, event, on_error)
             if not succeeded:

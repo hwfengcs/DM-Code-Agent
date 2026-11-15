@@ -7,9 +7,22 @@
 
 from __future__ import annotations
 
+import signal
 import sys
+from types import FrameType
 
 from . import main
 
+
+def _terminate(_signum: int, _frame: FrameType | None) -> None:
+    # Let execution/MCP finally blocks release their own process groups on SIGTERM.
+    raise KeyboardInterrupt
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    if sys.platform != "win32":
+        signal.signal(signal.SIGTERM, _terminate)
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

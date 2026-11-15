@@ -123,6 +123,14 @@ def test_each_turn_is_its_own_run_in_the_session_log(conversation: Any, tmp_path
     )
     assert len(events_of(entries, "run_start")) == 2
     assert len(events_of(entries, "run_end")) == 2
+    assert [entry["payload"] for entry in events_of(entries, "conversation_start")] == [
+        {"turn_protocol": 1}
+    ]
+    assert [entry["payload"]["turn"] for entry in events_of(entries, "turn_start")] == [1, 2]
+    assert [entry["payload"] for entry in events_of(entries, "turn_end")] == [
+        {"turn": 1, "status": "success"},
+        {"turn": 2, "status": "success"},
+    ]
     assert [entry["payload"]["task"] for entry in events_of(entries, "run_start")] == [
         "轮一",
         "轮二",
@@ -190,6 +198,10 @@ def test_a_failing_turn_does_not_kill_the_conversation(conversation: Any, tmp_pa
     ends = events_of(entries, "run_end")
     assert [end["payload"]["status"] for end in ends] == ["success"]
     assert ends[0]["payload"]["final_answer"] == "第二轮成功"
+    assert [entry["payload"] for entry in events_of(entries, "turn_end")] == [
+        {"turn": 1, "status": "error"},
+        {"turn": 2, "status": "success"},
+    ]
     assert [entry["payload"] for entry in events_of(entries, "conversation_end")] == [
         {"turns": 2, "reason": "eof"}
     ]

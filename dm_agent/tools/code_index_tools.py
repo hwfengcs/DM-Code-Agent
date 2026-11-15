@@ -45,16 +45,19 @@ def build_code_index(arguments: dict[str, Any]) -> str:
     refusal = _root_refusal(root)
     if refusal:
         return refusal
+    if max_files < 1:
+        raise ValueError("max_files must be at least 1")
 
     files = []
     symbol_count = 0
     parse_errors = []
-    for path in _iter_python_files(root, max_files=max_files, include_tests=include_tests):
+    paths = list(_iter_python_files(root, max_files=max_files + 1, include_tests=include_tests))
+    for path in paths[:max_files]:
         relative = path.relative_to(root).as_posix()
         try:
             source = path.read_text(encoding="utf-8-sig")
             tree = ast.parse(source, filename=str(path))
-        except SyntaxError as exc:
+        except (SyntaxError, UnicodeError, OSError) as exc:
             parse_errors.append({"path": relative, "error": str(exc)})
             continue
 
@@ -74,6 +77,8 @@ def build_code_index(arguments: dict[str, Any]) -> str:
 
     result = {
         "root": str(root),
+        "truncated": len(paths) > max_files,
+        "max_files": max_files,
         "file_count": len(files),
         "symbol_count": symbol_count,
         "files": files,
@@ -95,6 +100,8 @@ def search_symbol(arguments: dict[str, Any]) -> str:
     refusal = _root_refusal(root)
     if refusal:
         return refusal
+    if max_files < 1:
+        raise ValueError("max_files must be at least 1")
 
     index = json.loads(
         build_code_index(
@@ -123,6 +130,8 @@ def search_symbol(arguments: dict[str, Any]) -> str:
     result = {
         "root": str(root),
         "query": name,
+        "truncated": index["truncated"],
+        "parse_errors": index["parse_errors"],
         "kind": kind,
         "exact": exact,
         "match_count": len(matches),
@@ -140,8 +149,13 @@ def dependency_graph(arguments: dict[str, Any]) -> str:
     refusal = _root_refusal(root)
     if refusal:
         return refusal
+    if max_files < 1:
+        raise ValueError("max_files must be at least 1")
 
-    paths = list(_iter_python_files(root, max_files=max_files, include_tests=True))
+    paths = list(_iter_python_files(root, max_files=max_files + 1, include_tests=True))
+    truncated = len(paths) > max_files
+    paths = paths[:max_files]
+    parse_errors = []
     module_to_path = {_module_name(root, path): path.relative_to(root).as_posix() for path in paths}
     nodes = [{"id": module, "path": path} for module, path in sorted(module_to_path.items())]
     edges = []
@@ -152,7 +166,8 @@ def dependency_graph(arguments: dict[str, Any]) -> str:
         try:
             source = path.read_text(encoding="utf-8-sig")
             tree = ast.parse(source, filename=str(path))
-        except SyntaxError:
+        except (SyntaxError, UnicodeError, OSError) as exc:
+            parse_errors.append({"path": path.relative_to(root).as_posix(), "error": str(exc)})
             continue
         import_context = f"{module}.__init__" if path.name == "__init__.py" else module
         for imported in _imported_modules(tree, import_context):
@@ -165,6 +180,8 @@ def dependency_graph(arguments: dict[str, Any]) -> str:
     result = {
         "root": str(root),
         "nodes": nodes,
+        "truncated": truncated,
+        "parse_errors": parse_errors,
         "edges": sorted(edges, key=lambda edge: (edge["from"], edge["to"], edge["import"])),
         "external_modules": sorted(external),
     }
@@ -174,19 +191,21 @@ def dependency_graph(arguments: dict[str, Any]) -> str:
 def _iter_python_files(root: Path, *, max_files: int, include_tests: bool) -> Iterable[Path]:
     if max_files < 1:
         raise ValueError("max_files must be at least 1")
-    paths: list[Path] = []
+    count = 0
     for directory, subdirectories, filenames in os.walk(root):
-        subdirectories[:] = [
+        subdirectories[:] = sorted(
             name
             for name in subdirectories
             if name not in DEFAULT_INDEX_EXCLUDES
             and (include_tests or name not in {"test", "tests"})
-        ]
-        paths.extend(Path(directory) / name for name in filenames if Path(name).match("*.py"))
-    for count, path in enumerate(sorted(paths), start=1):
-        yield path
-        if count >= max_files:
-            break
+        )
+        for name in sorted(filenames):
+            if not Path(name).match("*.py"):
+                continue
+            yield Path(directory) / name
+            count += 1
+            if count >= max_files:
+                return
 
 
 def _module_name(root: Path, path: Path) -> str:

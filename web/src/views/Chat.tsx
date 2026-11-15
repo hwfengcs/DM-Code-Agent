@@ -37,7 +37,7 @@ export function Chat({ meta, onSessionsChanged }: { meta: MetaResponse; onSessio
   const scroller = useRef<HTMLDivElement>(null)
   const finishedTurns = useRef({ runId: '', done: 0 })
 
-  const turns = useMemo(() => splitTurns(state.entries), [state.entries])
+  const turns = useMemo(() => splitTurns(state.entries, state.record?.status === 'running'), [state.entries, state.record?.status])
   const record = state.record
   const busy = record?.busy ?? false
   const live = record?.status === 'idle' || record?.status === 'running'

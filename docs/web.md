@@ -73,7 +73,7 @@ DM-Code-Agent Web Console
 
 ```bash
 # 控制台内部起的就是这条命令（不带位置参数任务）
-python -m dm_agent.cli --provider deepseek --trace sessions/chat-xxx.jsonl --conversation-stdin
+python -m dm_agent.cli --no-config --provider deepseek --trace sessions/chat-xxx.jsonl --conversation-stdin
 ```
 
 子进程用**同一个 `ReactAgent` 实例**顺序跑每一轮，任务逐行从 stdin 进来
@@ -83,10 +83,11 @@ python -m dm_agent.cli --provider deepseek --trace sessions/chat-xxx.jsonl --con
 这条路径。
 
 **协议是单向的。** server 只往 stdin 写任务；每一轮的进展、结果、失败全部从会话日志
-里读回来（`run_start` / `run_end` 本来就在里面）。这样不需要发明第二套协议，也不会
+里读回来。`turn_start` / `turn_end` 表示用户轮次；`run_start` / `run_end` 表示内部尝试，
+扩展重试不会提前解除 busy，异常路径也会写轮次终态。旧日志回退到 run_end 计数，不会
 被 agent 自己的人类可读打印污染，而且「实时看到的」与「事后审计到的」仍是同一份字节。
 
-一份对话 = 一个 JSONL = N 段 run。会话库里它显示为「N 轮对话」。
+一份对话保存到一个 JSONL，可以包含多个 run 段；启用重试扩展时段数可能多于用户轮数。
 
 ### 两条必须知道的边界
 
@@ -103,7 +104,9 @@ python -m dm_agent.cli --provider deepseek --trace sessions/chat-xxx.jsonl --con
 - **30 分钟空闲自动回收**。用户开了对话直接关浏览器时，进程不会一直挂着。
   正在跑一轮的对话永远不会被当成空闲收掉。
 
-如果 agent 进程先自行退出，其遗留的子进程可能无法自动回收，需检查仍在运行的 MCP 服务。
+Windows 使用先挂起、加入 Job Object、再恢复的启动顺序，关闭 Job 也会回收已退出父进程的后代。
+POSIX 使用独立进程组；主动脱离该组的守护进程不在进程组回收保证内。
+已结束运行最多保留 256 条内存记录；会话日志始终保留。
 
 前端把 `conversation_id` 存在 `sessionStorage` 里，刷新页面后会自动重连（后端进程
 还活着，`Last-Event-ID` 负责把断线期间的条目补回来）。**切换视图不会中断运行**——
@@ -260,3 +263,15 @@ clients → tools → tracing → core → extensions → cli
 
 核心包**不依赖任何 web 框架**：不装 `[web]` extra 时 `import dm_agent` 与全部 CLI
 功能不受影响，只有 `dm-agent-web` 会打印一条能照着敲的安装提示。
+
+## v2.1.1 配置与审计口径
+
+Web 子进程带 `--no-config`：数值和布尔项使用 `/api/meta` 的默认值及请求覆盖值，
+不合并用户/项目 `config.json`。供应商凭据和环境变量仍按既有入口读取。
+CLI 自身增加双向编辑守卫/重规划开关，显式值可覆盖配置。
+
+摘要与诊断默认取最后一个 run_start 段；API 的 `run_index` 为从 0 开始的段号，
+详情页切段同时刷新摘要与诊断。历史中缺 run_end 的段标为中断，不能据此宣称仍在运行。
+压缩次数不包含 sticky_reuse；条目按 ID 去重，token 数显示最近一次窗口的节省，
+不把重叠折叠的收益累加。分页复用不变文件的解析缓存，最多 32 文件、16 MiB 原文件大小；
+卡片缓存最多 256 条。SSE 先按 ID 查重，再以 16ms 批量通知视图；终态立即刷新。

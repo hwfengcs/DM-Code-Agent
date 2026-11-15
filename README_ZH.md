@@ -52,7 +52,7 @@ DM-Code-Agent 在本地仓库中工作，用只追加的会话日志保留每次
 Python 3.10+，三条命令。Release wheel 已包含浏览器控制台，不需要 Node.js。
 
 ```bash
-pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.0/dm_code_agent-2.1.0-py3-none-any.whl"
+pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.1/dm_code_agent-2.1.1-py3-none-any.whl"
 dm-agent-demo --output demo-run
 dm-agent-web --sessions-dir demo-run/sessions --read-only
 ```

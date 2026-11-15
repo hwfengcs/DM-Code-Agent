@@ -1,6 +1,6 @@
 # 发布与安装
 
-v2.1.0 的正式安装入口是 [GitHub Release](https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v2.1.0)
+v2.1.1 的正式安装入口是 [GitHub Release](https://github.com/hwfengcs/DM-Code-Agent/releases/tag/v2.1.1)
 中的 wheel。PyPI 发布需要维护者先完成账号与 Trusted Publisher 绑定；在实际发布成功前，
 不要把 `pip install dm-code-agent` 当作可用的安装入口，也不要把 CI 或 GitHub Release 成功视为 PyPI 发布成功。
 
@@ -9,7 +9,7 @@ v2.1.0 的正式安装入口是 [GitHub Release](https://github.com/hwfengcs/DM-
 建议在 Python 3.10+ 的虚拟环境中执行：
 
 ```bash
-python -m pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.0/dm_code_agent-2.1.0-py3-none-any.whl"
+python -m pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.1/dm_code_agent-2.1.1-py3-none-any.whl"
 dm-agent-demo --output demo-run
 dm-agent-trace export demo-run/sessions/verified.jsonl --output verified.html --include-content
 dm-agent-web --read-only --sessions-dir demo-run/sessions
@@ -49,17 +49,17 @@ GitHub Release 和两个包索引发布 job 都等待 build 与全部 smoke job 
 ### 每次发版
 
 1. 更新包版本与 `uv.lock`，完成项目要求的本地验证。前端有变化时重建并提交静态资源。
-2. 写好 `docs/release-v<版本>.md`。v2.1.0 对应 [`docs/release-v2.1.0.md`](release-v2.1.0.md)。
+2. 写好 `docs/release-v<版本>.md`。v2.1.1 对应 [`docs/release-v2.1.1.md`](release-v2.1.1.md)。
 3. 提交、推送后，可先手动运行 Release workflow，target 选 `none` 检查构建与包外安装。
 4. 推送与 `pyproject.toml` 版本完全一致的 tag：
 
 ```bash
-git tag v2.1.0
-git push origin v2.1.0
+git tag v2.1.1
+git push origin v2.1.1
 ```
 
 workflow 会校验 tag 版本与发布说明文件。全部检查通过后，`publish-github` 创建 Release，
-正文取自 `docs/release-v2.1.0.md`。从 Release 下载 wheel 再检查一次安装和演示即可确认用户入口可用。
+正文取自 `docs/release-v2.1.1.md`。从 Release 下载 wheel 再检查一次安装和演示即可确认用户入口可用。
 复跑一个已经创建过 Release 的 tag 不会覆盖原有资产；需要修复已发布包时应递增版本重新发布。
 
 ## 启用 PyPI 与 TestPyPI

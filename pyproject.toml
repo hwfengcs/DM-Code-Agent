@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dm-code-agent"
-version = "2.1.0"
+version = "2.1.1"
 description = "An inspectable coding agent: trace changes, diagnose failures, and share the evidence."
 readme = "README.md"
 requires-python = ">=3.10"

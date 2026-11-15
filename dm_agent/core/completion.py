@@ -45,9 +45,16 @@ MAX_SUMMARY_ACTIONS = 5
 class CompletionGate:
     """把完成候选交给 ``before_finish`` 链，决定放行还是打回。"""
 
-    def __init__(self, event_bus: EventBus, *, on_error: HookErrorHandler | None = None) -> None:
+    def __init__(
+        self,
+        event_bus: EventBus,
+        *,
+        on_error: HookErrorHandler | None = None,
+        trace_writer: Any = None,
+    ) -> None:
         self.event_bus = event_bus
         self.on_error = on_error
+        self.trace_writer = trace_writer
 
     def review(
         self,
@@ -71,6 +78,15 @@ class CompletionGate:
         block = self.event_bus.emit_before_finish(event, on_error=self.on_error)
         if block is None:
             return True, completion_text
+        if self.trace_writer:
+            self.trace_writer.record(
+                "completion_rejected",
+                {
+                    "action": action,
+                    "step_number": context.step_number,
+                    "reason": str(block["reason"]),
+                },
+            )
         return False, str(block["reason"])
 
 

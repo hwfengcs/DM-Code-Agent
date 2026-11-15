@@ -1,13 +1,19 @@
 """MCP 客户端 - 负责与单个 MCP 服务器通信"""
 
+import contextlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
-from queue import Empty, Queue
+from collections import deque
+from pathlib import Path
+from queue import Empty, Full, Queue
 from threading import Lock, Thread
 from typing import Any
+
+from dm_agent.processes import ProcessTree
 
 
 class MCPClient:
@@ -62,11 +68,15 @@ class MCPClient:
         self.tools: list[dict[str, Any]] = []
         # 最近一次请求失败的原因（JSON-RPC error、超时、发送失败）；成功或新请求开始时清空。
         # 工具包装器把它带回观察，模型才看得到"缺了哪个参数"，而不是一句通用的调用失败。
+        self.response_received = False
         self.last_error = ""
         self._lock = Lock()
         self._message_id = 0
-        self._stdout_queue: Queue = Queue()
+        self._stdout_queue: Queue = Queue(maxsize=100)
         self._running = False
+        self._tree: ProcessTree | None = None
+        self._notifications: deque[dict[str, Any]] = deque(maxlen=100)
+        self._notification_lock = Lock()
 
     def start(self) -> bool:
         """
@@ -92,37 +102,43 @@ class MCPClient:
             if self.env:
                 process_env.update(self.env)
 
-            # Windows 平台特殊处理
-            is_windows = sys.platform == "win32"
-
-            # 启动子进程
-            if is_windows:
-                # Windows 需要 shell=True 来找到 npx 等命令
-                self.process = subprocess.Popen(
-                    subprocess.list2cmdline(full_command),
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    bufsize=1,
-                    env=process_env,
-                    shell=True,  # Windows 必需
+            executable = shutil.which(self.command, path=process_env.get("PATH")) or self.command
+            if sys.platform == "win32" and Path(executable).suffix.lower() in {".cmd", ".bat"}:
+                cli = (
+                    Path(executable).parent
+                    / "node_modules"
+                    / "npm"
+                    / "bin"
+                    / f"{Path(executable).stem}-cli.js"
                 )
+                node = shutil.which("node", path=process_env.get("PATH"))
+                if (
+                    Path(executable).stem.lower() not in {"npm", "npx"}
+                    or not cli.is_file()
+                    or not node
+                ):
+                    raise ValueError(
+                        "MCP batch launch requires an explicit interpreter; configure an executable instead"
+                    )
+                full_command = [node, str(cli), *self.args]
             else:
-                # Unix/Linux/macOS
-                self.process = subprocess.Popen(
-                    full_command,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    bufsize=1,
-                    env=process_env,
-                )
+                full_command[0] = executable
+            self._stdout_queue = Queue(maxsize=100)
+            with self._notification_lock:
+                self._notifications.clear()
+            self._tree = ProcessTree(
+                full_command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                env=process_env,
+                shell=False,
+            )
+            self.process = self._tree.process
 
             # 启动输出读取线程
             self._running = True
@@ -155,14 +171,30 @@ class MCPClient:
             >>> client.stop()  # 停止服务器进程
         """
         self._running = False
-        if self.process:
-            try:
-                self.process.terminate()
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-            self.process = None
-        print(f"🛑 MCP 服务器 '{self.name}' 已停止")
+        process = self.process
+        if self._tree is not None:
+            self._tree.stop(grace_seconds=0)
+            self._tree = None
+        elif process is not None:
+            process.kill()
+            process.wait(timeout=5)
+        for name in ("_stdout_thread", "_stderr_thread"):
+            thread = getattr(self, name, None)
+            if thread is not None:
+                thread.join(timeout=5)
+        if process is not None:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    with contextlib.suppress(OSError, ValueError):
+                        stream.close()
+        self.process = None
+
+    def drain_notifications(self) -> list[dict[str, Any]]:
+        """Consume up to 100 recent notifications; they are never response retries."""
+        with self._notification_lock:
+            notifications = list(self._notifications)
+            self._notifications.clear()
+            return notifications
 
     def _read_stdout(self) -> None:
         """
@@ -181,7 +213,22 @@ class MCPClient:
                 line = process.stdout.readline()
                 if not line:
                     break
-                self._stdout_queue.put(line.strip())
+                try:
+                    message = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(message, dict) and "method" in message and "id" not in message:
+                    with self._notification_lock:
+                        self._notifications.append(message)
+                    continue
+                try:
+                    self._stdout_queue.put_nowait(line.strip())
+                except Full:
+                    # Only one request is in flight. Retain recent responses, not an
+                    # unbounded backlog from a noisy or unsolicited server stream.
+                    with contextlib.suppress(Empty):
+                        self._stdout_queue.get_nowait()
+                    self._stdout_queue.put_nowait(line.strip())
             except Exception as e:
                 if self._running:
                     print(f"⚠️ 读取 MCP 输出错误: {e}")
@@ -208,6 +255,7 @@ class MCPClient:
             >>> # 注意：这个方法通常由其他方法内部调用
         """
         with self._lock:
+            self.response_received = False
             self.last_error = ""
             if not self.process or not self.process.stdin:
                 self.last_error = "MCP 进程未启动或输入管道不可用"
@@ -221,7 +269,6 @@ class MCPClient:
             if params:
                 message["params"] = params
 
-            deferred: list[str] = []
             try:
                 # 发送消息
                 # 将消息转为JSON字符串并通过标准输入发送
@@ -238,14 +285,16 @@ class MCPClient:
                             continue
 
                         if response.get("id") == self._message_id:
+                            self.response_received = True
                             if "error" in response:
                                 self.last_error = _describe_rpc_error(response["error"])
                                 print(f"❌ MCP 错误: {response['error']}")
                                 return None
                             return response.get("result")
 
-                        # 本次请求结束前不重新入队，避免同一通知形成无限忙循环。
-                        deferred.append(response_line)
+                        if "method" in response and "id" not in response:
+                            with self._notification_lock:
+                                self._notifications.append(response)
                     except Empty:
                         break
                     except json.JSONDecodeError:
@@ -259,9 +308,6 @@ class MCPClient:
                 self.last_error = f"发送请求失败：{e}"
                 print(f"❌ 发送 MCP 消息失败: {e}")
                 return None
-            finally:
-                for response_line in deferred:
-                    self._stdout_queue.put(response_line)
 
     def _read_stderr(self) -> None:
         """持续排空诊断管道，避免服务器因 stderr 缓冲区写满而阻塞。"""
@@ -307,7 +353,7 @@ class MCPClient:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "dm-code-agent", "version": "2.1.0"},
+                "clientInfo": {"name": "dm-code-agent", "version": "2.1.1"},
             },
         )
 
@@ -316,12 +362,30 @@ class MCPClient:
         if not self._send_notification("notifications/initialized"):
             return False
 
-        # 获取工具列表
-        tools_result = self._send_message("tools/list")
-        if tools_result and "tools" in tools_result:
-            self.tools = tools_result["tools"]
-            return True
-
+        tools: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        cursor = None
+        for _ in range(1000):
+            page = self._send_message("tools/list", {"cursor": cursor} if cursor else None)
+            if not isinstance(page, dict) or not isinstance(page.get("tools"), list):
+                self.last_error = "Invalid tools/list response"
+                return False
+            if any(
+                not isinstance(tool, dict) or not isinstance(tool.get("name"), str)
+                for tool in page["tools"]
+            ):
+                self.last_error = "Invalid tool definition"
+                return False
+            tools.extend(page["tools"])
+            cursor = page.get("nextCursor")
+            if cursor is None:
+                self.tools = tools
+                return True
+            if not isinstance(cursor, str) or not cursor or cursor in seen:
+                self.last_error = "Invalid or repeated tools/list cursor"
+                return False
+            seen.add(cursor)
+        self.last_error = "Too many tools/list pages"
         return False
 
     def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> str | None:

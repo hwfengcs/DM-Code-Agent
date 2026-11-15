@@ -47,6 +47,29 @@ MAX_ENTRY_LIMIT = 5000
 # 会话卡片缓存：路径 → (mtime_ns, size, card)。会话日志是 append-only 的，
 # mtime+size 一致就说明内容没变，可以直接复用上次的解析结果。
 _CARD_CACHE: dict[str, tuple[int, int, dict[str, Any]]] = {}
+_ENTRY_CACHE: dict[str, tuple[int, int, list[dict[str, Any]]]] = {}
+_ENTRY_CACHE_LOCK = threading.Lock()
+
+
+def _cached_entries(path: Path) -> list[dict[str, Any]]:
+    # Reuse unchanged files across pages. Cache at most 32 files / 16 MiB of input.
+    with _ENTRY_CACHE_LOCK:
+        stat = path.stat()
+        key = str(path)
+        cached = _ENTRY_CACHE.get(key)
+        if cached is not None and cached[:2] == (stat.st_mtime_ns, stat.st_size):
+            return cached[2]
+        entries = load_session_entries(path)
+        _ENTRY_CACHE.pop(key, None)
+        if stat.st_size <= 16 * 1024 * 1024:
+            while _ENTRY_CACHE and (
+                len(_ENTRY_CACHE) >= 32
+                or sum(item[1] for item in _ENTRY_CACHE.values()) + stat.st_size > 16 * 1024 * 1024
+            ):
+                _ENTRY_CACHE.pop(next(iter(_ENTRY_CACHE)))
+            _ENTRY_CACHE[key] = (stat.st_mtime_ns, stat.st_size, entries)
+        return entries
+
 
 # 删除的会话搬到这里，而不是 unlink。
 #
@@ -107,7 +130,7 @@ def _load(settings: ServerSettings, name: str) -> list[dict[str, Any]]:
     except SessionPathError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     try:
-        return load_session_entries(path)
+        return _cached_entries(path)
     except (OSError, TypeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -116,11 +139,11 @@ def _load(settings: ServerSettings, name: str) -> list[dict[str, Any]]:
 
 
 def _derive(
-    function: Callable[..., dict[str, Any]], *sessions: list[dict[str, Any]]
+    function: Callable[..., dict[str, Any]], *sessions: list[dict[str, Any]], **kwargs: Any
 ) -> dict[str, Any]:
     """在已读出的条目上跑 tracing 的纯函数；条目形状不合预期时是 422，不是 500。"""
     try:
-        return function(*sessions)
+        return function(*sessions, **kwargs)
     except _SESSION_SHAPE_ERRORS as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -136,7 +159,7 @@ def _session_card(settings: ServerSettings, path: Path) -> dict[str, Any]:
     if cached is not None and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
         return cached[2]
 
-    entries = load_session_entries(path)
+    entries = _cached_entries(path)
     summary = summarize_events(entries)
     analysis = analyze_events(entries)
     card = {
@@ -158,6 +181,8 @@ def _session_card(settings: ServerSettings, path: Path) -> dict[str, Any]:
         "size_bytes": stat.st_size,
         "modified": stat.st_mtime,
     }
+    if len(_CARD_CACHE) >= 256 and cache_key not in _CARD_CACHE:
+        _CARD_CACHE.pop(next(iter(_CARD_CACHE)))
     _CARD_CACHE[cache_key] = (stat.st_mtime_ns, stat.st_size, card)
     return card
 
@@ -236,18 +261,26 @@ def read_entries(
 def read_summary(
     settings: Annotated[ServerSettings, Depends(get_settings)],
     name: Annotated[str, Query()],
+    run_index: Annotated[int, Query(ge=-1)] = -1,
 ) -> dict[str, Any]:
     """等价于 ``dm-agent-trace view --json``。"""
-    return {"name": name, "summary": _derive(summarize_events, _load(settings, name))}
+    return {
+        "name": name,
+        "summary": _derive(summarize_events, _load(settings, name), run_index=run_index),
+    }
 
 
 @router.get("/analysis", summary="会话诊断")
 def read_analysis(
     settings: Annotated[ServerSettings, Depends(get_settings)],
     name: Annotated[str, Query()],
+    run_index: Annotated[int, Query(ge=-1)] = -1,
 ) -> dict[str, Any]:
     """等价于 ``dm-agent-trace analyze --json``：失败阶段、恢复链路、验证缺口、幻觉信号。"""
-    return {"name": name, "analysis": _derive(analyze_events, _load(settings, name))}
+    return {
+        "name": name,
+        "analysis": _derive(analyze_events, _load(settings, name), run_index=run_index),
+    }
 
 
 @router.get("/diff", summary="两次运行的行为 diff")

@@ -24,7 +24,11 @@ export function parseHash(hash: string): Route {
 
   if (segments[0] === 'run' && segments[1]) {
     // 会话名可能含子目录，decode 之后按原样交给后端。
-    return { name: 'run', session: decodeURIComponent(segments.slice(1).join('/')) }
+    try {
+      return { name: 'run', session: decodeURIComponent(segments.slice(1).join('/')) }
+    } catch {
+      return { name: 'list' }
+    }
   }
   if (segments[0] === 'diff') {
     return { name: 'diff', a: params.get('a') ?? '', b: params.get('b') ?? '' }

@@ -54,9 +54,26 @@ class ConfigSkill(BaseSkill):
     """从 JSON 配置字典初始化的简单技能实现"""
 
     def __init__(self, config: dict[str, Any]) -> None:
+        if (
+            not isinstance(config, dict)
+            or not isinstance(config.get("name"), str)
+            or not config["name"].strip()
+        ):
+            raise ValueError("skill name must be a non-empty string")
+        for key in ("display_name", "description", "version", "prompt_addition"):
+            if key in config and not isinstance(config[key], str):
+                raise ValueError(f"skill {key} must be a string")
+        for key in ("keywords", "patterns"):
+            value = config.get(key, [])
+            if not isinstance(value, list) or any(
+                not isinstance(item, str) or not item for item in value
+            ):
+                raise ValueError(f"skill {key} must be a list of non-empty strings")
+        if type(config.get("priority", 10)) is not int:
+            raise ValueError("skill priority must be an integer")
         self._metadata = SkillMetadata(
             name=config["name"],
-            display_name=config.get("display_name", config["name"]),
+            display_name=str(config.get("display_name", config["name"])),
             description=config.get("description", ""),
             keywords=config.get("keywords", []),
             patterns=config.get("patterns", []),

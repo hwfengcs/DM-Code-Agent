@@ -100,6 +100,7 @@ const STATUS_LABEL: Record<string, string> = {
   incomplete: '未做完',
   failed: '失败',
   cancelled: '已取消',
+  interrupted: '已中断',
   max_steps_exceeded: '步数耗尽',
 }
 

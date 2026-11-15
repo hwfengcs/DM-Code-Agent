@@ -20,6 +20,7 @@ from dm_agent.tools import default_tools
 from .models import EvalResult, EvalTask
 from .scripted_client import ScriptedLLMClient
 from .tasks import get_builtin_tasks
+from .validation import nonnegative_number, select_named
 
 
 @dataclass(frozen=True)
@@ -56,18 +57,19 @@ def run_suite(
     variant_names: Iterable[str] | None = None,
     cost_per_1k_tokens: float = 0.0,
 ) -> dict[str, Any]:
-    selected_tasks = list(tasks or get_builtin_tasks())
-    selected_variants = list(variants or DEFAULT_VARIANTS)
-
-    if task_ids:
-        allowed_tasks = set(task_ids)
-        selected_tasks = [task for task in selected_tasks if task.task_id in allowed_tasks]
-
-    if variant_names:
-        allowed_variants = set(variant_names)
-        selected_variants = [
-            variant for variant in selected_variants if variant.name in allowed_variants
-        ]
+    selected_tasks = select_named(
+        get_builtin_tasks() if tasks is None else tasks,
+        task_ids,
+        lambda task: task.task_id,
+        "tasks",
+    )
+    selected_variants = select_named(
+        DEFAULT_VARIANTS if variants is None else variants,
+        variant_names,
+        lambda variant: variant.name,
+        "variants",
+    )
+    nonnegative_number("cost_per_1k_tokens", cost_per_1k_tokens)
 
     results: list[EvalResult] = []
     for variant in selected_variants:
@@ -98,7 +100,7 @@ def run_task(
         skill_manager = None
         if variant.enable_skills:
             skill_manager = SkillManager()
-            skill_manager.load_all()
+            skill_manager.load_builtin_skills()
 
         agent = ReactAgent(
             client,

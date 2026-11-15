@@ -60,7 +60,7 @@ class SkillSelector:
     def _score_all(self, task: str, skills: dict[str, BaseSkill]) -> dict[str, float]:
         """计算每个技能的综合匹配分数。"""
         scores: dict[str, float] = {}
-        task_lower = task.lower()
+        task_lower = re.sub(r"\bReAct\b", "reasoning agent", task).lower()
 
         for name, skill in skills.items():
             meta = skill.get_metadata()
@@ -76,7 +76,15 @@ class SkillSelector:
         """关键词匹配，返回 0-1 之间的分数。"""
         if not keywords:
             return 0.0
-        hits = sum(1 for kw in keywords if kw.lower() in task_lower)
+        hits = sum(
+            1
+            for kw in keywords
+            if (
+                re.search(r"(?<![a-z0-9_])" + re.escape(kw.lower()) + r"(?![a-z0-9_])", task_lower)
+                if kw.isascii()
+                else kw.lower() in task_lower
+            )
+        )
         return hits / len(keywords)
 
     @staticmethod

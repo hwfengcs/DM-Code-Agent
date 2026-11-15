@@ -106,6 +106,8 @@ def truncate_observation(
         )
 
     head_chars = min(original_chars, _head_chars_for(max_chars))
+    if action in {"run_python", "run_shell", "run_tests", "run_linter"}:
+        head_chars = min(head_chars, int(max_chars * _HEAD_SHARE))
     tail_chars = max(0, max_chars - head_chars)
     head = text[:head_chars]
     tail = text[original_chars - tail_chars :] if tail_chars else ""

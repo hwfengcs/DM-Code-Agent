@@ -39,11 +39,11 @@ def _client_with_session(session, **kwargs):
     return client
 
 
-def test_deepseek_retries_bad_request_before_success():
+def test_deepseek_retries_gateway_error_before_success():
     session = FakeSession(
         [
             FakeResponse(
-                400, {"error": {"message": "temporary gateway parse error"}}, reason="Bad Request"
+                502, {"error": {"message": "temporary gateway parse error"}}, reason="Bad Gateway"
             ),
             FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]}),
         ]
@@ -61,9 +61,9 @@ def test_deepseek_retries_bad_request_before_success():
 def test_deepseek_stops_after_retry_budget():
     session = FakeSession(
         [
-            FakeResponse(400, {"error": {"message": "still bad"}}, reason="Bad Request"),
-            FakeResponse(400, {"error": {"message": "still bad"}}, reason="Bad Request"),
-            FakeResponse(400, {"error": {"message": "still bad"}}, reason="Bad Request"),
+            FakeResponse(503, {"error": {"message": "still bad"}}, reason="Unavailable"),
+            FakeResponse(503, {"error": {"message": "still bad"}}, reason="Unavailable"),
+            FakeResponse(503, {"error": {"message": "still bad"}}, reason="Unavailable"),
         ]
     )
     client = _client_with_session(session, max_retries=2)
@@ -72,6 +72,14 @@ def test_deepseek_stops_after_retry_budget():
         client.complete([{"role": "user", "content": "hello"}])
 
     assert len(session.calls) == 3
+
+
+def test_deepseek_does_not_repeat_ordinary_bad_requests():
+    session = FakeSession([FakeResponse(400, {"error": "invalid request"}, reason="Bad Request")])
+    client = _client_with_session(session, max_retries=3)
+    with pytest.raises(DeepSeekError, match="400"):
+        client.complete([{"role": "user", "content": "hello"}])
+    assert len(session.calls) == 1
 
 
 def test_deepseek_does_not_retry_auth_errors():

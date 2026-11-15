@@ -114,13 +114,14 @@ def _builtin_tools() -> list[Tool]:
         Tool(
             name="run_python",
             description=(
-                'Execute Python code using the local interpreter. Arguments: either {"code": string} or {"path": string, "args": optional string or list}.'
+                'Execute Python code using the local interpreter. Arguments: either {"code": string} or {"path": string, "args": optional string or list}. '
+                "Optional timeout (seconds, default 120) and max_output_bytes (per stream, default 8388608)."
             ),
             runner=run_python,
         ),
         Tool(
             name="run_shell",
-            description='Execute a shell command. Arguments: {"command": string}.',
+            description='Execute a shell command. Arguments: {"command": string}. Optional timeout (seconds, default 120) and max_output_bytes (per stream, default 8388608).',
             runner=run_shell,
         ),
         Tool(
@@ -128,6 +129,7 @@ def _builtin_tools() -> list[Tool]:
             description=(
                 "Run Python test suite. Arguments: {\"test_path\": optional string (default '.'), "
                 '"framework": optional "pytest"|"unittest" (default \'pytest\'), "verbose": optional bool (default false)}.'
+                " Optional timeout (seconds, default 120) and max_output_bytes (per stream, default 8388608)."
             ),
             runner=run_tests,
         ),
@@ -137,7 +139,8 @@ def _builtin_tools() -> list[Tool]:
                 'Run code linter/formatter. Arguments: {"path": string, '
                 '"tool": optional "ruff"|"flake8"|"pylint"|"mypy"|"black" (default \'ruff\')}. '
                 "If the chosen linter is not installed here, the tool replies with the list "
-                "of linters this environment does provide -- switch to one of those."
+                "of linters this environment does provide -- switch to one of those. "
+                "Optional timeout (seconds, default 120) and max_output_bytes (per stream, default 8388608)."
             ),
             runner=run_linter,
         ),

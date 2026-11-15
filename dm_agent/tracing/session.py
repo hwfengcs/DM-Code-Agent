@@ -57,6 +57,14 @@ def normalize_entries(raw_entries: Iterable[dict[str, Any]]) -> list[dict[str, A
             raise ValueError(f"Session entry {index + 1} must be a JSON object.")
         if "payload" in raw and not isinstance(raw["payload"], dict):
             raise ValueError(f"Session entry {index + 1} payload must be a JSON object.")
+        payload = raw.get("payload", {})
+        if "metadata" in payload and not isinstance(payload["metadata"], dict):
+            raise ValueError(f"Session entry {index + 1} metadata must be an object.")
+        if "steps" in payload and (
+            not isinstance(payload["steps"], list)
+            or any(not isinstance(step, dict) for step in payload["steps"])
+        ):
+            raise ValueError(f"Session entry {index + 1} steps must be a list of objects.")
         entry = dict(raw)
         entry_id = str(entry.get("id") or "")
         if not entry_id:

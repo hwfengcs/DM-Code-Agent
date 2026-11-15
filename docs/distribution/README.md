@@ -1,7 +1,7 @@
 # Distribution work queue
 
 Updated 2026-11-14. This is a preparation and measurement record, not a record of posts sent to
-external communities. The current release is v2.1.0. PyPI is not yet an installation channel.
+external communities. The current release is v2.1.1. PyPI is not yet an installation channel.
 
 ## Audience and message
 

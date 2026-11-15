@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from dm_agent.evals.validation import nonnegative_number, report_results
+
 
 @dataclass(frozen=True)
 class EconomicsEntry:
@@ -63,12 +65,14 @@ def summarize_report(
 
     suite = str(report.get("suite") or report.get("mode") or "unknown")
     summary = report.get("summary") or {}
-    results = list(report.get("results") or [])
-    total_runs = int(summary.get("total_runs") or summary.get("total") or len(results))
-    successes = _success_count(report, summary, total_runs)
+    if not isinstance(summary, dict):
+        raise ValueError("summary must be an object")
+    results = report_results(report, require_identity=False)
+    total_runs = len(results)
+    successes = sum(result["success"] for result in results)
     pass_rate = _safe_rate(successes, total_runs)
     pass_rate_ci = _pass_rate_ci(summary, successes, total_runs)
-    total_tokens = _total_tokens(results, summary)
+    total_tokens = _total_tokens(results, {})
     configured_cost = _resolve_cost_per_1k(report, cost_per_1k_tokens)
     total_cost = (
         (total_tokens / 1000.0) * cost_per_1k_tokens
@@ -228,26 +232,17 @@ def main(argv: Any = None) -> int:
     args = parse_args(argv)
     try:
         reports = load_json_reports(args.reports)
+        report = build_economics_report(
+            reports,
+            labels=args.label,
+            cost_per_1k_tokens=args.cost_per_1k_tokens,
+        )
     except (OSError, ValueError) as exc:
-        # 与 dm-agent-score-diff / dm-agent-manifest-diff 一致：输入读不了给一行说明、返回 2。
         print(f"Cannot read benchmark report: {exc}", file=sys.stderr)
         return 2
-    report = build_economics_report(
-        reports,
-        labels=args.label,
-        cost_per_1k_tokens=args.cost_per_1k_tokens,
-    )
     write_economics_report(report, json_path=args.output_json, markdown_path=args.output_md)
     print(render_markdown(report))
     return 0
-
-
-def _success_count(report: dict[str, Any], summary: dict[str, Any], total_runs: int) -> int:
-    if "resolved" in summary:
-        return int(summary.get("resolved") or 0)
-    if "overall_pass_rate" in summary:
-        return round(float(summary.get("overall_pass_rate") or 0.0) * total_runs)
-    return sum(1 for result in report.get("results", []) if result.get("success"))
 
 
 def _total_tokens(results: Sequence[dict[str, Any]], summary: dict[str, Any]) -> int:
@@ -258,13 +253,16 @@ def _total_tokens(results: Sequence[dict[str, Any]], summary: dict[str, Any]) ->
 
 def _resolve_cost_per_1k(report: dict[str, Any], override: float | None) -> float | None:
     if override is not None:
+        nonnegative_number("cost_per_1k_tokens", override)
         return override
     economics = report.get("token_economics") or {}
+    if not isinstance(economics, dict):
+        raise ValueError("token_economics must be an object")
     value = economics.get("cost_per_1k_tokens")
     if value is None:
         return None
-    value = float(value)
-    return value if value > 0 else None
+    nonnegative_number("cost_per_1k_tokens", value)
+    return float(value)
 
 
 def _pass_rate_ci(
@@ -273,11 +271,15 @@ def _pass_rate_ci(
     total_runs: int,
 ) -> dict[str, float]:
     interval = summary.get("overall_pass_rate_ci_95")
-    if isinstance(interval, dict) and {"low", "high"} <= set(interval):
-        return {
-            "low": float(interval.get("low", 0.0)),
-            "high": float(interval.get("high", 0.0)),
-        }
+    if interval is not None:
+        if not isinstance(interval, dict) or not {"low", "high"} <= set(interval):
+            raise ValueError("overall_pass_rate_ci_95 requires low and high")
+        low, high = interval["low"], interval["high"]
+        nonnegative_number("overall_pass_rate_ci_95.low", low)
+        nonnegative_number("overall_pass_rate_ci_95.high", high)
+        if not low <= high <= 1:
+            raise ValueError("overall_pass_rate_ci_95 must satisfy 0 <= low <= high <= 1")
+        return {"low": float(low), "high": float(high)}
     return _wilson_interval(successes, total_runs)
 
 

@@ -18,9 +18,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from dm_agent.evals.validation import report_results
 
 # 低于这个翻转数的差异不构成证据（见模块文档第二条）。
 NOISE_FLIP_THRESHOLD = 2
@@ -115,9 +118,9 @@ def _outcomes(report: dict[str, Any]) -> dict[tuple[str, str], bool]:
     意义就是暴露不稳定，任意一次挂掉就不该记成通过。
     """
     outcomes: dict[tuple[str, str], bool] = {}
-    for result in report.get("results", []):
+    for result in report_results(report):
         key = (str(result.get("task_id", "")), str(result.get("variant", "")))
-        success = bool(result.get("success"))
+        success = result["success"]
         outcomes[key] = success if key not in outcomes else (outcomes[key] and success)
     return outcomes
 
@@ -161,6 +164,11 @@ def compare_reports(
             "两份报告的 (task_id, variant) 集合不同；"
             "请使用相同任务和变体的完整报告，不能只比较交集。"
         )
+
+    elif Counter((r["task_id"], r["variant"]) for r in left["results"]) != Counter(
+        (r["task_id"], r["variant"]) for r in right["results"]
+    ):
+        reason = "重复次数不同；请使用相同试验规模比较通过率和总成本。"
 
     left_tokens, left_cost = _totals(left)
     right_tokens, right_cost = _totals(right)
@@ -304,9 +312,13 @@ def main(argv: Any = None) -> int:
         print(f"Failed to load reports: {exc}", file=sys.stderr)
         return 2
 
-    comparison = compare_reports(
-        left, right, left_label=args.left.name, right_label=args.right.name
-    )
+    try:
+        comparison = compare_reports(
+            left, right, left_label=args.left.name, right_label=args.right.name
+        )
+    except ValueError as exc:
+        print(f"Invalid benchmark report: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(comparison.to_dict(), indent=2, ensure_ascii=False))
     else:

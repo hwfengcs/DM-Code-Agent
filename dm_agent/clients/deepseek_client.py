@@ -10,7 +10,7 @@ import requests
 
 from .base_client import BaseLLMClient, LLMError
 
-DEFAULT_RETRY_STATUS_CODES = frozenset({400, 408, 409, 429, 500, 502, 503, 504})
+DEFAULT_RETRY_STATUS_CODES = frozenset({408, 409, 429, 500, 502, 503, 504})
 
 
 class DeepSeekError(LLMError):

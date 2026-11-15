@@ -6,7 +6,28 @@ from collections.abc import Sequence
 from typing import Any
 
 
-def summarize_events(events: list[dict[str, Any]]) -> dict[str, Any]:
+def select_run(events: list[dict[str, Any]], run_index: int = -1) -> list[dict[str, Any]]:
+    """Select a run_start segment, retaining its most recent runtime declaration."""
+    starts = [i for i, event in enumerate(events) if event.get("event") == "run_start"]
+    if not starts:
+        if run_index not in (-1, 0):
+            raise ValueError("run_index is out of range")
+        return events
+    index = len(starts) - 1 if run_index == -1 else run_index
+    if not 0 <= index < len(starts):
+        raise ValueError("run_index is out of range")
+    start = starts[index]
+    end = starts[index + 1] if index + 1 < len(starts) else len(events)
+    if index == 0:
+        return events[:end]
+    runtime = _last(events[:start], "runtime")
+    return ([runtime] if runtime else []) + events[start:end]
+
+
+def summarize_events(events: list[dict[str, Any]], *, run_index: int = -1) -> dict[str, Any]:
+    run_count = sum(event.get("event") == "run_start" for event in events)
+    session_event_count = len(events)
+    events = select_run(events, run_index)
     runtime = _first(events, "runtime")
     run_start = _first(events, "run_start")
     run_end = _last(events, "run_end")
@@ -15,6 +36,9 @@ def summarize_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     metadata = run_end.get("payload", {}).get("metadata", {}) if run_end else {}
     runtime_payload = runtime.get("payload", {}) if runtime else {}
     return {
+        "run_count": run_count,
+        "session_event_count": session_event_count,
+        "run_index": max(0, run_count - 1) if run_index == -1 else run_index,
         "run_id": events[0].get("run_id") if events else "",
         "schema_version": (run_start or {}).get("payload", {}).get("schema_version"),
         "task": (run_start or {}).get("payload", {}).get("task", ""),

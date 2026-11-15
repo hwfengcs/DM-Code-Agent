@@ -91,11 +91,15 @@ def main(argv: Any = None) -> int:
             print(str(exc), file=sys.stderr)
             return 2
     else:
-        report = run_suite(
-            task_ids=args.task,
-            variant_names=args.variant,
-            cost_per_1k_tokens=args.cost_per_1k_tokens,
-        )
+        try:
+            report = run_suite(
+                task_ids=args.task,
+                variant_names=args.variant,
+                cost_per_1k_tokens=args.cost_per_1k_tokens,
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
 
     if args.output:
         write_json_report(report, args.output)

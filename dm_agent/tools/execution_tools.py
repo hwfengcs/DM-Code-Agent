@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import os
 import shlex
-import subprocess
 import sys
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
 from .base import _require_str
+from .execution import execute
 
 # run_linter 支持的检查器，按推荐顺序（ruff 最快且覆盖面最广）。
 _LINTER_TOOLS = ("ruff", "flake8", "pylint", "mypy", "black")
@@ -74,14 +74,7 @@ def run_python(arguments: dict[str, Any]) -> str:
     else:
         raise ValueError("run_python 工具需要 'code' 或 'path' 参数。")
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_child_env(),
-    )
+    result = execute(command, arguments, env=_child_env())
     segments: list[str] = []
     if result.stdout:
         segments.append(result.stdout.strip())
@@ -94,15 +87,7 @@ def run_python(arguments: dict[str, Any]) -> str:
 def run_shell(arguments: dict[str, Any]) -> str:
     """运行 Shell 命令"""
     command = _require_str(arguments, "command")
-    result = subprocess.run(
-        command,
-        shell=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_child_env(),
-    )
+    result = execute(command, arguments, shell=True, env=_child_env())
     segments: list[str] = []
     if result.stdout:
         segments.append(result.stdout.strip())
@@ -140,20 +125,15 @@ def run_tests(arguments: dict[str, Any]) -> str:
         if verbose:
             command.append("-v")
         if path.is_file():
-            # 转换为模块路径
-            module_path = str(path).replace("/", ".").replace("\\", ".").replace(".py", "")
-            command.append(module_path)
+            start = path.resolve().parent
+            top = start
+            while (top / "__init__.py").is_file() and top.parent != top:
+                top = top.parent
+            command.extend(["discover", "-s", str(start), "-p", path.name, "-t", str(top)])
         else:
             command.extend(["discover", "-s", str(path)])
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_child_env(),
-    )
+    result = execute(command, arguments, env=_child_env())
     segments: list[str] = []
 
     if result.stdout:
@@ -188,14 +168,7 @@ def run_linter(arguments: dict[str, Any]) -> str:
     else:
         command = [sys.executable, "-m", tool, str(path)]
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_child_env(),
-    )
+    result = execute(command, arguments, env=_child_env())
 
     # 当前解释器没装这个检查器。直接把子进程的 "No module named X" 回给模型，会让它
     # 逐个盲试下一个（实测一道题平均撞两次），因此改为报出本环境实际可用的清单。

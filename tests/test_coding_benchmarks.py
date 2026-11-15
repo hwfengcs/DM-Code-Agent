@@ -1173,6 +1173,8 @@ def test_runner_passes_the_scoped_prompt_only_when_the_flag_is_on(monkeypatch, t
 
 class _FakeUsage:
     request_count = 0
+    usage_requests = 0
+    estimated_fallback_tokens = 0
     prompt_tokens = 0
     completion_tokens = 0
     total_tokens = 0

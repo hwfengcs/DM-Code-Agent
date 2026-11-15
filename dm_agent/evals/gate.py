@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 from typing import Any, TypeGuard
 
+from .validation import report_results
+
 
 def evaluate_gate(
     report: dict[str, Any],
@@ -35,6 +37,10 @@ def evaluate_gate(
     ]
     if violations:
         return violations
+    try:
+        results = report_results(report)
+    except ValueError as exc:
+        return [str(exc)]
     summary = report.get("summary")
     if not isinstance(summary, dict):
         return ["report has no summary object"]
@@ -63,8 +69,21 @@ def evaluate_gate(
                 f"is below the required {min_variant_rate:.3f}"
             )
 
+    actual_overall = sum(result["success"] for result in results) / len(results)
+    if _valid_rate(overall) and not math.isclose(overall, actual_overall, abs_tol=1e-9):
+        violations.append("summary.overall_success_rate disagrees with results")
+    result_variants = {result["variant"] for result in results}
+    if set(variants) != result_variants:
+        violations.append("summary variants disagree with results")
+    for name in result_variants:
+        group = [result for result in results if result["variant"] == name]
+        actual = sum(result["success"] for result in group) / len(group)
+        data = variants.get(name)
+        rate = data.get("success_rate") if isinstance(data, dict) else None
+        if _valid_rate(rate) and not math.isclose(rate, actual, abs_tol=1e-9):
+            violations.append(f"variant '{name}' success_rate disagrees with results")
     if violations:
-        for result in report.get("results", []):
+        for result in results:
             if isinstance(result, dict) and not result.get("success"):
                 violations.append(
                     f"failed: {result.get('variant', '?')}/{result.get('task_id', '?')}: "
@@ -101,7 +120,7 @@ def main(argv: Any = None) -> int:
 
     try:
         report = json.loads(args.report.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"gate: cannot read report: {exc}", file=sys.stderr)
         return 2
     if not isinstance(report, dict):

@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -48,8 +50,16 @@ def _fetch_page(offset: int, length: int) -> tuple[list[dict[str, Any]], int]:
     )
     with urllib.request.urlopen(f"{_ROWS_API}?{query}", timeout=120) as response:
         payload = json.load(response)
-    if "rows" not in payload or not isinstance(payload.get("num_rows_total"), int):
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("rows"), list)
+        or type(payload.get("num_rows_total")) is not int
+    ):
         raise RuntimeError(f"datasets-server 未返回 rows：{json.dumps(payload)[:400]}")
+    if any(
+        not isinstance(row, dict) or not isinstance(row.get("row"), dict) for row in payload["rows"]
+    ):
+        raise RuntimeError("datasets-server rows must contain objects")
     return [row["row"] for row in payload["rows"]], payload["num_rows_total"]
 
 
@@ -80,6 +90,8 @@ def _read_complete_cache(cache_path: Path) -> list[dict[str, Any]] | None:
         ]
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(metadata, dict) or any(not isinstance(item, dict) for item in instances):
         return None
     expected = {
         "schema_version": _CACHE_SCHEMA_VERSION,
@@ -117,6 +129,9 @@ def _write_complete_cache(cache_path: Path, instances: list[dict[str, Any]]) -> 
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    for previous in (cache_path, metadata_path):
+        if previous.exists():
+            shutil.copyfile(previous, previous.with_name(f"{previous.name}.{uuid.uuid4().hex}.bak"))
     cache_tmp.replace(cache_path)
     metadata_tmp.replace(metadata_path)
 

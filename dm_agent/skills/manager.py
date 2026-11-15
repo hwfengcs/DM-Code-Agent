@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from dm_agent.paths import user_data_dir
+
 from .base import BaseSkill, ConfigSkill
 from .selector import SkillSelector
 
@@ -59,7 +61,11 @@ class SkillManager:
 
     def load_custom_skills(self, directory: str | Path | None = None) -> int:
         """从目录扫描 JSON 文件加载自定义技能，返回加载数量。"""
-        directory = Path(__file__).parent / "custom" if directory is None else Path(directory)
+        if directory is None:
+            return self.load_custom_skills(
+                Path(__file__).parent / "custom"
+            ) + self.load_custom_skills(user_data_dir() / "skills")
+        directory = Path(directory)
 
         if not directory.is_dir():
             return 0

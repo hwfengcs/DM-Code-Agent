@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 try:
     from openai import OpenAI
@@ -53,13 +53,17 @@ class OpenAIClient(BaseLLMClient):
         """向 OpenAI API 发送生成请求。"""
 
         try:
-            # 将消息格式转换为输入字符串
-            input_text = self._convert_messages_to_input(messages)
-
-            # 调用 OpenAI responses API
+            parameters = dict(extra)
+            if "max_tokens" in parameters:
+                parameters.setdefault("max_output_tokens", parameters.pop("max_tokens"))
+            # Reasoning families do not universally accept sampling controls.
+            if self.model.startswith(("gpt-5", "o1", "o3", "o4")):
+                for key in ("temperature", "top_p"):
+                    parameters.pop(key, None)
             response = self.client.responses.create(
                 model=self.model,
-                input=input_text,
+                input=cast(Any, messages),
+                **parameters,
             )
 
             # 返回包含响应的字典
@@ -85,22 +89,3 @@ class OpenAIClient(BaseLLMClient):
                 raise LLMError(f"无法从 OpenAI 响应中提取文本: {e}") from e
 
         raise LLMError("无法从 OpenAI 响应中提取文本。")
-
-    def _convert_messages_to_input(self, messages: list[dict[str, str]]) -> str:
-        """将标准消息格式转换为输入字符串。"""
-        input_parts = []
-
-        for msg in messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-
-            if role == "system":
-                input_parts.append(f"System: {content}")
-            elif role == "user":
-                input_parts.append(f"User: {content}")
-            elif role == "assistant":
-                input_parts.append(f"Assistant: {content}")
-            else:
-                input_parts.append(content)
-
-        return "\n\n".join(input_parts)

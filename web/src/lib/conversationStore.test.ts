@@ -106,3 +106,28 @@ it('does not erase a new conversation identifier when an old restore fails', asy
 
   expect(sessionStorage.getItem('dm-agent-console-conversation')).toBe('chat-2')
 })
+
+it('batches a burst and deduplicates entries before publishing', async () => {
+  await startConversation({ provider: 'deepseek', model: '', options: {} })
+  for (let i = 0; i < 1000; i += 1) {
+    const event: apiModule.StreamEvent = {
+      kind: 'entry', lineIndex: i,
+      entry: { id: `entry-${i}`, parent_id: '', timestamp: '', run_id: 'chat-1', event: 'step', payload: {} },
+    }
+    onEvent(event)
+    onEvent(event)
+  }
+  expect(useConversation().entries).toHaveLength(0)
+  await vi.waitFor(() => expect(useConversation().entries).toHaveLength(1000))
+})
+
+it('does not publish buffered entries into a replacement conversation', async () => {
+  await startConversation({ provider: 'deepseek', model: '', options: {} })
+  onEvent({ kind: 'entry', lineIndex: 1,
+    entry: { id: 'old', parent_id: '', timestamp: '', run_id: 'chat-1', event: 'step', payload: {} } })
+  clearConversation()
+  vi.mocked(apiModule.api.createConversation).mockResolvedValue({ ...record, run_id: 'chat-2' })
+  await startConversation({ provider: 'deepseek', model: '', options: {} })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  expect(useConversation().entries).toHaveLength(0)
+})

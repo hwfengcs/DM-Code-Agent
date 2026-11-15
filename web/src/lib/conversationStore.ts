@@ -45,6 +45,26 @@ const EMPTY: ConversationState = {
 let state: ConversationState = EMPTY
 let unsubscribe: (() => void) | null = null
 let generation = 0
+let entryIds = new Set<string>()
+let pendingEntries: SessionEntry[] = []
+let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+function resetEntries(): void {
+  if (flushTimer !== null) clearTimeout(flushTimer)
+  flushTimer = null
+  pendingEntries = []
+  entryIds = new Set()
+}
+
+function flushEntries(): void {
+  if (flushTimer !== null) clearTimeout(flushTimer)
+  flushTimer = null
+  if (pendingEntries.length) {
+    const batch = pendingEntries
+    pendingEntries = []
+    set({ entries: [...state.entries, ...batch] })
+  }
+}
 const listeners = new Set<() => void>()
 
 function emit(): void {
@@ -78,23 +98,27 @@ function describe(cause: unknown): string {
 function attach(conversationId: string): void {
   unsubscribe?.()
   unsubscribe = subscribeToConversation(conversationId, (event) => {
+    if (state.record?.run_id !== conversationId) return
     switch (event.kind) {
       case 'status':
         set({ record: event.record as ConversationRecord })
         break
       case 'entry':
-        // 按 id 去重：断线重连时 Last-Event-ID 之前的条目可能被重发。
-        set({
-          entries: state.entries.some((item) => item.id === event.entry.id)
-            ? state.entries
-            : [...state.entries, event.entry],
-        })
-        if (event.entry.event === 'run_end') void refresh(conversationId)
+        if (!entryIds.has(event.entry.id)) {
+          entryIds.add(event.entry.id)
+          pendingEntries.push(event.entry)
+          flushTimer ??= setTimeout(flushEntries, 16)
+        }
+        if (event.entry.event === 'run_end' || event.entry.event === 'turn_end') {
+          flushEntries()
+          void refresh(conversationId)
+        }
         break
       case 'malformed':
         set({ notice: `会话日志第 ${event.lineIndex} 行无法解析，已跳过。` })
         break
       case 'done':
+        flushEntries()
         set({ record: event.record as ConversationRecord })
         break
       case 'error':
@@ -133,6 +157,7 @@ export async function startConversation(body: {
     }
     const created = await api.createConversation(body)
     sessionStorage.setItem(STORAGE_KEY, created.run_id)
+    resetEntries()
     set({ record: created, entries: [], pending: false })
     attach(created.run_id)
     return true
@@ -177,6 +202,7 @@ export function clearConversation(): void {
   unsubscribe?.()
   unsubscribe = null
   sessionStorage.removeItem(STORAGE_KEY)
+  resetEntries()
   state = EMPTY
   emit()
 }
@@ -196,6 +222,7 @@ export async function restoreConversation(): Promise<void> {
     const record = await api.conversation(conversationId)
     if (generation !== restoringGeneration) return
     if (record.status === 'idle' || record.status === 'running') {
+      resetEntries()
       set({ record, entries: [], restoring: false })
       attach(conversationId)
       return

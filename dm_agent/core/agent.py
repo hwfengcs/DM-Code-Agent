@@ -119,10 +119,14 @@ class ReactAgent:
             return cast(BaseLLMClient, request_client.with_phase(phase))
 
         self._request_client = client_for("agent")
-        self._completion_gate = CompletionGate(self.event_bus, on_error=self._record_hook_error)
+        self._completion_gate = CompletionGate(
+            self.event_bus, on_error=self._record_hook_error, trace_writer=self.trace_writer
+        )
 
         self.tools = {tool.name: tool for tool in tools}
         self.tools_list = tools  # 保留工具列表用于规划器
+        if type(max_steps) is not int or max_steps < 1:
+            raise ValueError("max_steps must be a positive integer")
         self.max_steps = max_steps
         self.temperature = temperature
         self.system_prompt = system_prompt or build_code_agent_prompt(tools)
@@ -342,7 +346,9 @@ class ReactAgent:
 
         started_at = time.perf_counter()
         steps: list[Step] = []
-        limit = max_steps or self.max_steps
+        limit = self.max_steps if max_steps is None else max_steps
+        if type(limit) is not int or limit < 1:
+            raise ValueError("max_steps must be a positive integer")
         if checkpoint_path is not None:
             self._persistence.prepare_session_checkpoint(checkpoint_path)
         self._edit_guard.reset()
@@ -679,7 +685,8 @@ class ReactAgent:
                     action=action,
                     action_input=action_input,
                     observation=observation,
-                    failed=self._is_failure_observation(observation, action=action),
+                    failed=error_kind == "critic_rejected"
+                    or self._is_failure_observation(observation, action=action),
                 )
 
             # 更新计划进度（如果有计划；被拦下或明确无进展的调用不算完成）。

@@ -69,6 +69,7 @@ export function RunDetail({
   const [tab, setTab] = useState<Tab>('conversation')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [runIndex, setRunIndex] = useState(0)
+  const [runLoading, setRunLoading] = useState(false)
   const [forkNotice, setForkNotice] = useState<string | null>(null)
 
   useEffect(() => {
@@ -82,6 +83,7 @@ export function RunDetail({
     Promise.all([api.summary(session), api.analysis(session), fetchAllEntries(session)])
       .then(([summary, analysis, entries]) => {
         if (cancelled) return
+        setRunIndex(Math.max(0, splitRuns(entries.entries).length - 1))
         setData({ summary: summary.summary, analysis: analysis.analysis, entries: entries.entries })
       })
       .catch((cause: unknown) => {
@@ -91,6 +93,22 @@ export function RunDetail({
       cancelled = true
     }
   }, [session])
+
+  const loadedEntries = data?.entries
+  useEffect(() => {
+    if (!loadedEntries) return
+    let cancelled = false
+    setRunLoading(true)
+    Promise.all([api.summary(session, runIndex), api.analysis(session, runIndex)])
+      .then(([summary, analysis]) => {
+        if (!cancelled) setData((current) => current ? { ...current, summary: summary.summary, analysis: analysis.analysis } : null)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+      })
+      .finally(() => { if (!cancelled) setRunLoading(false) })
+    return () => { cancelled = true }
+  }, [session, runIndex, loadedEntries])
 
   const runs = useMemo(() => (data ? splitRuns(data.entries) : []), [data])
   const visibleEntries = useMemo(() => {
@@ -102,7 +120,7 @@ export function RunDetail({
 
   // 对话分区看的是**整份日志**，不受 run 段筛选影响——多段 run 在对话里正是多轮，
   // 只显示其中一段等于把对话拆散了。其余分区（执行链 / 折叠）仍按所选段看。
-  const turns = useMemo(() => (data ? splitTurns(data.entries) : []), [data])
+  const turns = useMemo(() => (data ? splitTurns(data.entries, false) : []), [data])
   const canReadAsConversation = useMemo(
     () => (data ? looksLikeConversation(data.entries) : false),
     [data],
@@ -193,7 +211,7 @@ export function RunDetail({
       />
     )
   }
-  if (!data) return <Spinner label={`读取 ${session}`} />
+  if (!data || runLoading) return <Spinner label={`读取 ${session}`} />
 
   const { summary, analysis } = data
   const isCompareBase = compareWith === session

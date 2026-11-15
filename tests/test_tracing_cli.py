@@ -177,6 +177,9 @@ def _blocked_replay_events() -> list[dict[str, Any]]:
 
 def _summary_for_gap_trace() -> dict[str, Any]:
     return {
+        "run_count": 1,
+        "session_event_count": 7,
+        "run_index": 0,
         "run_id": "trace-fixed",
         "schema_version": "2.0",
         "task": "repair widget",

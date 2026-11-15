@@ -5,8 +5,8 @@
  * 验证缺口）仍然由后端 `dm_agent.tracing` 算好送过来。
  *
  * 为什么对话视图不另存一份状态：一份 append-only 的会话日志已经完整表达了多轮
- * 对话——`run_start` 是用户发的那一句，中间的 step / tool_call 是 agent 干的活，
- * `run_end` 是它的回答。从条目推导轮次意味着**实时看到的和事后审计到的必然一致**，
+ * 对话——`turn_start` / `turn_end` 标记用户轮次，中间的 step / tool_call 是 agent 干的活。
+ * 旧日志回退到 `run_start` / `run_end`。从条目推导轮次意味着实时与历史视图口径一致，
  * 而且历史会话不需要第二套渲染器就能以对话形式打开。
  */
 import type { SessionEntry } from './types'
@@ -15,17 +15,17 @@ import { actionOf, isFailureEntry, stringField } from './entries'
 export interface ConversationTurnView {
   /** 从 1 开始的轮次序号。 */
   index: number
-  /** 用户这一轮说了什么（`run_start.task`）。 */
+  /** 用户这一轮说了什么（`turn_start.task`，旧日志取 `run_start.task`）。 */
   task: string
-  /** 这一轮的全部条目，含 `run_start` / `run_end` 本身。 */
+  /** 这一轮的全部条目，含轮次边界与内部运行。 */
   entries: SessionEntry[]
   /** 执行过程条目（step / tool_call / replan / critic_review / 各类错误）。 */
   activity: SessionEntry[]
   /** agent 的最终回答；未结束时为空串。 */
   answer: string
-  /** `run_end.status`；未结束时为空串。 */
+  /** `turn_end.status`；旧日志取 `run_end.status`。 */
   status: string
-  /** 这一轮还在跑（没有 `run_end`）。 */
+  /** 这一轮还在跑（没有对应的结束记录）。 */
   running: boolean
   /** 过程里出现过失败条目。用于在收起状态下也能看见「这轮不顺」。 */
   failed: boolean
@@ -58,6 +58,7 @@ const ACTIVITY_EVENTS = new Set([
   'run_error',
   'circuit_breaker',
   'hook_error',
+  'completion_rejected',
 ])
 
 /** `edit_guard.reason` 的人话。取值来自 `memory/context_budget.py` 的 `FileLedger.check_edit`。 */
@@ -69,15 +70,18 @@ const EDIT_GUARD_REASONS: Record<string, string> = {
 /**
  * 把条目流切成轮次。
  *
- * `run_start` 之前的条目（`runtime`、扩展诊断等）属于「会话建立」阶段，不归任何
+ * 轮次开始之前的条目（`runtime`、扩展诊断等）属于「会话建立」阶段，不归任何
  * 一轮——它们由调用方决定要不要显示，这里直接丢弃，免得第一轮凭空多出一堆噪音。
  */
-export function splitTurns(entries: SessionEntry[]): ConversationTurnView[] {
+export function splitTurns(entries: SessionEntry[], active = true): ConversationTurnView[] {
   const turns: ConversationTurnView[] = []
   let current: ConversationTurnView | null = null
+  let explicit = false
 
   for (const entry of entries) {
-    if (entry.event === 'run_start') {
+    if (entry.event === 'conversation_start') explicit = true
+    if (entry.event === 'turn_start') explicit = true
+    if (entry.event === 'turn_start' || (!explicit && entry.event === 'run_start')) {
       current = {
         index: turns.length + 1,
         task: stringField(entry, 'task'),
@@ -101,8 +105,20 @@ export function splitTurns(entries: SessionEntry[]): ConversationTurnView[] {
     current.entries.push(entry)
     if (isFailureEntry(entry)) current.failed = true
 
+    if (explicit && entry.event === 'run_start') {
+      if (!current.task) current.task = stringField(entry, 'task')
+      current.answer = ''
+      current.status = ''
+    }
     if (entry.event === 'run_end') {
       current.answer = stringField(entry, 'final_answer')
+      if (explicit) continue
+      current.status = stringField(entry, 'status')
+      current.running = false
+      current.finishedAt = entry.timestamp
+      continue
+    }
+    if (entry.event === 'turn_end') {
       current.status = stringField(entry, 'status')
       current.running = false
       current.finishedAt = entry.timestamp
@@ -113,6 +129,12 @@ export function splitTurns(entries: SessionEntry[]): ConversationTurnView[] {
       if (entry.event === 'tool_call') current.toolCallCount += 1
       if (entry.event === 'step') current.stepCount += 1
       if (entry.event === 'replan') current.replanCount += 1
+    }
+  }
+  for (const turn of turns) {
+    if (turn.running && (!active || turn !== turns.at(-1) || turn.entries.some((entry) => entry.event === 'conversation_end' || entry.event === 'turn_end'))) {
+      turn.running = false
+      turn.status = 'interrupted'
     }
   }
   return turns
@@ -187,9 +209,9 @@ export function labelActivityEntry(entry: SessionEntry): string {
 /**
  * 这份日志能不能当成对话来读。
  *
- * 判据只有一条：有没有 `run_start`。没有的话（极老的 1.x trace、或只含 checkpoint
+ * 判据是有没有 `turn_start` 或 `run_start`。没有的话（极老的 1.x trace、或只含 checkpoint
  * 条目的文件）就退回执行链视图，而不是渲染出一个空对话。
  */
 export function looksLikeConversation(entries: SessionEntry[]): boolean {
-  return entries.some((entry) => entry.event === 'run_start')
+  return entries.some((entry) => entry.event === 'turn_start' || entry.event === 'run_start')
 }

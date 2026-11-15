@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from dm_agent.core.observation import _STRUCTURED_OUTPUT_TOOLS, is_failure_observation
+from dm_agent.observations import _STRUCTURED_OUTPUT_TOOLS, is_failure_observation
 from dm_agent.tools import _builtin_tools
 
 # --- 搬运来的内容不算失败（这批就是当初的误报） ---

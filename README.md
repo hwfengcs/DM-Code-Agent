@@ -52,7 +52,7 @@ and unittest checks. No model key required. [Watch all 38 seconds](docs/media/de
 Python 3.10+, three commands. The release wheel includes the browser console; no Node.js needed.
 
 ```bash
-pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.0/dm_code_agent-2.1.0-py3-none-any.whl"
+pip install "dm-code-agent[web] @ https://github.com/hwfengcs/DM-Code-Agent/releases/download/v2.1.1/dm_code_agent-2.1.1-py3-none-any.whl"
 dm-agent-demo --output demo-run
 dm-agent-web --sessions-dir demo-run/sessions --read-only
 ```

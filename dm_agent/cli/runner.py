@@ -318,7 +318,7 @@ def run_conversation_stdin(
     * 调用方 → 子进程：stdin 上每行一个 JSON 对象，``{"task": "..."}`` 跑一轮，
       ``{"type": "reset"}`` 清空对话历史与本地记忆。EOF 表示会话结束。
     * 子进程 → 调用方：**没有 stdout 协议**。每一轮的进展、结果、失败全都在
-      ``--trace`` 的会话日志里（``run_start`` / ``run_end`` 本来就在），调用方跟读
+      ``--trace`` 的会话日志里（``turn_start`` / ``turn_end``），调用方跟读
       那个文件即可。stdout/stderr 保持人类可读日志的原样。
 
     这么设计有两个好处：不需要发明第二套协议，也不会被 agent 自己的打印污染；
@@ -370,6 +370,8 @@ def run_conversation_stdin(
     )
 
     turn = 0
+    if trace_writer:
+        trace_writer.record("conversation_start", {"turn_protocol": 1})
     reason = "eof"
     try:
         while True:
@@ -395,9 +397,14 @@ def run_conversation_stdin(
 
             turn += 1
             UI.status("run", f"第 {turn} 轮", task[:80])
+            if trace_writer:
+                trace_writer.record("turn_start", {"turn": turn, "task": task})
+            turn_status = "interrupted"
             try:
                 result = agent.run(task)
+                turn_status = str(result.get("metadata", {}).get("status", "unknown"))
             except LLMError as e:
+                turn_status = "error"
                 # 单轮失败不该杀掉整个会话——记一条证据，继续等下一轮。
                 if trace_writer:
                     trace_writer.record(
@@ -407,6 +414,7 @@ def run_conversation_stdin(
                 UI.status("error", f"第 {turn} 轮 API 错误", str(e))
                 continue
             except Exception as e:
+                turn_status = "error"
                 if trace_writer:
                     trace_writer.record(
                         "run_error",
@@ -414,6 +422,9 @@ def run_conversation_stdin(
                     )
                 UI.status("error", f"第 {turn} 轮失败", str(e))
                 continue
+            finally:
+                if trace_writer:
+                    trace_writer.record("turn_end", {"turn": turn, "status": turn_status})
 
             metadata = result.get("metadata", {})
             UI.status(

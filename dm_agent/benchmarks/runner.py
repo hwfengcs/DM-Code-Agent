@@ -19,6 +19,7 @@ from typing import Any
 from dm_agent.clients.llm_factory import PROVIDER_DEFAULTS, create_llm_client
 from dm_agent.core import ReactAgent
 from dm_agent.evals.real_runner import PROVIDER_API_KEY_ENV, UsageTrackingClient
+from dm_agent.evals.validation import nonnegative_number, positive_int, select_named
 from dm_agent.skills import SkillManager
 from dm_agent.tools import default_tools
 from dm_agent.tracing import TraceWriter, analyze_events, load_trace_events
@@ -62,27 +63,27 @@ def run_benchmark_suite(
     config: BenchmarkRunConfig | None = None,
 ) -> dict[str, Any]:
     config = config or BenchmarkRunConfig()
-    selected_tasks = list(tasks or get_benchmark_tasks(suite, task_ids))
-    selected_variants = list(variants or DEFAULT_BENCH_VARIANTS)
-
-    if task_ids and tasks is not None:
-        allowed_tasks = set(task_ids)
-        selected_tasks = [task for task in selected_tasks if task.task_id in allowed_tasks]
-
-    if variant_names:
-        allowed_variants = set(variant_names)
-        available_variants = variants if variants is not None else BENCH_VARIANTS
-        selected_variants = [
-            variant for variant in available_variants if variant.name in allowed_variants
-        ]
-
-    if config.repeat < 1:
-        raise ValueError("repeat must be at least 1")
+    selected_tasks = select_named(
+        get_benchmark_tasks(suite) if tasks is None else tasks,
+        task_ids,
+        lambda task: task.task_id,
+        "benchmark tasks",
+    )
+    available_variants = (
+        (BENCH_VARIANTS if variant_names is not None else DEFAULT_BENCH_VARIANTS)
+        if variants is None
+        else variants
+    )
+    selected_variants = select_named(
+        available_variants, variant_names, lambda variant: variant.name, "benchmark variants"
+    )
+    positive_int("repeat", config.repeat)
+    if config.max_steps is not None:
+        positive_int("max_steps", config.max_steps)
+    positive_int("timeout", config.timeout)
+    nonnegative_number("temperature", config.temperature)
+    nonnegative_number("cost_per_1k_tokens", config.cost_per_1k_tokens)
     _validate_benchmark_config(config)
-    if not selected_tasks:
-        raise ValueError("no benchmark tasks selected")
-    if not selected_variants:
-        raise ValueError("no benchmark variants selected")
 
     results: list[CodingBenchResult] = []
     for repeat_index in range(config.repeat):
@@ -663,12 +664,12 @@ def _run_benchmark_task_in_workspace(
     skill_manager = None
     if variant.enable_skills:
         skill_manager = SkillManager()
-        skill_manager.load_all()
+        skill_manager.load_builtin_skills()
 
     agent = ReactAgent(
         client,
         default_tools(include_mcp=False),
-        max_steps=config.max_steps or task.max_steps,
+        max_steps=task.max_steps if config.max_steps is None else config.max_steps,
         temperature=config.temperature,
         enable_planning=variant.enable_planning,
         enable_compression=variant.enable_compression,
@@ -724,6 +725,8 @@ def _run_benchmark_task_in_workspace(
             "provider": config.provider.lower(),
             "model": client.model,
             "request_count": client.usage.request_count,
+            "usage_requests": client.usage.usage_requests,
+            "estimated_fallback_tokens": client.usage.estimated_fallback_tokens,
             "prompt_tokens": client.usage.prompt_tokens,
             "completion_tokens": client.usage.completion_tokens,
             "total_tokens": client.usage.total_tokens,
@@ -833,13 +836,19 @@ def _write_files(workspace: Path, files: dict[str, str]) -> None:
 
 def _snapshot_workspace(workspace: Path) -> dict[str, bytes]:
     snapshot: dict[str, bytes] = {}
-    for path in workspace.rglob("*"):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(workspace).as_posix()
-        if not _should_track_file(relative):
-            continue
-        snapshot[relative] = path.read_bytes()
+    for directory, subdirectories, filenames in os.walk(workspace):
+        subdirectories[:] = [
+            name
+            for name in subdirectories
+            if _should_track_file((Path(directory) / name).relative_to(workspace).as_posix())
+        ]
+        for name in filenames:
+            path = Path(directory) / name
+            if not path.is_file():
+                continue
+            relative = path.relative_to(workspace).as_posix()
+            if _should_track_file(relative):
+                snapshot[relative] = path.read_bytes()
     return snapshot
 
 

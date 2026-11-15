@@ -49,6 +49,8 @@ def _load_resume_records(output: Path, selected_ids: set[str]) -> list[dict[str,
         if not line.strip():
             continue
         record = json.loads(line)
+        if not isinstance(record, dict):
+            raise ValueError(f"line {line_number} must be an object")
         instance_id = record.get("instance_id")
         if not isinstance(instance_id, str) or instance_id not in selected_ids:
             raise ValueError(f"line {line_number} has an instance outside the current selection")

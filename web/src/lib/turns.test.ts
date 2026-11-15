@@ -69,6 +69,47 @@ describe('splitTurns', () => {
     expect(turns[0]?.status).toBe('')
   })
 
+  it('内部重试仍属于同一用户轮次，只有 turn_end 结束轮次', () => {
+    const entries = [
+      entry('conversation_start', { turn_protocol: 1 }),
+      entry('turn_start', { task: '修复故障', turn: 1 }),
+      ...turnEntries('修复故障', '第一次尝试'),
+      entry('run_start', { task: '修复故障' }),
+      entry('step', { action: 'run_tests' }),
+    ]
+    const pending = splitTurns(entries)
+    expect(pending).toHaveLength(1)
+    expect(pending[0]?.running).toBe(true)
+    expect(pending[0]?.answer).toBe('')
+    expect(pending[0]?.stepCount).toBe(2)
+
+    const completed = splitTurns([
+      ...entries,
+      entry('run_end', { status: 'success', final_answer: '最终回答' }),
+      entry('turn_end', { turn: 1, status: 'success' }),
+      entry('turn_start', { turn: 2, task: '下一问' }),
+    ])
+    expect(completed).toHaveLength(2)
+    expect(completed[0]?.answer).toBe('最终回答')
+    expect(completed[0]?.status).toBe('success')
+    expect(completed[0]?.running).toBe(false)
+    expect(completed[1]?.task).toBe('下一问')
+    expect(completed[1]?.running).toBe(true)
+  })
+
+  it('逸出异常没有 run_end 也能结束用户轮次', () => {
+    const turns = splitTurns([
+      entry('conversation_start', { turn_protocol: 1 }),
+      entry('turn_start', { task: '问' }),
+      entry('run_error', { message: '请求失败' }),
+      entry('turn_end', { status: 'error' }),
+    ])
+    expect(turns).toHaveLength(1)
+    expect(turns[0]?.running).toBe(false)
+    expect(turns[0]?.status).toBe('error')
+    expect(turns[0]?.failed).toBe(true)
+  })
+
   it('统计执行过程但不把 message 算进去', () => {
     // message 是对话历史的原始载体，在对话视图里由 run_start / run_end 表达。
     const turns = splitTurns(

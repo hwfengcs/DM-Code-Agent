@@ -183,7 +183,8 @@ def test_gate_rejects_unreadable_report(tmp_path):
 @pytest.mark.parametrize("rate", [float("nan"), float("inf"), -0.1, 1.1, True])
 def test_gate_rejects_invalid_success_rates(rate):
     report = {
-        "summary": {"overall_success_rate": rate, "variants": {"full": {"success_rate": rate}}}
+        "summary": {"overall_success_rate": rate, "variants": {"full": {"success_rate": rate}}},
+        "results": [{"task_id": "a", "variant": "full", "success": True}],
     }
 
     violations = evaluate_gate(report, min_success_rate=1.0, min_variant_rate=1.0)
@@ -194,12 +195,13 @@ def test_gate_rejects_invalid_success_rates(rate):
 
 def test_gate_reports_a_low_variant_rate_with_the_same_precision_as_the_overall_rate():
     report = {
-        "summary": {"overall_success_rate": 1.0, "variants": {"full": {"success_rate": 2 / 3}}}
+        "summary": {"overall_success_rate": 2 / 3, "variants": {"full": {"success_rate": 2 / 3}}},
+        "results": [{"task_id": str(i), "variant": "full", "success": i < 2} for i in range(3)],
     }
 
     violations = evaluate_gate(report, min_success_rate=1.0, min_variant_rate=1.0)
 
-    assert violations == ["variant 'full' success_rate 0.667 is below the required 1.000"]
+    assert "variant 'full' success_rate 0.667 is below the required 1.000" in violations
 
 
 @pytest.mark.parametrize("variants", [None, {}, [], {"full": []}])

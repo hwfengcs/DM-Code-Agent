@@ -124,6 +124,7 @@ def test_missing_variant_refuses_to_compare():
 
 def test_repeated_runs_only_count_as_passing_when_every_repeat_passed():
     left = _report({"a": True})
+    left["results"] *= 2
     right = {
         "manifest": {"suite_signature": "sig-a"},
         "results": [

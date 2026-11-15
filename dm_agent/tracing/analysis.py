@@ -61,9 +61,12 @@ def _hallucination_signals(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def analyze_events(events: list[dict[str, Any]]) -> dict[str, Any]:
+def analyze_events(events: list[dict[str, Any]], *, run_index: int = -1) -> dict[str, Any]:
     """Return a deterministic advisory analysis for one trace."""
 
+    from .summary import select_run
+
+    events = select_run(events, run_index)
     summary = summarize_events(events)
     run_start = _first(events, "run_start")
     run_end = _last(events, "run_end")
@@ -166,7 +169,9 @@ def _failure_events(
             failures.append(_failure_item(index, name, "parse", payload))
         elif name == "llm_error":
             failures.append(_failure_item(index, name, "llm", payload))
-        elif name == "critic_review" and not payload.get("passed", True):
+        elif (name == "completion_rejected" and payload.get("action") == "finish") or (
+            name == "critic_review" and not payload.get("passed", True)
+        ):
             failures.append(_failure_item(index, name, "critic", payload))
         elif name == "tool_call" and payload.get("failed"):
             failures.append(_failure_item(index, name, _classify_tool_failure(payload), payload))

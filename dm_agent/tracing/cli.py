@@ -12,7 +12,7 @@ from .export_html import save_session_report
 from .fork import _fork, fork_session
 from .render import _analyze, _analyze_dir, _diff, _view, render_trace_directory_markdown
 from .replay import _replay, replay_tools
-from .summary import diff_events, summarize_events
+from .summary import diff_events, select_run, summarize_events
 from .writer import load_trace_events
 
 __all__ = [
@@ -36,6 +36,9 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     view_parser.add_argument("trace", type=Path, help="Path to a JSONL trace file.")
     view_parser.add_argument("--json", action="store_true", help="Print a JSON summary.")
     view_parser.add_argument("--raw", action="store_true", help="Print raw trace events.")
+    view_parser.add_argument(
+        "--run-index", type=int, default=-1, help="Run segment index (zero-based; default: latest)."
+    )
 
     export_parser = subparsers.add_parser(
         "export", help="Write a standalone HTML run report; content is omitted by default."
@@ -76,6 +79,9 @@ def parse_args(argv: Any = None) -> argparse.Namespace:
     )
     analyze_parser.add_argument("trace", type=Path, help="Path to a JSONL trace file.")
     analyze_parser.add_argument("--json", action="store_true", help="Print analysis as JSON.")
+    analyze_parser.add_argument(
+        "--run-index", type=int, default=-1, help="Run segment index (zero-based; default: latest)."
+    )
 
     analyze_dir_parser = subparsers.add_parser(
         "analyze-dir",
@@ -145,6 +151,12 @@ def main(argv: Any = None) -> int:
         events = _load_trace_for_cli(args.trace)
         if events is None:
             return 2
+        if args.run_index != -1:
+            try:
+                events = select_run(events, args.run_index)
+            except ValueError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
         return _view(events, as_json=args.json, raw=args.raw)
     if args.command == "replay":
         events = _load_trace_for_cli(args.trace)
@@ -161,6 +173,12 @@ def main(argv: Any = None) -> int:
         events = _load_trace_for_cli(args.trace)
         if events is None:
             return 2
+        if args.run_index != -1:
+            try:
+                events = select_run(events, args.run_index)
+            except ValueError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
         return _analyze(events, as_json=args.json)
     if args.command == "analyze-dir":
         if not args.directory.is_dir():

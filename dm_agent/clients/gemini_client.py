@@ -54,11 +54,25 @@ class GeminiClient(BaseLLMClient):
         """向 Gemini API 发送生成请求。"""
 
         try:
-            # 将消息格式转换为 Gemini 内容格式
-            contents = self._convert_messages_to_contents(messages)
-
-            # 调用 Gemini API
-            response = self.client.models.generate_content(model=self.model, contents=contents)
+            parameters = dict(extra)
+            if "max_tokens" in parameters:
+                parameters.setdefault("max_output_tokens", parameters.pop("max_tokens"))
+            systems = [msg["content"] for msg in messages if msg.get("role") == "system"]
+            if systems:
+                parameters["system_instruction"] = "\n\n".join(systems)
+            contents = [
+                types.Content(
+                    role="model" if msg.get("role") == "assistant" else "user",
+                    parts=[types.Part(text=msg.get("content", ""))],
+                )
+                for msg in messages
+                if msg.get("role") != "system"
+            ]
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=types.GenerateContentConfig(**parameters),
+            )
 
             # 返回包含响应的字典
             return {"response": response}
@@ -83,24 +97,3 @@ class GeminiClient(BaseLLMClient):
                 raise LLMError(f"无法从 Gemini 响应中提取文本: {e}") from e
 
         raise LLMError("无法从 Gemini 响应中提取文本。")
-
-    def _convert_messages_to_contents(self, messages: list[dict[str, str]]) -> str:
-        """将标准消息格式转换为 Gemini 内容格式。"""
-        # 合并所有消息内容
-        contents_parts = []
-
-        for msg in messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-
-            if role == "system":
-                contents_parts.append(f"System: {content}")
-            elif role == "user":
-                contents_parts.append(f"User: {content}")
-            elif role == "assistant":
-                contents_parts.append(f"Assistant: {content}")
-            else:
-                contents_parts.append(content)
-
-        # 返回合并后的内容字符串
-        return "\n\n".join(contents_parts)

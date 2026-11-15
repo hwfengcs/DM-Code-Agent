@@ -25,6 +25,7 @@ from .runner import (
     chdir,
     summarize_results,
 )
+from .validation import nonnegative_number, positive_int, select_named
 
 REAL_DEFAULT_VARIANTS: list[EvalVariant] = [
     EvalVariant("full", True, True, True),
@@ -63,6 +64,8 @@ class UsageTotals:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    estimated_fallback_tokens: int = 0
+    usage_requests: int = 0
 
 
 class UsageTrackingClient:
@@ -91,22 +94,47 @@ class UsageTrackingClient:
 
     def respond(self, messages: list[dict[str, str]], **extra: Any) -> str:
         self.usage.request_count += 1
-        self.usage.prompt_chars += sum(len(message.get("content", "")) for message in messages)
+        prompt_chars = sum(len(message.get("content", "")) for message in messages)
+        self.usage.prompt_chars += prompt_chars
 
         data = self.complete(messages, **extra)
         text = self.extract_text(data)
 
         self.usage.completion_chars += len(text)
         usage = data.get("usage") if isinstance(data, dict) else None
-        if isinstance(usage, dict):
-            self.usage.prompt_tokens += _int_value(usage.get("prompt_tokens"))
-            self.usage.completion_tokens += _int_value(usage.get("completion_tokens"))
-            self.usage.total_tokens += _int_value(usage.get("total_tokens"))
-
-        approx_tokens = estimate_tokens_from_chars(
-            self.usage.prompt_chars + self.usage.completion_chars
+        if not isinstance(usage, dict) and isinstance(data, dict):
+            response = data.get("response")
+            raw = getattr(response, "usage", None) or getattr(response, "usage_metadata", None)
+            if raw is not None and hasattr(raw, "model_dump"):
+                usage = raw.model_dump()
+        valid = isinstance(usage, dict) and any(
+            type(usage.get(key)) is int and usage[key] >= 0
+            for key in ("total_tokens", "total_token_count", "input_tokens", "prompt_tokens")
         )
-        self.usage.estimated_tokens = self.usage.total_tokens or approx_tokens
+        if valid and isinstance(usage, dict):
+            prompt = _int_value(
+                usage.get(
+                    "prompt_tokens", usage.get("input_tokens", usage.get("prompt_token_count"))
+                )
+            )
+            completion = _int_value(
+                usage.get(
+                    "completion_tokens",
+                    usage.get("output_tokens", usage.get("candidates_token_count")),
+                )
+            )
+            total = _int_value(
+                usage.get("total_tokens", usage.get("total_token_count", prompt + completion))
+            )
+            self.usage.prompt_tokens += prompt
+            self.usage.completion_tokens += completion
+            self.usage.total_tokens += total
+            self.usage.usage_requests += 1
+        else:
+            self.usage.estimated_fallback_tokens += estimate_tokens_from_chars(
+                prompt_chars + len(text)
+            )
+        self.usage.estimated_tokens = self.usage.total_tokens + self.usage.estimated_fallback_tokens
         return text
 
 
@@ -249,21 +277,19 @@ def run_real_suite(
     config: RealEvalConfig | None = None,
 ) -> dict[str, Any]:
     config = config or RealEvalConfig()
-    selected_tasks = list(tasks or get_real_tasks())
-    selected_variants = list(variants or REAL_DEFAULT_VARIANTS)
-
-    if task_ids:
-        allowed_tasks = set(task_ids)
-        selected_tasks = [task for task in selected_tasks if task.task_id in allowed_tasks]
-
-    if variant_names:
-        allowed_variants = set(variant_names)
-        selected_variants = [
-            variant for variant in selected_variants if variant.name in allowed_variants
-        ]
-
-    if config.repeat < 1:
-        raise ValueError("repeat must be at least 1")
+    selected_tasks = select_named(
+        get_real_tasks() if tasks is None else tasks, task_ids, lambda task: task.task_id, "tasks"
+    )
+    selected_variants = select_named(
+        REAL_DEFAULT_VARIANTS if variants is None else variants,
+        variant_names,
+        lambda variant: variant.name,
+        "variants",
+    )
+    positive_int("repeat", config.repeat)
+    positive_int("timeout", config.timeout)
+    nonnegative_number("temperature", config.temperature)
+    nonnegative_number("cost_per_1k_tokens", config.cost_per_1k_tokens)
 
     results: list[EvalResult] = []
     for repeat_index in range(config.repeat):
@@ -302,7 +328,7 @@ def run_real_task(
         skill_manager = None
         if variant.enable_skills:
             skill_manager = SkillManager()
-            skill_manager.load_all()
+            skill_manager.load_builtin_skills()
 
         agent = ReactAgent(
             client,
@@ -343,6 +369,8 @@ def run_real_task(
             "provider": config.provider.lower(),
             "model": client.model,
             "request_count": client.usage.request_count,
+            "usage_requests": client.usage.usage_requests,
+            "estimated_fallback_tokens": client.usage.estimated_fallback_tokens,
             "prompt_tokens": client.usage.prompt_tokens,
             "completion_tokens": client.usage.completion_tokens,
             "total_tokens": client.usage.total_tokens,

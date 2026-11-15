@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 from typing import Any
 
@@ -21,11 +22,21 @@ def validate_feature_args(args: argparse.Namespace) -> str:
         return "--context-token-budget must be 0 (disabled) or greater."
     if args.llm_max_retries < 0:
         return "--llm-max-retries must be 0 or greater."
+    if not math.isfinite(args.temperature) or args.temperature < 0:
+        return "--temperature must be a finite, non-negative number."
     if getattr(args, "resume_at", "") and not getattr(args, "resume", None):
         return "--resume-at 需要与 --resume 一起使用。"
     conversation_error = _validate_conversation_args(args)
     if conversation_error:
         return conversation_error
+    if (
+        not getattr(args, "task", None)
+        and not getattr(args, "resume", None)
+        and not getattr(args, "conversation_stdin", False)
+    ):
+        for name in ("trace", "checkpoint", "report", "trace_llm_io"):
+            if getattr(args, name, None):
+                return f"交互菜单不支持 --{name.replace('_', '-')}；请提供任务参数。"
     checkpoint_path = getattr(args, "checkpoint", None)
     trace_path = getattr(args, "trace", None)
     if checkpoint_path and trace_path:
@@ -56,15 +67,22 @@ def _validate_conversation_args(args: argparse.Namespace) -> str:
         return "--conversation-stdin 必须配合 --trace，否则没有任何地方能读到每一轮的进展。"
     if getattr(args, "resume", None) or getattr(args, "resume_at", ""):
         return "--conversation-stdin 不支持 --resume：resume 恢复的是同一任务的中断点。"
+    for name in ("checkpoint", "report"):
+        if getattr(args, name, None):
+            return f"--conversation-stdin 不支持 --{name}；请使用单任务模式保存。"
     return ""
 
 
 def parse_args(argv: Any) -> argparse.Namespace:
     # 先加载配置文件中的默认值
-    saved_config = load_config_from_file()
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--no-config", action="store_true")
+    config_args, _ = config_parser.parse_known_args(argv)
+    saved_config = {} if config_args.no_config else load_config_from_file()
 
     parser = argparse.ArgumentParser(description="运行基于 LLM 的 ReAct 智能体来完成任务描述。")
     parser.add_argument("task", nargs="?", help="智能体要完成的自然语言任务。")
+    parser.add_argument("--no-config", action="store_true", help="不读取项目或用户 config.json。")
 
     parser.add_argument(
         "--api-key",
@@ -118,7 +136,8 @@ def parse_args(argv: Any) -> argparse.Namespace:
         default=saved_config.get("context_token_budget", 24000),
         help="对话历史的估算 token 预算，超限提前触发本地压缩；0 表示只按消息节奏压缩（默认：24000）。",
     )
-    parser.add_argument(
+    edit_guard_group = parser.add_mutually_exclusive_group()
+    edit_guard_group.add_argument(
         "--disable-edit-guard",
         dest="enable_edit_guard",
         action="store_false",
@@ -128,17 +147,30 @@ def parse_args(argv: Any) -> argparse.Namespace:
             "依赖行号的连续编辑在写后需重读）。"
         ),
     )
+    edit_guard_group.add_argument(
+        "--enable-edit-guard",
+        dest="enable_edit_guard",
+        action="store_true",
+        help="开启 read-before-edit 守卫，覆盖配置文件。",
+    )
     parser.add_argument(
         "--llm-max-retries",
         type=int,
         default=saved_config.get("llm_max_retries", 2),
         help="LLM 瞬时故障（超时/断连/429/5xx）的统一重试次数；0 表示不重试（默认：2）。",
     )
-    parser.add_argument(
+    replanning_group = parser.add_mutually_exclusive_group()
+    replanning_group.add_argument(
         "--enable-adaptive-replanning",
         action="store_true",
         default=saved_config.get("enable_adaptive_replanning", False),
         help="启用基于失败信号的自适应重规划。默认关闭。",
+    )
+    replanning_group.add_argument(
+        "--disable-adaptive-replanning",
+        dest="enable_adaptive_replanning",
+        action="store_false",
+        help="关闭自适应重规划，覆盖配置文件。",
     )
     parser.add_argument(
         "--max-replans",

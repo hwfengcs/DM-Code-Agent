@@ -19,13 +19,14 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import signal
 import subprocess
 import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from dm_agent.processes import ProcessTree
 
 __all__ = [
     "RunProcess",
@@ -116,7 +117,7 @@ def _base_argv(spec: RunSpec, *, trace_path: Path) -> list[str]:
     用 ``python -m dm_agent.cli`` 而不是 ``dm-agent``：console script 不一定在 PATH 上
     （editable 安装、未激活 venv 都可能没有），而 ``sys.executable`` 一定是当前解释器。
     """
-    argv = [sys.executable, "-m", "dm_agent.cli"]
+    argv = [sys.executable, "-m", "dm_agent.cli", "--no-config"]
     argv += ["--provider", spec.provider]
     if spec.model:
         argv.append(f"--model={spec.model}")
@@ -175,6 +176,7 @@ class RunProcess:
         self.cwd = cwd
         self.trace_path = trace_path
         self._process: subprocess.Popen[bytes] | None = None
+        self._tree: ProcessTree | None = None
         self._output = bytearray()
         self._output_lock = threading.Lock()
         self._output_thread: threading.Thread | None = None
@@ -185,15 +187,8 @@ class RunProcess:
         ``stdin_pipe=True`` 给对话模式用：子进程会一直活着等下一轮任务从 stdin 进来，
         因此 stdin 必须是管道而不是 DEVNULL（DEVNULL 会让它立刻读到 EOF 然后退出）。
         """
-        # 进程组 / 新会话：为的是能连同 agent 拉起的 MCP stdio 子进程一起收掉。
-        kwargs: dict[str, Any] = {}
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-        else:
-            kwargs["start_new_session"] = True
-
         # argv 全部由白名单拼装、shell=False，任务文本作为单个元素传入（见模块 docstring）。
-        self._process = subprocess.Popen(
+        self._tree = ProcessTree(
             self.argv,
             cwd=str(self.cwd),
             env=_child_env(),
@@ -201,8 +196,8 @@ class RunProcess:
             stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE if stdin_pipe else subprocess.DEVNULL,
             shell=False,
-            **kwargs,
         )
+        self._process = self._tree.process
         self._output_thread = threading.Thread(target=self._drain_output, daemon=True)
         self._output_thread.start()
 
@@ -266,54 +261,15 @@ class RunProcess:
         return self._process.poll() if self._process else None
 
     def stop(self, *, grace_seconds: float = 3.0) -> bool:
-        """先礼后兵地终止子进程树。
-
-        Windows 上 ``terminate()`` 只杀掉直接子进程，agent 拉起的 MCP 服务器会变成
-        孤儿；所以硬杀那一步用 ``taskkill /T``（/T 才是「连同子树」）。
-        POSIX 上则对整个进程组发信号。
-        """
-        process = self._process
-        if process is None or process.poll() is not None:
+        """Release the owned tree even if its root already exited."""
+        if self._tree is None:
             return False
-
-        try:
-            if sys.platform == "win32":
-                # CTRL_BREAK 只对 CREATE_NEW_PROCESS_GROUP 起的进程有效，正是上面那种。
-                process.send_signal(signal.CTRL_BREAK_EVENT)
-            else:
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        except (OSError, ValueError):
-            # 进程可能刚好在这一瞬结束；继续走等待与硬杀逻辑即可。
-            pass
-
-        try:
-            process.wait(timeout=grace_seconds)
-            return True
-        except subprocess.TimeoutExpired:
-            pass
-
-        self._hard_kill()
-        return True
-
-    def _hard_kill(self) -> None:
-        process = self._process
-        if process is None:
-            return
-        if sys.platform == "win32":
-            # 参数固定，只有 PID 来自本进程自己起的子进程。
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                capture_output=True,
-                check=False,
-            )
-        else:
-            try:
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            except (OSError, ValueError):
-                process.kill()
-        # 硬杀后仍不退出极罕见，但也不值得再阻塞下去——调用方靠 poll() 拿真实状态。
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=5)
+        was_running = self._process is not None and self._process.poll() is None
+        self._tree.stop(grace_seconds=grace_seconds)
+        self.close_stdin()
+        if self._output_thread is not None:
+            self._output_thread.join(timeout=5)
+        return was_running
 
     def shutdown(self, *, grace_seconds: float = 5.0) -> bool:
         """优雅结束一个对话子进程：先关 stdin 让它自己收尾，超时才动粗。
@@ -322,10 +278,13 @@ class RunProcess:
         并把 MCP 服务器正常关掉。
         """
         process = self._process
-        if process is None or process.poll() is not None:
+        if process is None:
             return False
+        if process.poll() is not None:
+            return self.stop(grace_seconds=0)
         self.close_stdin()
         if self.wait(grace_seconds) is not None:
+            self.stop(grace_seconds=0)
             return True
         return self.stop()
 

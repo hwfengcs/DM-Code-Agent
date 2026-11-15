@@ -50,7 +50,7 @@ def test_notification_does_not_prevent_request_timeout(monkeypatch):
 
     assert client._send_message("tools/list") is None
 
-    assert client._stdout_queue.get_nowait() == notification
+    assert client.drain_notifications() == [json.loads(notification)]
     assert client._stdout_queue.empty()
 
 
@@ -64,7 +64,7 @@ def test_request_finds_matching_response_and_preserves_unrelated_messages():
 
     assert client._send_message("tools/list") == {"tools": []}
 
-    assert client._stdout_queue.get_nowait() == notification
+    assert client.drain_notifications() == [json.loads(notification)]
     assert client._stdout_queue.empty()
 
 
