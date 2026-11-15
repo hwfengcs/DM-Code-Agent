@@ -55,3 +55,12 @@
 
 发布沿用仓库工作流；main 部署演示站，v2.1.1 标签生成 GitHub Release。
 `PYPI_PUBLISH_ENABLED=false`，本次不启用或声称发布 PyPI。远端工作流结果另行追加。
+
+### 首次推送与安装链补验
+
+`b26b8e6` 的 [演示站部署](https://github.com/hwfengcs/DM-Code-Agent/actions/runs/43677699701)
+成功，公开站点 HTTP 200。首次 CI 的前端安装发现锁文件遗漏 Tailwind WASI 的 bundled
+依赖；此前已有 node_modules 的测试/构建不足以证明干净安装可复现。
+在不含 node_modules 的临时目录中使用 CI 同系列 npm 10.9.9 重新解析原锁文件，保留顶层
+依赖版本并补齐 bundled 条目。临时目录 npm ci、本仓库 npm ci、62 项前端测试、类型、构建
+及完整 audit 通过；产物没有变化。另做 Linux 目标的 npm ci dry-run，实际 Linux 安装由 CI 验证。
